@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileText, Plus, Copy, ArrowLeft, ExternalLink, Loader2, Clock, CheckCircle, FileCheck } from "lucide-react";
+import { FileText, Plus, Copy, ArrowLeft, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send } from "lucide-react";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -189,10 +189,19 @@ const PainelSubmissoes = () => {
                         {sub.updated_at !== sub.created_at && ` • Atualizado: ${formatDate(sub.updated_at)}`}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
                       <Button variant="outline" size="sm" onClick={() => copyLink(sub.token)}>
                         <Copy className="w-4 h-4 mr-1" />
                         Link
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        const link = `${window.location.origin}/coleta/${sub.token}`;
+                        const tipoInfo = tiposContrato.find((t) => t.id === sub.tipo_contrato);
+                        const msg = encodeURIComponent(`Olá! Segue o link para preenchimento dos dados do contrato (${tipoInfo?.nome}):\n\n${link}\n\nPreencha todos os campos e clique em "Enviar Dados" ao final.`);
+                        window.open(`https://wa.me/?text=${msg}`, "_blank");
+                      }}>
+                        <Send className="w-4 h-4 mr-1" />
+                        WhatsApp
                       </Button>
                       {sub.status === "enviado" && (
                         <Button size="sm" onClick={() => handleGenerateContract(sub)}>
