@@ -216,7 +216,7 @@ const ColetaPage = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="text-center space-y-4 max-w-md">
-          <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
+          <CheckCircle className="w-16 h-16 text-success mx-auto" />
           <h2 className="font-display text-2xl font-bold text-foreground">Dados Enviados</h2>
           <p className="text-muted-foreground">
             Os dados foram enviados com sucesso. O responsável pela elaboração do contrato será notificado.
