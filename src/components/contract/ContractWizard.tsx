@@ -138,6 +138,41 @@ const ContractWizard = () => {
     }
   };
 
+  const [isExportingDocx, setIsExportingDocx] = useState(false);
+
+  const handleDownloadDocx = async () => {
+    if (!minuta) return;
+    setIsExportingDocx(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-docx", {
+        body: { minuta, tipoContrato: tipo },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const byteChars = atob(data.docx);
+      const byteArray = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteArray[i] = byteChars.charCodeAt(i);
+      }
+      const blob = new Blob([byteArray], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contrato_${tipo}_${new Date().toISOString().slice(0, 10)}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("DOCX baixado com sucesso!");
+    } catch (err: any) {
+      console.error("Error exporting DOCX:", err);
+      toast.error("Erro ao exportar DOCX. Tente novamente.");
+    } finally {
+      setIsExportingDocx(false);
+    }
+  };
+
   const renderStep = () => {
     if (currentStep === 1) {
       return (
