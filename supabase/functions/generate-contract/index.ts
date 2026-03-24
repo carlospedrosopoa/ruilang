@@ -18,7 +18,7 @@ function getClausulasEspecificasTipo(tipo: string): string {
       return `
 CLÁUSULAS OBRIGATÓRIAS PARA PROMESSA DE COMPRA E VENDA:
 1. OBJETO E DESCRIÇÃO COMPLETA DO IMÓVEL - com dados registrais, matrícula, confrontações, área total (ad corpus ou ad mensuram conforme indicado)
-2. PREÇO E FORMA DE PAGAMENTO - discriminar arras confirmatórias (art. 418 CC), sinal, parcelas, índice de correção monetária, data de vencimento
+2. PREÇO E FORMA DE PAGAMENTO - discriminar arras confirmatórias (art. 418 CC), sinal, parcelas com valores FIXOS, data de vencimento
 3. IMISSÃO NA POSSE - definir momento exato da entrega da posse (precária ou definitiva), estado de conservação, inventário de bens se houver
 4. OBRIGAÇÕES DO PROMITENTE VENDEDOR:
    - Outorga de escritura definitiva no prazo estipulado após quitação
@@ -34,7 +34,7 @@ CLÁUSULAS OBRIGATÓRIAS PARA PROMESSA DE COMPRA E VENDA:
 6. CLÁUSULA PENAL MORATÓRIA - multa por atraso no pagamento (máximo 2% para relações consumeristas, livre para civis)
 7. CLÁUSULA PENAL COMPENSATÓRIA - multa por inadimplemento definitivo/rescisão
 8. JUROS DE MORA - taxa mensal aplicável
-9. CORREÇÃO MONETÁRIA - índice aplicável (INPC, IGPM, IPCA)
+9. PARCELAS FIXAS - todas as parcelas têm valores FIXOS, SEM correção monetária, SEM atualização por qualquer índice. O valor de cada parcela é o valor nominal acordado e não sofre reajuste.
 10. CLÁUSULA RESOLUTIVA - expressa ou tácita, com procedimento de notificação extrajudicial (art. 474 CC)
 11. IRREVOGABILIDADE E IRRETRATABILIDADE - art. 463 CC
 12. DIREITO À ADJUDICAÇÃO COMPULSÓRIA - art. 1.418 CC e Súmula 239 STJ
@@ -225,7 +225,7 @@ DIRETRIZES IMPERATIVAS - aplique TODAS estas proteções:
 6. CLÁUSULA PENAL MORATÓRIA REFORÇADA:
    - Multa de 10% sobre a parcela em atraso
    - Juros de mora de 1% ao mês
-   - Correção monetária pelo índice estipulado
+   - As parcelas são de valor FIXO, SEM correção monetária
    - Vencimento antecipado de TODAS as parcelas vincendas
 
 7. MANUTENÇÃO E ENCARGOS:
@@ -290,10 +290,9 @@ DIRETRIZES IMPERATIVAS - aplique TODAS estas proteções:
 
 1. GARANTIA DE ESCRITURA:
    - Em caso de impossibilidade de outorga de escritura pelo ${partePrincipal}, este deverá:
-     a) Devolver TODOS os valores pagos
-     b) Acrescidos de multa compensatória de 20% do valor total do contrato
-     c) Correção monetária desde cada desembolso pelo INPC/IBGE
-     d) Juros legais de 1% ao mês desde a citação
+      a) Devolver TODOS os valores pagos
+      b) Acrescidos de multa compensatória de 20% do valor total do contrato
+      c) Juros legais de 1% ao mês desde a citação
    - Prazo máximo de 30 dias para devolução integral
 
 2. EVICÇÃO INTEGRAL:
@@ -351,6 +350,7 @@ DIRETRIZES - aplique equilíbrio em TODAS as cláusulas:
    - Multa compensatória de 10% do valor total para AMBAS as partes
    - Multa moratória de 2% sobre parcela em atraso
    - Juros de mora de 1% ao mês
+   - Parcelas com valores FIXOS, SEM correção monetária por qualquer índice
 
 3. BENFEITORIAS:
    - Necessárias: sempre indenizáveis com direito de retenção
@@ -446,7 +446,8 @@ IMPORTANTE:
 - NÃO use formatação markdown (asteriscos, hashtags, etc). O texto deve ser PURO, sem nenhum caractere de formatação como *, **, #, ##, ---, etc.
 - Use APENAS texto simples com letras maiúsculas para ênfase quando necessário
 - Títulos de cláusulas em LETRAS MAIÚSCULAS sem qualquer marcação
-- Descreva o imóvel objeto do contrato em um bloco separado identificado por "IMÓVEL:" no início`;
+- Descreva o imóvel objeto do contrato em um bloco separado identificado por "IMÓVEL:" no início
+- REGRA OBRIGATÓRIA SOBRE PARCELAS: Todas as parcelas do contrato têm valores FIXOS e NOMINAIS. NÃO inclua cláusula de correção monetária, atualização ou reajuste das parcelas por qualquer índice (INPC, IGPM, IPCA ou outro). As multas moratórias e compensatórias devem ser mantidas normalmente.`;
 
     const peculiaridadesBlock = contrato.peculiaridades
       ? `\n\nPECULIARIDADES INFORMADAS PELO OPERADOR (CRIAR CLÁUSULAS ESPECÍFICAS PARA CADA UMA):
