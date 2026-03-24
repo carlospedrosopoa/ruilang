@@ -489,7 +489,10 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     }
 
     const data = await response.json();
-    const minuta = data.choices?.[0]?.message?.content || "";
+    let minuta = data.choices?.[0]?.message?.content || "";
+    
+    // Strip any remaining markdown formatting
+    minuta = minuta.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
 
     return new Response(JSON.stringify({ minuta }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
