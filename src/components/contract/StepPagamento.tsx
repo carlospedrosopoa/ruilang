@@ -75,7 +75,7 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
       <div className="border border-border rounded-lg p-5 space-y-5 bg-card">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label>Valor Total do Imóvel (R$) *</Label>
+            <Label>Valor Total do Imóvel (R$)</Label>
             <Input
               value={pagamento.valorTotal}
               onChange={(e) => update("valorTotal", e.target.value)}
