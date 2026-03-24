@@ -1,6 +1,7 @@
-import { FileText, ArrowLeftRight, ScrollText, Home } from "lucide-react";
+import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { tiposContrato, TipoContrato } from "@/types/contract";
+import { Button } from "@/components/ui/button";
 
 const iconMap: Record<string, React.ElementType> = {
   FileText,
