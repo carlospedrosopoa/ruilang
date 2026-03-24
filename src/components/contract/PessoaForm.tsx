@@ -4,9 +4,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Trash2, Upload, FileImage, Loader2, Sparkles, X } from "lucide-react";
-import { Pessoa, estadosCivis, estadosBR } from "@/types/contract";
+import { Pessoa, estadosCivis, estadosBR, criarConjugeVazio } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import ConjugeForm from "./ConjugeForm";
 
 interface PessoaFormProps {
   pessoa: Pessoa;
@@ -35,8 +36,18 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
+
   const update = (field: keyof Pessoa, value: string) => {
-    onChange({ ...pessoa, [field]: value });
+    const updated = { ...pessoa, [field]: value };
+    if (field === "estadoCivil") {
+      if (needsConjuge(value) && !pessoa.conjuge) {
+        updated.conjuge = criarConjugeVazio();
+      } else if (!needsConjuge(value)) {
+        updated.conjuge = undefined;
+      }
+    }
+    onChange(updated);
   };
 
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -208,6 +219,16 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
           <div>
             <Label>Regime de Bens</Label>
             <Input value={pessoa.regimeBens || ""} onChange={(e) => update("regimeBens", e.target.value)} placeholder="Ex: comunhão universal" />
+          </div>
+        )}
+
+        {needsConjuge(pessoa.estadoCivil) && pessoa.conjuge && (
+          <div className="md:col-span-2">
+            <ConjugeForm
+              conjuge={pessoa.conjuge}
+              onChange={(c) => onChange({ ...pessoa, conjuge: c })}
+              label={pessoa.estadoCivil === "União Estável" ? "Companheiro(a)" : "Cônjuge"}
+            />
           </div>
         )}
 

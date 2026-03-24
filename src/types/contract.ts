@@ -40,6 +40,28 @@ export const tiposContrato: TipoContratoInfo[] = [
   },
 ];
 
+export interface Conjuge {
+  nome: string;
+  nacionalidade: string;
+  profissao: string;
+  documentoTipo: "rg" | "cnh";
+  documentoNumero: string;
+  documentoOrgao: string;
+  cpf: string;
+}
+
+export function criarConjugeVazio(): Conjuge {
+  return {
+    nome: "",
+    nacionalidade: "brasileira",
+    profissao: "",
+    documentoTipo: "rg",
+    documentoNumero: "",
+    documentoOrgao: "",
+    cpf: "",
+  };
+}
+
 export interface Pessoa {
   id: string;
   nome: string;
@@ -47,6 +69,7 @@ export interface Pessoa {
   profissao: string;
   estadoCivil: string;
   regimeBens?: string;
+  conjuge?: Conjuge;
   documentoTipo: "rg" | "cnh";
   documentoNumero: string;
   documentoOrgao: string;
