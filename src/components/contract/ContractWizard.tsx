@@ -84,7 +84,7 @@ const ContractWizard = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
 
-  // Load submission data if coming from panel
+  // Load submission data if coming from panel — skip to Perfil step
   useEffect(() => {
     if (!submissionId) return;
     const loadSubmission = async () => {
@@ -102,6 +102,10 @@ const ContractWizard = () => {
         if (d.imovelPermuta) setImovelPermuta(d.imovelPermuta);
         if (d.pagamento) setPagamento(d.pagamento);
         if (d.locacao) setLocacao(d.locacao);
+
+        // Jump directly to Perfil step since data is already collected
+        const perfilStep = steps.findIndex(s => s.label === "Perfil");
+        if (perfilStep >= 0) setCurrentStep(perfilStep + 1);
       }
     };
     loadSubmission();
