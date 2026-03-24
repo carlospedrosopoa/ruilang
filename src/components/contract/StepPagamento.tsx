@@ -97,7 +97,7 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
             <div key={parcela.id} className="border border-border rounded-md p-4 space-y-3 bg-background">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-muted-foreground">
-                  Parcela {index + 1}
+                  {parcela.tipo === "arras" ? "Arras/Sinal" : parcela.tipo === "entrada" ? "Entrada" : `Parcela ${index + 1}`}
                 </span>
                 <Button variant="ghost" size="icon" onClick={() => removeParcela(index)} className="text-destructive h-8 w-8">
                   <Trash2 className="w-3.5 h-3.5" />
