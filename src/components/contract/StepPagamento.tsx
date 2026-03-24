@@ -75,7 +75,7 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
       <div className="border border-border rounded-lg p-5 space-y-5 bg-card">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label>Valor Total do Imóvel (R$) *</Label>
+            <Label>Valor Total do Imóvel (R$)</Label>
             <Input
               value={pagamento.valorTotal}
               onChange={(e) => update("valorTotal", e.target.value)}
@@ -97,7 +97,7 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
             <div key={parcela.id} className="border border-border rounded-md p-4 space-y-3 bg-background">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-muted-foreground">
-                  Parcela {index + 1}
+                  {parcela.tipo === "arras" ? "Arras/Sinal" : parcela.tipo === "entrada" ? "Entrada" : `Parcela ${index + 1}`}
                 </span>
                 <Button variant="ghost" size="icon" onClick={() => removeParcela(index)} className="text-destructive h-8 w-8">
                   <Trash2 className="w-3.5 h-3.5" />
@@ -129,12 +129,17 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Vencimento</Label>
+                  <Label className="text-xs">{parcela.quantidade > 1 ? "Vencimento 1ª parcela" : "Vencimento"}</Label>
                   <Input
                     type="date"
                     value={parcela.dataVencimento}
                     onChange={(e) => updateParcela(index, "dataVencimento", e.target.value)}
                   />
+                  {parcela.quantidade > 1 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Demais parcelas nos meses subsequentes
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs">Descrição</Label>
