@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileText, Plus, Copy, ArrowLeft, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send } from "lucide-react";
+import { FileText, Plus, Copy, ArrowLeft, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2 } from "lucide-react";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -85,8 +85,17 @@ const PainelSubmissoes = () => {
     toast.success("Link copiado!");
   };
 
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from("submissions").delete().eq("id", id);
+    if (error) {
+      toast.error("Erro ao excluir.");
+    } else {
+      toast.success("Link excluído!");
+      setSubmissions((prev) => prev.filter((s) => s.id !== id));
+    }
+  };
+
   const handleGenerateContract = (submission: Submission) => {
-    // Navigate to contract wizard pre-filled with submission data
     navigate(`/contrato/${submission.tipo_contrato}?submissionId=${submission.id}`);
   };
 
@@ -209,6 +218,9 @@ const PainelSubmissoes = () => {
                           Gerar Contrato
                         </Button>
                       )}
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(sub.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                 </div>
