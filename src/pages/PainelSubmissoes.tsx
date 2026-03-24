@@ -218,6 +218,9 @@ const PainelSubmissoes = () => {
                           Gerar Contrato
                         </Button>
                       )}
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(sub.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                 </div>
