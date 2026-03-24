@@ -34,7 +34,7 @@ CLÁUSULAS OBRIGATÓRIAS PARA PROMESSA DE COMPRA E VENDA:
 6. CLÁUSULA PENAL MORATÓRIA - multa por atraso no pagamento (máximo 2% para relações consumeristas, livre para civis)
 7. CLÁUSULA PENAL COMPENSATÓRIA - multa por inadimplemento definitivo/rescisão
 8. JUROS DE MORA - taxa mensal aplicável
-9. CORREÇÃO MONETÁRIA - índice aplicável (INPC, IGPM, IPCA)
+9. PARCELAS FIXAS - todas as parcelas têm valores FIXOS, SEM correção monetária, SEM atualização por qualquer índice. O valor de cada parcela é o valor nominal acordado e não sofre reajuste.
 10. CLÁUSULA RESOLUTIVA - expressa ou tácita, com procedimento de notificação extrajudicial (art. 474 CC)
 11. IRREVOGABILIDADE E IRRETRATABILIDADE - art. 463 CC
 12. DIREITO À ADJUDICAÇÃO COMPULSÓRIA - art. 1.418 CC e Súmula 239 STJ
