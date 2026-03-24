@@ -376,7 +376,7 @@ const ColetaPage = () => {
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={isSaving} className="bg-green-600 hover:bg-green-700 text-white">
+            <Button onClick={handleSubmit} disabled={isSaving} className="bg-success hover:bg-success/90 text-success-foreground">
               <Send className="w-4 h-4 mr-2" />
               {isSaving ? "Enviando..." : "Enviar Dados"}
             </Button>
