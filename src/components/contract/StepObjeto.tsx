@@ -1,18 +1,97 @@
+import { useState, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Upload, FileImage, Loader2, Sparkles, X } from "lucide-react";
 import { Imovel, estadosBR } from "@/types/contract";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface StepObjetoProps {
   imovel: Imovel;
   onChange: (imovel: Imovel) => void;
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
+  const [files, setFiles] = useState<File[]>([]);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const update = (field: keyof Imovel, value: string | boolean) => {
     onChange({ ...imovel, [field]: value });
+  };
+
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    const valid = selected.filter((f) => {
+      if (f.size > 10 * 1024 * 1024) {
+        toast.error(`${f.name} excede 10MB`);
+        return false;
+      }
+      return true;
+    });
+    setFiles((prev) => [...prev, ...valid]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (idx: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleExtract = async () => {
+    if (files.length === 0) {
+      toast.error("Adicione ao menos um documento.");
+      return;
+    }
+
+    setIsExtracting(true);
+    try {
+      const images = await Promise.all(files.map(fileToBase64));
+
+      const { data, error } = await supabase.functions.invoke("extract-property", {
+        body: { images },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const dados = data.dados;
+      if (!dados) throw new Error("Nenhum dado extraído");
+
+      const merged = { ...imovel };
+      for (const [key, value] of Object.entries(dados)) {
+        if (value && typeof value === "string" && value.trim() !== "") {
+          const imovelKey = key as keyof Imovel;
+          const currentValue = merged[imovelKey];
+          if (!currentValue || currentValue === "") {
+            (merged as any)[imovelKey] = value;
+          }
+        }
+      }
+
+      onChange(merged);
+      toast.success("Dados do imóvel extraídos com sucesso! Verifique os campos.");
+    } catch (err: any) {
+      console.error("Extract property error:", err);
+      toast.error(err.message || "Erro ao extrair dados do documento.");
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   return (
@@ -24,6 +103,47 @@ const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
         <p className="text-muted-foreground">
           Descreva o imóvel objeto da transação.
         </p>
+      </div>
+
+      {/* Document Upload Area */}
+      <div className="border-2 border-dashed border-primary/30 rounded-lg p-4 bg-primary/5 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-primary">
+          <Sparkles className="w-4 h-4" />
+          Preenchimento Automático via IA
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Anexe fotos da matrícula do imóvel, escritura ou contrato anterior e a IA preencherá os campos automaticamente.
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          {files.map((file, idx) => (
+            <div key={idx} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-background border border-border text-xs">
+              <FileImage className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="max-w-[150px] truncate">{file.name}</span>
+              <button onClick={() => removeFile(idx)} className="text-muted-foreground hover:text-destructive">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="w-4 h-4 mr-1" />
+            Anexar Documento
+          </Button>
+          {files.length > 0 && (
+            <Button type="button" size="sm" onClick={handleExtract} disabled={isExtracting} className="bg-primary text-primary-foreground">
+              {isExtracting ? (
+                <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Extraindo...</>
+              ) : (
+                <><Sparkles className="w-4 h-4 mr-1" />Extrair Dados</>
+              )}
+            </Button>
+          )}
+        </div>
+
+        <input ref={fileInputRef} type="file" accept="image/*,.pdf" multiple onChange={handleFilesSelected} className="hidden" />
       </div>
 
       <div className="border border-border rounded-lg p-5 space-y-4 bg-card">
