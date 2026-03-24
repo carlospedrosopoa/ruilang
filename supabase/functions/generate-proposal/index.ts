@@ -149,6 +149,7 @@ DADOS COLETADOS:
 ${JSON.stringify(dados, null, 2)}
 
 Tipo de contrato: ${tipoContrato}
+${imobInfo}
 
 Gere a proposta completa conforme o modelo nas instruções, com TODAS as cláusulas e espaços para assinatura.`;
 
