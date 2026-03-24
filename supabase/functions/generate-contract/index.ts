@@ -24,7 +24,40 @@ serve(async (req) => {
 
     const tipoLabel = tipoLabels[contrato.tipoContrato] || "Contrato Imobiliário";
 
+    const perfilInstrucoes: Record<string, string> = {
+      blindagem_vendedor: `PERFIL: BLINDAGEM MÁXIMA PARA O VENDEDOR
+- Arras confirmatórias: em caso de rescisão pelo COMPRADOR, NÃO haverá devolução dos valores pagos a título de arras
+- Benfeitorias: PROIBIR qualquer benfeitoria no imóvel até a quitação integral. Caso o comprador realize benfeitorias sem autorização, estas NÃO serão indenizadas em hipótese alguma, revertendo em favor do vendedor
+- Rescisão pelo comprador: além da perda das arras, o comprador deverá pagar aluguel mensal pelo período de ocupação do imóvel, calculado com base no valor de mercado
+- Posse: conceder apenas posse PRECÁRIA até a quitação integral, nunca posse definitiva
+- Multa rescisória mais elevada para o comprador (20-30% do valor total)
+- Cláusula resolutiva expressa: a falta de pagamento de qualquer parcela importará na resolução de pleno direito do contrato
+- Manutenção: todas as despesas de manutenção, tributos e encargos são de responsabilidade do comprador desde a imissão na posse
+- Escritura: somente após quitação integral, com todas as despesas por conta do comprador`,
+      blindagem_comprador: `PERFIL: BLINDAGEM MÁXIMA PARA O COMPRADOR
+- Em caso de impossibilidade de outorga de escritura pelo vendedor, este deverá devolver TODOS os valores pagos acrescidos de multa de 20% do valor total do contrato e correção monetária
+- Evicção: o vendedor assume responsabilidade INTEGRAL pela evicção de direito
+- Posse: conceder posse DEFINITIVA e JUSTA imediatamente após assinatura do contrato
+- Multa rescisória mais elevada para o vendedor
+- Garantia de adjudicação compulsória expressa (art. 1.418 CC)
+- Cláusula penal em favor do comprador em caso de atraso na entrega ou impedimento à escritura
+- Direito de retenção por benfeitorias úteis e necessárias
+- Vendedor deve apresentar certidões negativas de ônus reais, fiscais e trabalhistas`,
+      equilibrado: `PERFIL: CONTRATO EQUILIBRADO
+- Cláusulas justas e proporcionais para ambas as partes
+- Multas rescisórias equivalentes para vendedor e comprador
+- Arras confirmatórias com regra padrão do Código Civil (art. 418)
+- Posse provisória com possibilidade de benfeitorias mediante autorização por escrito
+- Evicção conforme regras gerais do Código Civil
+- Despesas de transferência repartidas conforme prática de mercado
+- Direito de retenção por benfeitorias necessárias, sem direito às voluptuárias`,
+    };
+
+    const perfilTexto = perfilInstrucoes[contrato.perfilContrato] || perfilInstrucoes["equilibrado"];
+
     const systemPrompt = `Você é um advogado especialista em direito contratual e imobiliário brasileiro. Sua tarefa é gerar minutas contratuais precisas, completas e juridicamente seguras.
+
+${perfilTexto}
 
 REGRAS:
 - Use linguagem jurídica formal brasileira
@@ -38,6 +71,7 @@ REGRAS:
 - Gere um documento completo pronto para assinatura
 - Inclua espaço para assinaturas e testemunhas no final
 - SEMPRE inclua aviso de que o documento deve ser revisado por advogado
+- As cláusulas de blindagem devem estar em conformidade com o perfil escolhido
 
 IMPORTANTE: Gere APENAS o texto do contrato, sem comentários ou explicações extras.`;
 
