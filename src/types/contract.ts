@@ -121,6 +121,36 @@ export interface Locacao {
   multaRescisao: string;
 }
 
+export type PerfilContrato = "blindagem_vendedor" | "blindagem_comprador" | "equilibrado";
+
+export interface PerfilContratoInfo {
+  id: PerfilContrato;
+  nome: string;
+  descricao: string;
+  icone: string;
+}
+
+export const perfisContrato: PerfilContratoInfo[] = [
+  {
+    id: "blindagem_vendedor",
+    nome: "Blindagem Vendedor",
+    descricao: "Máxima proteção ao vendedor: arras não devolvidas em rescisão, proibição de benfeitorias até quitação, cobrança de aluguel em caso de rescisão, sem devolução de valores pagos.",
+    icone: "ShieldCheck",
+  },
+  {
+    id: "blindagem_comprador",
+    nome: "Blindagem Comprador",
+    descricao: "Máxima proteção ao comprador: multa ao vendedor por impossibilidade de escritura, garantia de evicção integral, posse definitiva imediata, devolução com correção em rescisão pelo vendedor.",
+    icone: "ShieldAlert",
+  },
+  {
+    id: "equilibrado",
+    nome: "Equilibrado",
+    descricao: "Contrato balanceado com cláusulas justas para ambas as partes, seguindo boas práticas do mercado imobiliário.",
+    icone: "Scale",
+  },
+];
+
 export interface Contrato {
   tipoContrato: TipoContrato;
   vendedores: Pessoa[];
