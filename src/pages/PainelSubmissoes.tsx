@@ -85,8 +85,17 @@ const PainelSubmissoes = () => {
     toast.success("Link copiado!");
   };
 
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from("submissions").delete().eq("id", id);
+    if (error) {
+      toast.error("Erro ao excluir.");
+    } else {
+      toast.success("Link excluído!");
+      setSubmissions((prev) => prev.filter((s) => s.id !== id));
+    }
+  };
+
   const handleGenerateContract = (submission: Submission) => {
-    // Navigate to contract wizard pre-filled with submission data
     navigate(`/contrato/${submission.tipo_contrato}?submissionId=${submission.id}`);
   };
 
