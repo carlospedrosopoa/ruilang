@@ -8,6 +8,7 @@ import { Pessoa, estadosCivis, estadosBR, criarConjugeVazio } from "@/types/cont
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ConjugeForm from "./ConjugeForm";
+import { compressImageToBase64 } from "@/lib/imageUtils";
 
 interface PessoaFormProps {
   pessoa: Pessoa;
@@ -15,20 +16,6 @@ interface PessoaFormProps {
   onRemove?: () => void;
   titulo: string;
   index: number;
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Remove data URL prefix to get raw base64
-      const base64 = result.split(",")[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 }
 
 const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormProps) => {
