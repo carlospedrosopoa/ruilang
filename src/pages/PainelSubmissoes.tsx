@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileText, Plus, Copy, ArrowLeft, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send } from "lucide-react";
+import { FileText, Plus, Copy, ArrowLeft, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2 } from "lucide-react";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
