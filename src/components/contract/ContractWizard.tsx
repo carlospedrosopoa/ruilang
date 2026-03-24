@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, ShieldCheck, ShieldAlert, Scale } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download } from "lucide-react";
 import StepIndicator from "./StepIndicator";
 import StepVendedores from "./StepVendedores";
 import StepCompradores from "./StepCompradores";
