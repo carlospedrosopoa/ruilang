@@ -7,6 +7,7 @@ import Index from "./pages/Index.tsx";
 import ContratoPage from "./pages/ContratoPage.tsx";
 import ColetaPage from "./pages/ColetaPage.tsx";
 import PainelSubmissoes from "./pages/PainelSubmissoes.tsx";
+import ImobiliariasPage from "./pages/ImobiliariasPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
