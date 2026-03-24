@@ -446,7 +446,8 @@ IMPORTANTE:
 - NÃO use formatação markdown (asteriscos, hashtags, etc). O texto deve ser PURO, sem nenhum caractere de formatação como *, **, #, ##, ---, etc.
 - Use APENAS texto simples com letras maiúsculas para ênfase quando necessário
 - Títulos de cláusulas em LETRAS MAIÚSCULAS sem qualquer marcação
-- Descreva o imóvel objeto do contrato em um bloco separado identificado por "IMÓVEL:" no início`;
+- Descreva o imóvel objeto do contrato em um bloco separado identificado por "IMÓVEL:" no início
+- REGRA OBRIGATÓRIA SOBRE PARCELAS: Todas as parcelas do contrato têm valores FIXOS e NOMINAIS. NÃO inclua cláusula de correção monetária, atualização ou reajuste das parcelas por qualquer índice (INPC, IGPM, IPCA ou outro). As multas moratórias e compensatórias devem ser mantidas normalmente.`;
 
     const peculiaridadesBlock = contrato.peculiaridades
       ? `\n\nPECULIARIDADES INFORMADAS PELO OPERADOR (CRIAR CLÁUSULAS ESPECÍFICAS PARA CADA UMA):
