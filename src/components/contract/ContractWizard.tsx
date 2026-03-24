@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2 } from "lucide-react";
 import StepIndicator from "./StepIndicator";
 import StepVendedores from "./StepVendedores";
 import StepCompradores from "./StepCompradores";
@@ -138,6 +138,41 @@ const ContractWizard = () => {
     }
   };
 
+  const [isExportingDocx, setIsExportingDocx] = useState(false);
+
+  const handleDownloadDocx = async () => {
+    if (!minuta) return;
+    setIsExportingDocx(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-docx", {
+        body: { minuta, tipoContrato: tipo },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const byteChars = atob(data.docx);
+      const byteArray = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteArray[i] = byteChars.charCodeAt(i);
+      }
+      const blob = new Blob([byteArray], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contrato_${tipo}_${new Date().toISOString().slice(0, 10)}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("DOCX baixado com sucesso!");
+    } catch (err: any) {
+      console.error("Error exporting DOCX:", err);
+      toast.error("Erro ao exportar DOCX. Tente novamente.");
+    } finally {
+      setIsExportingDocx(false);
+    }
+  };
+
   const renderStep = () => {
     if (currentStep === 1) {
       return (
@@ -185,12 +220,16 @@ const ContractWizard = () => {
                 <h3 className="font-display text-2xl font-bold text-foreground mb-1">Minuta Gerada</h3>
                 <p className="text-muted-foreground">Revise o texto e faça os ajustes necessários.</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Button variant="outline" size="sm" onClick={handleCopy}>
                   <Copy className="w-4 h-4 mr-1" /> Copiar
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleDownloadTxt}>
-                  <Download className="w-4 h-4 mr-1" /> Baixar .txt
+                  <Download className="w-4 h-4 mr-1" /> .txt
+                </Button>
+                <Button size="sm" onClick={handleDownloadDocx} disabled={isExportingDocx}>
+                  {isExportingDocx ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <FileDown className="w-4 h-4 mr-1" />}
+                  {isExportingDocx ? "Gerando..." : "Baixar .docx"}
                 </Button>
               </div>
             </div>
