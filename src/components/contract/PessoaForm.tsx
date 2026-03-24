@@ -144,7 +144,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
           ))}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="outline"
@@ -153,6 +153,15 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
           >
             <Upload className="w-4 h-4 mr-1" />
             Anexar Documento
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            <Camera className="w-4 h-4 mr-1" />
+            Tirar Foto
           </Button>
           {files.length > 0 && (
             <Button
@@ -180,8 +189,16 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,.pdf"
+          accept="image/jpeg,image/png,image/webp,image/heic,.pdf"
           multiple
+          onChange={handleFilesSelected}
+          className="hidden"
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
           onChange={handleFilesSelected}
           className="hidden"
         />
