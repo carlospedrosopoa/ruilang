@@ -6,12 +6,12 @@ import { Pessoa, criarPessoaVazia } from "@/types/contract";
 interface StepVendedoresProps {
   vendedores: Pessoa[];
   onChange: (vendedores: Pessoa[]) => void;
+  titulo?: string;
+  tituloPlural?: string;
 }
 
-const StepVendedores = ({ vendedores, onChange }: StepVendedoresProps) => {
-  const addVendedor = () => {
-    onChange([...vendedores, criarPessoaVazia()]);
-  };
+const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlural = "Vendedor(es)" }: StepVendedoresProps) => {
+  const addVendedor = () => onChange([...vendedores, criarPessoaVazia()]);
 
   const updateVendedor = (index: number, pessoa: Pessoa) => {
     const updated = [...vendedores];
@@ -28,10 +28,10 @@ const StepVendedores = ({ vendedores, onChange }: StepVendedoresProps) => {
     <div className="space-y-6">
       <div>
         <h3 className="font-display text-2xl font-bold text-foreground mb-1">
-          Promitente(s) Vendedor(es)
+          {tituloPlural}
         </h3>
         <p className="text-muted-foreground">
-          Informe os dados de qualificação dos vendedores do imóvel.
+          Informe os dados de qualificação.
         </p>
       </div>
 
@@ -41,14 +41,14 @@ const StepVendedores = ({ vendedores, onChange }: StepVendedoresProps) => {
           pessoa={vendedor}
           onChange={(p) => updateVendedor(index, p)}
           onRemove={vendedores.length > 1 ? () => removeVendedor(index) : undefined}
-          titulo="Vendedor"
+          titulo={titulo}
           index={index}
         />
       ))}
 
       <Button variant="outline" onClick={addVendedor} className="w-full border-dashed">
         <UserPlus className="w-4 h-4 mr-2" />
-        Adicionar Vendedor
+        Adicionar {titulo}
       </Button>
     </div>
   );

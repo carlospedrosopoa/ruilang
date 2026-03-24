@@ -1,122 +1,232 @@
 import { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, FileText } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileText, Sparkles } from "lucide-react";
 import StepIndicator from "./StepIndicator";
 import StepVendedores from "./StepVendedores";
 import StepCompradores from "./StepCompradores";
 import StepObjeto from "./StepObjeto";
 import StepPagamento from "./StepPagamento";
-import { Pessoa, Imovel, Pagamento, criarPessoaVazia } from "@/types/contract";
+import StepPermuta from "./StepPermuta";
+import StepLocacao from "./StepLocacao";
+import {
+  TipoContrato,
+  tiposContrato,
+  Pessoa,
+  Imovel,
+  ImovelPermuta,
+  Pagamento,
+  Locacao,
+  criarPessoaVazia,
+  criarImovelVazio,
+  criarImovelPermutaVazio,
+  criarPagamentoVazio,
+  criarLocacaoVazia,
+} from "@/types/contract";
 import { toast } from "sonner";
 
-const steps = [
-  { number: 1, label: "Vendedores" },
-  { number: 2, label: "Compradores" },
-  { number: 3, label: "Imóvel" },
-  { number: 4, label: "Pagamento" },
-];
+const labelByTipo: Record<TipoContrato, { vendedor: string; comprador: string }> = {
+  promessa_compra_venda: { vendedor: "Vendedor", comprador: "Comprador" },
+  promessa_compra_venda_permuta: { vendedor: "Vendedor", comprador: "Comprador" },
+  cessao_direitos: { vendedor: "Cedente", comprador: "Cessionário" },
+  locacao: { vendedor: "Locador", comprador: "Locatário" },
+};
+
+function getSteps(tipo: TipoContrato) {
+  const labels = labelByTipo[tipo];
+  const steps = [
+    { number: 1, label: `${labels.vendedor}(es)` },
+    { number: 2, label: `${labels.comprador}(es)` },
+    { number: 3, label: "Imóvel" },
+  ];
+
+  let stepNumber = 4;
+
+  if (tipo === "promessa_compra_venda_permuta") {
+    steps.push({ number: stepNumber++, label: "Permuta" });
+  }
+
+  if (tipo === "locacao") {
+    steps.push({ number: stepNumber++, label: "Locação" });
+  } else {
+    steps.push({ number: stepNumber++, label: "Pagamento" });
+  }
+
+  steps.push({ number: stepNumber, label: "Gerar" });
+  return steps;
+}
 
 const ContractWizard = () => {
-  const [currentStep, setCurrentStep] = useState(1);
+  const { tipo: tipoParam } = useParams<{ tipo: string }>();
+  const navigate = useNavigate();
+  const tipo = (tipoParam as TipoContrato) || "promessa_compra_venda";
+  const tipoInfo = tiposContrato.find((t) => t.id === tipo);
+  const labels = labelByTipo[tipo];
+  const steps = getSteps(tipo);
+  const totalSteps = steps.length;
 
+  const [currentStep, setCurrentStep] = useState(1);
   const [vendedores, setVendedores] = useState<Pessoa[]>([criarPessoaVazia()]);
   const [compradores, setCompradores] = useState<Pessoa[]>([criarPessoaVazia()]);
-  const [imovel, setImovel] = useState<Imovel>({
-    tipo: "",
-    descricao: "",
-    localizacao: "",
-    municipio: "",
-    estadoImovel: "",
-    lote: "",
-    quadra: "",
-    areaTotal: "",
-    matricula: "",
-    registroImoveis: "",
-    medidasFrente: "",
-    medidasFundos: "",
-    medidasLateralEsquerda: "",
-    medidasLateralDireita: "",
-    caracteristicas: "",
-    adCorpus: true,
-  });
-  const [pagamento, setPagamento] = useState<Pagamento>({
-    valorTotal: "",
-    parcelas: [
-      { id: crypto.randomUUID(), descricao: "Arras confirmatórias no ato da assinatura", valor: "", quantidade: 1, tipo: "arras" },
-    ],
-    multaMoratoria: "10",
-    jurosMora: "1",
-    indiceCorrecao: "INPC/IBGE",
-    multaContratual: "20",
-  });
+  const [imovel, setImovel] = useState<Imovel>(criarImovelVazio());
+  const [imovelPermuta, setImovelPermuta] = useState<ImovelPermuta>(criarImovelPermutaVazio());
+  const [pagamento, setPagamento] = useState<Pagamento>(criarPagamentoVazio());
+  const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const next = () => {
-    if (currentStep < 4) setCurrentStep(currentStep + 1);
+    if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
   };
-
   const prev = () => {
     if (currentStep > 1) setCurrentStep(currentStep - 1);
   };
 
-  const handleFinish = () => {
-    toast.success("Dados coletados com sucesso! Funcionalidade de geração do contrato em breve.");
-    console.log({ vendedores, compradores, imovel, pagamento });
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    toast.info("Gerando contrato com IA... Aguarde.");
+
+    // TODO: call edge function
+    setTimeout(() => {
+      toast.success("Funcionalidade de geração via IA em implementação!");
+      setIsGenerating(false);
+      console.log({ tipo, vendedores, compradores, imovel, imovelPermuta, pagamento, locacao });
+    }, 2000);
   };
+
+  const renderStep = () => {
+    if (currentStep === 1) {
+      return (
+        <StepVendedores
+          vendedores={vendedores}
+          onChange={setVendedores}
+          titulo={labels.vendedor}
+          tituloPlural={`${labels.vendedor}(es)`}
+        />
+      );
+    }
+    if (currentStep === 2) {
+      return (
+        <StepCompradores
+          compradores={compradores}
+          onChange={setCompradores}
+          titulo={labels.comprador}
+          tituloPlural={`${labels.comprador}(es)`}
+        />
+      );
+    }
+    if (currentStep === 3) {
+      return <StepObjeto imovel={imovel} onChange={setImovel} />;
+    }
+
+    // Dynamic steps based on contract type
+    const currentStepObj = steps[currentStep - 1];
+    if (currentStepObj.label === "Permuta") {
+      return <StepPermuta imovelPermuta={imovelPermuta} onChange={setImovelPermuta} />;
+    }
+    if (currentStepObj.label === "Locação") {
+      return <StepLocacao locacao={locacao} onChange={setLocacao} />;
+    }
+    if (currentStepObj.label === "Pagamento") {
+      return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
+    }
+    if (currentStepObj.label === "Gerar") {
+      return (
+        <div className="space-y-6">
+          <div>
+            <h3 className="font-display text-2xl font-bold text-foreground mb-1">
+              Revisão e Geração
+            </h3>
+            <p className="text-muted-foreground">
+              Revise os dados preenchidos e clique para gerar a minuta com inteligência artificial.
+            </p>
+          </div>
+          <div className="border border-border rounded-lg p-6 bg-card space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="font-semibold text-foreground">Tipo:</span>{" "}
+                <span className="text-muted-foreground">{tipoInfo?.nome}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-foreground">{labels.vendedor}(es):</span>{" "}
+                <span className="text-muted-foreground">{vendedores.map((v) => v.nome || "—").join(", ")}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-foreground">{labels.comprador}(es):</span>{" "}
+                <span className="text-muted-foreground">{compradores.map((c) => c.nome || "—").join(", ")}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-foreground">Imóvel:</span>{" "}
+                <span className="text-muted-foreground">{imovel.localizacao || "—"}, {imovel.municipio || "—"}/{imovel.estadoImovel || "—"}</span>
+              </div>
+              {tipo !== "locacao" && (
+                <div>
+                  <span className="font-semibold text-foreground">Valor Total:</span>{" "}
+                  <span className="text-muted-foreground">R$ {pagamento.valorTotal || "—"}</span>
+                </div>
+              )}
+              {tipo === "locacao" && (
+                <div>
+                  <span className="font-semibold text-foreground">Aluguel:</span>{" "}
+                  <span className="text-muted-foreground">R$ {locacao.valorAluguel || "—"}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-border">
+              <p className="text-xs text-muted-foreground italic">
+                ⚠️ A minuta gerada por IA é um modelo e deve ser revisada por um advogado antes da assinatura.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const isLastStep = currentStep === totalSteps;
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-            <FileText className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="font-display text-xl font-bold text-foreground">ContratoPRO</h1>
-            <p className="text-xs text-muted-foreground">Gerador de Contratos Imobiliários</p>
-          </div>
+          <button onClick={() => navigate("/")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+              <FileText className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="font-display text-xl font-bold text-foreground">ContratoPRO</h1>
+              <p className="text-xs text-muted-foreground">{tipoInfo?.nome || "Contrato"}</p>
+            </div>
+          </button>
         </div>
       </header>
 
-      {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         <StepIndicator steps={steps} currentStep={currentStep} />
 
-        <div className="min-h-[400px]">
-          {currentStep === 1 && (
-            <StepVendedores vendedores={vendedores} onChange={setVendedores} />
-          )}
-          {currentStep === 2 && (
-            <StepCompradores compradores={compradores} onChange={setCompradores} />
-          )}
-          {currentStep === 3 && (
-            <StepObjeto imovel={imovel} onChange={setImovel} />
-          )}
-          {currentStep === 4 && (
-            <StepPagamento pagamento={pagamento} onChange={setPagamento} />
-          )}
-        </div>
+        <div className="min-h-[400px]">{renderStep()}</div>
 
-        {/* Navigation */}
         <div className="flex items-center justify-between mt-8 pt-6 border-t border-border">
-          <Button
-            variant="outline"
-            onClick={prev}
-            disabled={currentStep === 1}
-          >
+          <Button variant="outline" onClick={currentStep === 1 ? () => navigate("/") : prev}>
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Anterior
+            {currentStep === 1 ? "Voltar" : "Anterior"}
           </Button>
 
-          {currentStep < 4 ? (
+          {!isLastStep ? (
             <Button onClick={next}>
               Próximo
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (
-            <Button onClick={handleFinish} className="bg-success hover:bg-success/90 text-success-foreground">
-              <FileText className="w-4 h-4 mr-2" />
-              Gerar Contrato
+            <Button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="bg-success hover:bg-success/90 text-success-foreground"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              {isGenerating ? "Gerando..." : "Gerar Minuta com IA"}
             </Button>
           )}
         </div>

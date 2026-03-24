@@ -1,7 +1,7 @@
-import ContractWizard from "@/components/contract/ContractWizard";
+import Dashboard from "./pages/Dashboard";
 
 const Index = () => {
-  return <ContractWizard />;
+  return <Dashboard />;
 };
 
 export default Index;
