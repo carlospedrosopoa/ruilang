@@ -75,6 +75,7 @@ const ContractWizard = () => {
   const [imovelPermuta, setImovelPermuta] = useState<ImovelPermuta>(criarImovelPermutaVazio());
   const [pagamento, setPagamento] = useState<Pagamento>(criarPagamentoVazio());
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
+  const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
 
