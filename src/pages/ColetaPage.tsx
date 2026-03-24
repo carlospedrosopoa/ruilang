@@ -143,7 +143,7 @@ const ColetaPage = () => {
         .update({
           corretor_nome: corretorNome,
           corretor_telefone: corretorTelefone,
-          dados,
+          dados: dados as any,
         })
         .eq("id", submissionId);
     } finally {
