@@ -92,6 +92,7 @@ const ContractWizard = () => {
     try {
       const contrato = {
         tipoContrato: tipo,
+        perfilContrato,
         vendedores,
         compradores,
         imovel,
