@@ -442,7 +442,11 @@ IMPORTANTE:
 - Gere APENAS o texto do contrato, sem comentários ou explicações extras
 - O contrato deve estar PRONTO PARA ASSINATURA
 - Seja EXTENSO e DETALHADO - um contrato profissional tem no mínimo 5-8 páginas
-- NÃO omita cláusulas por brevidade`;
+- NÃO omita cláusulas por brevidade
+- NÃO use formatação markdown (asteriscos, hashtags, etc). O texto deve ser PURO, sem nenhum caractere de formatação como *, **, #, ##, ---, etc.
+- Use APENAS texto simples com letras maiúsculas para ênfase quando necessário
+- Títulos de cláusulas em LETRAS MAIÚSCULAS sem qualquer marcação
+- Descreva o imóvel objeto do contrato em um bloco separado identificado por "IMÓVEL:" no início`;
 
     const userPrompt = `Gere um ${tipoLabel} completo e profissional com os seguintes dados:
 
