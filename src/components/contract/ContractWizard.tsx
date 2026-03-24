@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2 } from "lucide-react";
 import StepIndicator from "./StepIndicator";
