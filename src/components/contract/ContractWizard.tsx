@@ -17,6 +17,8 @@ import {
   ImovelPermuta,
   Pagamento,
   Locacao,
+  PerfilContrato,
+  perfisContrato,
   criarPessoaVazia,
   criarImovelVazio,
   criarImovelPermutaVazio,
