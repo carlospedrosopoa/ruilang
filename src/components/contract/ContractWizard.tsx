@@ -173,21 +173,16 @@ const ContractWizard = () => {
     if (currentStepObj.label === "Pagamento") {
       return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
     }
+    if (currentStepObj.label === "Perfil") {
+      return <StepPerfil perfilContrato={perfilContrato} onChange={setPerfilContrato} />;
+    }
     if (currentStepObj.label === "Gerar") {
-      const perfilIcons: Record<PerfilContrato, React.ReactNode> = {
-        blindagem_vendedor: <ShieldCheck className="w-6 h-6" />,
-        blindagem_comprador: <ShieldAlert className="w-6 h-6" />,
-        equilibrado: <Scale className="w-6 h-6" />,
-      };
-
       if (minuta) {
         return (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-display text-2xl font-bold text-foreground mb-1">
-                  Minuta Gerada
-                </h3>
+                <h3 className="font-display text-2xl font-bold text-foreground mb-1">Minuta Gerada</h3>
                 <p className="text-muted-foreground">Revise o texto e faça os ajustes necessários.</p>
               </div>
               <div className="flex gap-2">
@@ -200,9 +195,7 @@ const ContractWizard = () => {
               </div>
             </div>
             <div className="border border-border rounded-lg p-6 bg-card">
-              <pre className="whitespace-pre-wrap text-sm text-foreground font-body leading-relaxed">
-                {minuta}
-              </pre>
+              <pre className="whitespace-pre-wrap text-sm text-foreground font-body leading-relaxed">{minuta}</pre>
             </div>
             <p className="text-xs text-muted-foreground italic">
               ⚠️ Esta minuta foi gerada por inteligência artificial e deve ser revisada por um advogado antes da assinatura.
@@ -214,45 +207,19 @@ const ContractWizard = () => {
       return (
         <div className="space-y-6">
           <div>
-            <h3 className="font-display text-2xl font-bold text-foreground mb-1">
-              Perfil do Contrato
-            </h3>
-            <p className="text-muted-foreground">
-              Escolha o nível de proteção antes de gerar a minuta.
-            </p>
+            <h3 className="font-display text-2xl font-bold text-foreground mb-1">Resumo e Geração</h3>
+            <p className="text-muted-foreground">Confira os dados antes de gerar a minuta.</p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {perfisContrato.map((perfil) => (
-              <button
-                key={perfil.id}
-                onClick={() => setPerfilContrato(perfil.id)}
-                className={`relative flex flex-col items-center gap-3 p-5 rounded-xl border-2 transition-all text-left ${
-                  perfilContrato === perfil.id
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-border bg-card hover:border-muted-foreground/30"
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  perfilContrato === perfil.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                }`}>
-                  {perfilIcons[perfil.id]}
-                </div>
-                <span className="font-semibold text-foreground text-sm text-center">{perfil.nome}</span>
-                <span className="text-xs text-muted-foreground text-center leading-relaxed">{perfil.descricao}</span>
-                {perfilContrato === perfil.id && (
-                  <div className="absolute top-2 right-2 w-3 h-3 rounded-full bg-primary" />
-                )}
-              </button>
-            ))}
-          </div>
-
           <div className="border border-border rounded-lg p-6 bg-card space-y-4">
             <h4 className="font-semibold text-foreground text-sm">Resumo dos Dados</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="font-semibold text-foreground">Tipo:</span>{" "}
                 <span className="text-muted-foreground">{tipoInfo?.nome}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-foreground">Perfil:</span>{" "}
+                <span className="text-muted-foreground">{perfisContrato.find(p => p.id === perfilContrato)?.nome}</span>
               </div>
               <div>
                 <span className="font-semibold text-foreground">{labels.vendedor}(es):</span>{" "}
