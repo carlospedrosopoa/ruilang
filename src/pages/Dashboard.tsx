@@ -74,6 +74,13 @@ const Dashboard = () => {
             );
           })}
         </div>
+
+        <div className="mt-8 pt-8 border-t border-border">
+          <Button variant="outline" onClick={() => navigate("/painel")} className="w-full md:w-auto">
+            <ClipboardList className="w-4 h-4 mr-2" />
+            Painel de Coletas (Corretores)
+          </Button>
+        </div>
       </main>
     </div>
   );
