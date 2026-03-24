@@ -9,6 +9,7 @@ import StepObjeto from "./StepObjeto";
 import StepPagamento from "./StepPagamento";
 import StepPermuta from "./StepPermuta";
 import StepLocacao from "./StepLocacao";
+import StepPerfil from "./StepPerfil";
 import {
   TipoContrato,
   tiposContrato,
