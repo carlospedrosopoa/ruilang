@@ -14,7 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      submissions: {
+        Row: {
+          corretor_nome: string | null
+          corretor_telefone: string | null
+          created_at: string
+          dados: Json
+          id: string
+          status: string
+          tipo_contrato: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          corretor_nome?: string | null
+          corretor_telefone?: string | null
+          created_at?: string
+          dados?: Json
+          id?: string
+          status?: string
+          tipo_contrato?: string
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          corretor_nome?: string | null
+          corretor_telefone?: string | null
+          created_at?: string
+          dados?: Json
+          id?: string
+          status?: string
+          tipo_contrato?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
