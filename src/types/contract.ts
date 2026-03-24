@@ -160,6 +160,7 @@ export interface Contrato {
   imovelPermuta?: ImovelPermuta;
   pagamento: Pagamento;
   locacao?: Locacao;
+  perfilContrato: PerfilContrato;
   foro: string;
   cidade: string;
   dataContrato: string;
