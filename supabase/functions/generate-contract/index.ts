@@ -290,10 +290,9 @@ DIRETRIZES IMPERATIVAS - aplique TODAS estas proteções:
 
 1. GARANTIA DE ESCRITURA:
    - Em caso de impossibilidade de outorga de escritura pelo ${partePrincipal}, este deverá:
-     a) Devolver TODOS os valores pagos
-     b) Acrescidos de multa compensatória de 20% do valor total do contrato
-     c) Correção monetária desde cada desembolso pelo INPC/IBGE
-     d) Juros legais de 1% ao mês desde a citação
+      a) Devolver TODOS os valores pagos
+      b) Acrescidos de multa compensatória de 20% do valor total do contrato
+      c) Juros legais de 1% ao mês desde a citação
    - Prazo máximo de 30 dias para devolução integral
 
 2. EVICÇÃO INTEGRAL:
