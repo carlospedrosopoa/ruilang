@@ -230,9 +230,17 @@ const ColetaPage = () => {
     }
   };
 
-  const next = () => {
-    saveDraft();
-    if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
+  const next = async () => {
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    // Save in background - don't block navigation
+    try {
+      await saveDraft();
+    } catch (err) {
+      console.error("Erro ao salvar rascunho:", err);
+    }
   };
 
   const prev = () => {
