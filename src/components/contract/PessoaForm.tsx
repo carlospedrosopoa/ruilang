@@ -35,6 +35,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
 
