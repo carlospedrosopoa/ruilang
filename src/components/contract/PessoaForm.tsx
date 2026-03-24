@@ -36,8 +36,18 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
+
   const update = (field: keyof Pessoa, value: string) => {
-    onChange({ ...pessoa, [field]: value });
+    const updated = { ...pessoa, [field]: value };
+    if (field === "estadoCivil") {
+      if (needsConjuge(value) && !pessoa.conjuge) {
+        updated.conjuge = criarConjugeVazio();
+      } else if (!needsConjuge(value)) {
+        updated.conjuge = undefined;
+      }
+    }
+    onChange(updated);
   };
 
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
