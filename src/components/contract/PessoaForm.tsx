@@ -4,9 +4,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Trash2, Upload, FileImage, Loader2, Sparkles, X } from "lucide-react";
-import { Pessoa, estadosCivis, estadosBR } from "@/types/contract";
+import { Pessoa, estadosCivis, estadosBR, criarConjugeVazio } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import ConjugeForm from "./ConjugeForm";
 
 interface PessoaFormProps {
   pessoa: Pessoa;
