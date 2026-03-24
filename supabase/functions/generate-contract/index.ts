@@ -18,7 +18,7 @@ function getClausulasEspecificasTipo(tipo: string): string {
       return `
 CLÁUSULAS OBRIGATÓRIAS PARA PROMESSA DE COMPRA E VENDA:
 1. OBJETO E DESCRIÇÃO COMPLETA DO IMÓVEL - com dados registrais, matrícula, confrontações, área total (ad corpus ou ad mensuram conforme indicado)
-2. PREÇO E FORMA DE PAGAMENTO - discriminar arras confirmatórias (art. 418 CC), sinal, parcelas, índice de correção monetária, data de vencimento
+2. PREÇO E FORMA DE PAGAMENTO - discriminar arras confirmatórias (art. 418 CC), sinal, parcelas com valores FIXOS, data de vencimento
 3. IMISSÃO NA POSSE - definir momento exato da entrega da posse (precária ou definitiva), estado de conservação, inventário de bens se houver
 4. OBRIGAÇÕES DO PROMITENTE VENDEDOR:
    - Outorga de escritura definitiva no prazo estipulado após quitação
