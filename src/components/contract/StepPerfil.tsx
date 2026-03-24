@@ -1,9 +1,13 @@
-import { ShieldCheck, ShieldAlert, Scale } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Scale, MessageSquarePlus } from "lucide-react";
 import { PerfilContrato, perfisContrato } from "@/types/contract";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 interface StepPerfilProps {
   perfilContrato: PerfilContrato;
   onChange: (perfil: PerfilContrato) => void;
+  peculiaridades?: string;
+  onPeculiaridadesChange?: (value: string) => void;
 }
 
 const perfilIcons: Record<PerfilContrato, React.ReactNode> = {
@@ -12,7 +16,7 @@ const perfilIcons: Record<PerfilContrato, React.ReactNode> = {
   equilibrado: <Scale className="w-7 h-7" />,
 };
 
-const StepPerfil = ({ perfilContrato, onChange }: StepPerfilProps) => {
+const StepPerfil = ({ perfilContrato, onChange, peculiaridades = "", onPeculiaridadesChange }: StepPerfilProps) => {
   return (
     <div className="space-y-6">
       <div>
@@ -47,6 +51,27 @@ const StepPerfil = ({ perfilContrato, onChange }: StepPerfilProps) => {
             )}
           </button>
         ))}
+      </div>
+
+      {/* Campo de peculiaridades */}
+      <div className="border-2 border-dashed border-accent/40 rounded-lg p-5 bg-accent/5 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <MessageSquarePlus className="w-5 h-5 text-primary" />
+          Este contrato tem alguma peculiaridade?
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Descreva situações especiais, acordos verbais, condições suspensivas ou qualquer detalhe relevante. 
+          A IA criará cláusulas personalizadas com base nas suas instruções e nos nossos modelos jurídicos.
+        </p>
+        <div>
+          <Label className="sr-only">Peculiaridades do contrato</Label>
+          <Textarea
+            value={peculiaridades}
+            onChange={(e) => onPeculiaridadesChange?.(e.target.value)}
+            placeholder="Ex: O vendedor permanecerá no imóvel por 60 dias após a assinatura sem custos. O comprador assume dívidas de IPTU anteriores a 2024. Há uma servidão de passagem no fundo do terreno..."
+            className="min-h-[120px] resize-y"
+          />
+        </div>
       </div>
     </div>
   );

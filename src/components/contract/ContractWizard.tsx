@@ -80,6 +80,7 @@ const ContractWizard = () => {
   const [pagamento, setPagamento] = useState<Pagamento>(criarPagamentoVazio());
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
   const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
+  const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
 
@@ -120,6 +121,7 @@ const ContractWizard = () => {
       const contrato = {
         tipoContrato: tipo,
         perfilContrato,
+        peculiaridades: peculiaridades.trim() || undefined,
         vendedores,
         compradores,
         imovel,
@@ -234,7 +236,7 @@ const ContractWizard = () => {
       return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
     }
     if (currentStepObj.label === "Perfil") {
-      return <StepPerfil perfilContrato={perfilContrato} onChange={setPerfilContrato} />;
+      return <StepPerfil perfilContrato={perfilContrato} onChange={setPerfilContrato} peculiaridades={peculiaridades} onPeculiaridadesChange={setPeculiaridades} />;
     }
     if (currentStepObj.label === "Gerar") {
       if (minuta) {

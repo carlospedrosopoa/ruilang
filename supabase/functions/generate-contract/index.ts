@@ -448,10 +448,18 @@ IMPORTANTE:
 - Títulos de cláusulas em LETRAS MAIÚSCULAS sem qualquer marcação
 - Descreva o imóvel objeto do contrato em um bloco separado identificado por "IMÓVEL:" no início`;
 
+    const peculiaridadesBlock = contrato.peculiaridades
+      ? `\n\nPECULIARIDADES INFORMADAS PELO OPERADOR (CRIAR CLÁUSULAS ESPECÍFICAS PARA CADA UMA):
+${contrato.peculiaridades}
+
+INSTRUÇÃO: Analise cada peculiaridade acima e crie uma ou mais cláusulas específicas para tratar dessas situações especiais, fundamentadas na legislação aplicável. Insira essas cláusulas no local mais adequado do contrato (não no final como apêndice).`
+      : "";
+
     const userPrompt = `Gere um ${tipoLabel} completo e profissional com os seguintes dados:
 
 DADOS DO CONTRATO:
 ${JSON.stringify(contrato, null, 2)}
+${peculiaridadesBlock}
 
 Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instruções, qualificação detalhada das partes com todos os dados fornecidos, e espaço para assinaturas e testemunhas.`;
 
