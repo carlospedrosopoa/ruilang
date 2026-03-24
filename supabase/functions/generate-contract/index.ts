@@ -350,6 +350,7 @@ DIRETRIZES - aplique equilíbrio em TODAS as cláusulas:
    - Multa compensatória de 10% do valor total para AMBAS as partes
    - Multa moratória de 2% sobre parcela em atraso
    - Juros de mora de 1% ao mês
+   - Parcelas com valores FIXOS, SEM correção monetária por qualquer índice
 
 3. BENFEITORIAS:
    - Necessárias: sempre indenizáveis com direito de retenção
