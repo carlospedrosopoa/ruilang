@@ -121,6 +121,7 @@ const ContractWizard = () => {
       const contrato = {
         tipoContrato: tipo,
         perfilContrato,
+        peculiaridades: peculiaridades.trim() || undefined,
         vendedores,
         compradores,
         imovel,
