@@ -195,7 +195,7 @@ const ColetaPage = () => {
     setIsGeneratingProposal(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-proposal", {
-        body: { dados: getDados(), tipoContrato: tipo },
+        body: { dados: getDados(), tipoContrato: tipo, imobiliaria },
       });
 
       if (error) throw error;
