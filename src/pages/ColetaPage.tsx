@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, ArrowRight, CheckCircle, Loader2, FileText, Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle, Loader2, FileText, Send, Sparkles, Copy, Download } from "lucide-react";
 import StepIndicator from "@/components/contract/StepIndicator";
 import StepVendedores from "@/components/contract/StepVendedores";
 import StepCompradores from "@/components/contract/StepCompradores";
@@ -79,16 +79,19 @@ const ColetaPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  // Proposal state
+  const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
+  const [proposta, setProposta] = useState<string | null>(null);
+
   const labels = labelByTipo[tipo];
   const steps = getSteps(tipo);
   const totalSteps = steps.length;
   const tipoInfo = tiposContrato.find((t) => t.id === tipo);
 
-  // Load existing submission data
   useEffect(() => {
     const loadSubmission = async () => {
       if (!token) return;
-      
+
       const { data, error } = await supabase
         .from("submissions")
         .select("*")
@@ -126,24 +129,24 @@ const ColetaPage = () => {
     loadSubmission();
   }, [token]);
 
+  const getDados = () => ({
+    vendedores,
+    compradores,
+    imovel,
+    ...(tipo === "promessa_compra_venda_permuta" ? { imovelPermuta } : {}),
+    ...(tipo === "locacao" ? { locacao } : { pagamento }),
+  });
+
   const saveDraft = async () => {
     if (!submissionId) return;
     setIsSaving(true);
     try {
-      const dados = {
-        vendedores,
-        compradores,
-        imovel,
-        ...(tipo === "promessa_compra_venda_permuta" ? { imovelPermuta } : {}),
-        ...(tipo === "locacao" ? { locacao } : { pagamento }),
-      };
-
       await supabase
         .from("submissions")
         .update({
           corretor_nome: corretorNome,
           corretor_telefone: corretorTelefone,
-          dados: dados as any,
+          dados: getDados() as any,
         })
         .eq("id", submissionId);
     } finally {
@@ -155,20 +158,12 @@ const ColetaPage = () => {
     if (!submissionId) return;
     setIsSaving(true);
     try {
-      const dados = {
-        vendedores,
-        compradores,
-        imovel,
-        ...(tipo === "promessa_compra_venda_permuta" ? { imovelPermuta } : {}),
-        ...(tipo === "locacao" ? { locacao } : { pagamento }),
-      };
-
       const { error } = await supabase
         .from("submissions")
         .update({
           corretor_nome: corretorNome,
           corretor_telefone: corretorTelefone,
-          dados: dados as any,
+          dados: getDados() as any,
           status: "enviado",
         })
         .eq("id", submissionId);
@@ -180,6 +175,45 @@ const ColetaPage = () => {
       toast.error("Erro ao enviar. Tente novamente.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleGenerateProposal = async () => {
+    setIsGeneratingProposal(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-proposal", {
+        body: { dados: getDados(), tipoContrato: tipo },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setProposta(data.proposta);
+      toast.success("Proposta gerada com sucesso!");
+    } catch (err: any) {
+      console.error("Error generating proposal:", err);
+      toast.error(err.message || "Erro ao gerar proposta. Tente novamente.");
+    } finally {
+      setIsGeneratingProposal(false);
+    }
+  };
+
+  const handleCopyProposal = () => {
+    if (proposta) {
+      navigator.clipboard.writeText(proposta);
+      toast.success("Proposta copiada!");
+    }
+  };
+
+  const handleDownloadProposal = () => {
+    if (proposta) {
+      const blob = new Blob([proposta], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `proposta_${tipo}_${new Date().toISOString().slice(0, 10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
   };
 
@@ -214,14 +248,87 @@ const ColetaPage = () => {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center space-y-4 max-w-md">
-          <CheckCircle className="w-16 h-16 text-success mx-auto" />
-          <h2 className="font-display text-2xl font-bold text-foreground">Dados Enviados</h2>
-          <p className="text-muted-foreground">
-            Os dados foram enviados com sucesso. O responsável pela elaboração do contrato será notificado.
-          </p>
-        </div>
+      <div className="min-h-screen bg-background">
+        <header className="border-b border-border bg-card">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+              <FileText className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="font-display text-xl font-bold text-foreground">Coleta de Dados</h1>
+              <p className="text-xs text-muted-foreground">{tipoInfo?.nome || "Contrato"}</p>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-4xl mx-auto px-4 py-8">
+          <div className="text-center space-y-4 mb-8">
+            <CheckCircle className="w-16 h-16 text-success mx-auto" />
+            <h2 className="font-display text-2xl font-bold text-foreground">Dados Enviados</h2>
+            <p className="text-muted-foreground">
+              Os dados foram enviados com sucesso. O responsável pela elaboração do contrato será notificado.
+            </p>
+          </div>
+
+          <div className="border border-border rounded-lg p-6 bg-card space-y-6">
+            <div>
+              <h3 className="font-display text-lg font-bold text-foreground mb-2">
+                <Sparkles className="w-5 h-5 inline mr-2 text-primary" />
+                Proposta de Negócio
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Gere uma proposta de negócio para as partes assinarem previamente, formalizando a intenção de firmar o contrato definitivo.
+              </p>
+            </div>
+
+            {!proposta ? (
+              <Button
+                onClick={handleGenerateProposal}
+                disabled={isGeneratingProposal}
+                className="w-full bg-primary hover:bg-primary/90"
+              >
+                {isGeneratingProposal ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Gerando Proposta...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Gerar Proposta de Negócio
+                  </>
+                )}
+              </Button>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={handleCopyProposal}>
+                    <Copy className="w-4 h-4 mr-1" /> Copiar
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleDownloadProposal}>
+                    <Download className="w-4 h-4 mr-1" /> Baixar .txt
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setProposta(null); handleGenerateProposal(); }}
+                    disabled={isGeneratingProposal}
+                  >
+                    <Sparkles className="w-4 h-4 mr-1" /> Regerar
+                  </Button>
+                </div>
+
+                <div className="border border-border rounded-lg p-6 bg-background">
+                  <pre className="whitespace-pre-wrap text-sm text-foreground font-body leading-relaxed">{proposta}</pre>
+                </div>
+
+                <p className="text-xs text-muted-foreground italic">
+                  ⚠️ Esta proposta foi gerada por inteligência artificial. Ela NÃO substitui o contrato definitivo, que será elaborado por advogado.
+                </p>
+              </div>
+            )}
+          </div>
+        </main>
       </div>
     );
   }
