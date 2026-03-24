@@ -80,6 +80,7 @@ const ContractWizard = () => {
   const [pagamento, setPagamento] = useState<Pagamento>(criarPagamentoVazio());
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
   const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
+  const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
 
