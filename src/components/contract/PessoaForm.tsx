@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Trash2, Upload, FileImage, Loader2, Sparkles, X } from "lucide-react";
+import { Trash2, Upload, FileImage, Loader2, Sparkles, X, Camera } from "lucide-react";
 import { Pessoa, estadosCivis, estadosBR, criarConjugeVazio } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
