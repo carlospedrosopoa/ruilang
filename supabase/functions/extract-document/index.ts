@@ -17,6 +17,13 @@ serve(async (req) => {
       throw new Error("Envie ao menos uma imagem em base64");
     }
 
+    // Validate base64 images are not too large (max ~5MB each after base64)
+    for (const img of images) {
+      if (typeof img !== "string" || img.length < 100) {
+        throw new Error("Imagem inválida. Certifique-se de enviar fotos nítidas dos documentos.");
+      }
+    }
+
     const systemPrompt = `Você é um especialista em extração de dados de documentos brasileiros (RG, CNH, CPF, comprovante de endereço, certidão de casamento, etc.).
 
 Analise as imagens enviadas e extraia TODOS os dados pessoais que conseguir identificar.
@@ -57,10 +64,8 @@ REGRAS:
     ];
 
     for (const img of images) {
-      const mediaType = img.startsWith("/9j/") ? "image/jpeg"
-        : img.startsWith("iVBOR") ? "image/png"
-        : img.startsWith("JVBERi0") ? "application/pdf"
-        : "image/jpeg";
+      // All images are now pre-compressed to JPEG on the client side
+      const mediaType = img.startsWith("JVBERi0") ? "application/pdf" : "image/jpeg";
 
       content.push({
         type: "image_url",
@@ -70,54 +75,70 @@ REGRAS:
       });
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content },
-        ],
-      }),
-    });
+    // Try primary model, fallback to alternative if it fails
+    const models = ["google/gemini-2.5-flash", "openai/gpt-5-mini"];
+    let lastError = "";
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    for (const model of models) {
+      try {
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content },
+            ],
+          }),
         });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }), {
+              status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          if (response.status === 402) {
+            return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
+              status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          const t = await response.text();
+          console.error(`AI error with ${model}:`, response.status, t);
+          lastError = t;
+          continue; // Try next model
+        }
+
+        const data = await response.json();
+        let raw = data.choices?.[0]?.message?.content || "";
+        raw = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+
+        let extracted;
+        try {
+          extracted = JSON.parse(raw);
+        } catch {
+          console.error("Failed to parse AI response:", raw);
+          throw new Error("Não foi possível extrair dados do documento. Tente com uma imagem mais nítida.");
+        }
+
+        return new Response(JSON.stringify({ dados: extracted }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      } catch (modelError) {
+        console.error(`Error with model ${model}:`, modelError);
+        if (modelError instanceof Error && modelError.message.includes("extrair dados")) {
+          throw modelError;
+        }
+        lastError = modelError instanceof Error ? modelError.message : String(modelError);
+        continue;
       }
-      const t = await response.text();
-      console.error("AI error:", response.status, t);
-      throw new Error("Erro ao processar documentos");
     }
 
-    const data = await response.json();
-    let raw = data.choices?.[0]?.message?.content || "";
-
-    // Strip markdown code fences if present
-    raw = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-
-    let extracted;
-    try {
-      extracted = JSON.parse(raw);
-    } catch {
-      console.error("Failed to parse AI response:", raw);
-      throw new Error("Não foi possível extrair dados do documento. Tente com uma imagem mais nítida.");
-    }
-
-    return new Response(JSON.stringify({ dados: extracted }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    throw new Error("Não foi possível processar a imagem. Tente tirar uma foto mais nítida e bem iluminada.");
   } catch (e) {
     console.error("extract-document error:", e);
     return new Response(

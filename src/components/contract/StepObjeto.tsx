@@ -9,22 +9,11 @@ import { Upload, FileImage, Loader2, Sparkles, X } from "lucide-react";
 import { Imovel, estadosBR } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { compressImageToBase64 } from "@/lib/imageUtils";
 
 interface StepObjetoProps {
   imovel: Imovel;
   onChange: (imovel: Imovel) => void;
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(",")[1]);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 }
 
 const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
@@ -61,7 +50,7 @@ const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
 
     setIsExtracting(true);
     try {
-      const images = await Promise.all(files.map(fileToBase64));
+      const images = await Promise.all(files.map((f) => compressImageToBase64(f)));
 
       const { data, error } = await supabase.functions.invoke("extract-property", {
         body: { images },
