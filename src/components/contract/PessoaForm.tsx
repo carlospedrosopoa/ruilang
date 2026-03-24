@@ -222,6 +222,16 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
           </div>
         )}
 
+        {needsConjuge(pessoa.estadoCivil) && pessoa.conjuge && (
+          <div className="md:col-span-2">
+            <ConjugeForm
+              conjuge={pessoa.conjuge}
+              onChange={(c) => onChange({ ...pessoa, conjuge: c })}
+              label={pessoa.estadoCivil === "União Estável" ? "Companheiro(a)" : "Cônjuge"}
+            />
+          </div>
+        )}
+
         <div>
           <Label>Tipo de Documento</Label>
           <Select value={pessoa.documentoTipo} onValueChange={(v) => update("documentoTipo", v as "rg" | "cnh")}>
