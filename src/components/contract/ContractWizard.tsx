@@ -63,12 +63,14 @@ function getSteps(tipo: TipoContrato) {
 
 const ContractWizard = () => {
   const { tipo: tipoParam } = useParams<{ tipo: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const tipo = (tipoParam as TipoContrato) || "promessa_compra_venda";
   const tipoInfo = tiposContrato.find((t) => t.id === tipo);
   const labels = labelByTipo[tipo];
   const steps = getSteps(tipo);
   const totalSteps = steps.length;
+  const submissionId = searchParams.get("submissionId");
 
   const [currentStep, setCurrentStep] = useState(1);
   const [vendedores, setVendedores] = useState<Pessoa[]>([criarPessoaVazia()]);
@@ -80,6 +82,29 @@ const ContractWizard = () => {
   const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
+
+  // Load submission data if coming from panel
+  useEffect(() => {
+    if (!submissionId) return;
+    const loadSubmission = async () => {
+      const { data } = await supabase
+        .from("submissions")
+        .select("dados")
+        .eq("id", submissionId)
+        .single();
+
+      if (data?.dados) {
+        const d = data.dados as any;
+        if (d.vendedores?.length) setVendedores(d.vendedores);
+        if (d.compradores?.length) setCompradores(d.compradores);
+        if (d.imovel) setImovel(d.imovel);
+        if (d.imovelPermuta) setImovelPermuta(d.imovelPermuta);
+        if (d.pagamento) setPagamento(d.pagamento);
+        if (d.locacao) setLocacao(d.locacao);
+      }
+    };
+    loadSubmission();
+  }, [submissionId]);
 
   const next = () => {
     if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
