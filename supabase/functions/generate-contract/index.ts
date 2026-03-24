@@ -225,7 +225,7 @@ DIRETRIZES IMPERATIVAS - aplique TODAS estas proteções:
 6. CLÁUSULA PENAL MORATÓRIA REFORÇADA:
    - Multa de 10% sobre a parcela em atraso
    - Juros de mora de 1% ao mês
-   - Correção monetária pelo índice estipulado
+   - As parcelas são de valor FIXO, SEM correção monetária
    - Vencimento antecipado de TODAS as parcelas vincendas
 
 7. MANUTENÇÃO E ENCARGOS:
