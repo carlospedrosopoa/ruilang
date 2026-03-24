@@ -99,6 +99,17 @@ export interface Parcela {
   valor: string;
   quantidade: number;
   tipo: "arras" | "parcela" | "entrada";
+  dataVencimento: string;
+}
+
+export interface DadosBancarios {
+  banco: string;
+  agencia: string;
+  conta: string;
+  tipoConta: "corrente" | "poupanca";
+  titular: string;
+  cpfTitular: string;
+  pix: string;
 }
 
 export interface Pagamento {
@@ -108,6 +119,7 @@ export interface Pagamento {
   jurosMora: string;
   indiceCorrecao: string;
   multaContratual: string;
+  dadosBancarios?: DadosBancarios;
 }
 
 export interface Locacao {
