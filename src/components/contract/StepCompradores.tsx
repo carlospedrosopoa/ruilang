@@ -6,9 +6,11 @@ import { Pessoa, criarPessoaVazia } from "@/types/contract";
 interface StepCompradoresProps {
   compradores: Pessoa[];
   onChange: (compradores: Pessoa[]) => void;
+  titulo?: string;
+  tituloPlural?: string;
 }
 
-const StepCompradores = ({ compradores, onChange }: StepCompradoresProps) => {
+const StepCompradores = ({ compradores, onChange, titulo = "Comprador", tituloPlural = "Comprador(es)" }: StepCompradoresProps) => {
   const add = () => onChange([...compradores, criarPessoaVazia()]);
 
   const update = (index: number, pessoa: Pessoa) => {
@@ -26,10 +28,10 @@ const StepCompradores = ({ compradores, onChange }: StepCompradoresProps) => {
     <div className="space-y-6">
       <div>
         <h3 className="font-display text-2xl font-bold text-foreground mb-1">
-          Compromissário(s) Comprador(es)
+          {tituloPlural}
         </h3>
         <p className="text-muted-foreground">
-          Informe os dados de qualificação dos compradores do imóvel.
+          Informe os dados de qualificação.
         </p>
       </div>
 
@@ -39,14 +41,14 @@ const StepCompradores = ({ compradores, onChange }: StepCompradoresProps) => {
           pessoa={comprador}
           onChange={(p) => update(index, p)}
           onRemove={compradores.length > 1 ? () => remove(index) : undefined}
-          titulo="Comprador"
+          titulo={titulo}
           index={index}
         />
       ))}
 
       <Button variant="outline" onClick={add} className="w-full border-dashed">
         <UserPlus className="w-4 h-4 mr-2" />
-        Adicionar Comprador
+        Adicionar {titulo}
       </Button>
     </div>
   );

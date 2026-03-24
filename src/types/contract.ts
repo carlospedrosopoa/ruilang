@@ -1,3 +1,45 @@
+export type TipoContrato =
+  | "promessa_compra_venda"
+  | "promessa_compra_venda_permuta"
+  | "cessao_direitos"
+  | "locacao";
+
+export interface TipoContratoInfo {
+  id: TipoContrato;
+  nome: string;
+  descricao: string;
+  icone: string;
+  subcategoria?: string;
+}
+
+export const tiposContrato: TipoContratoInfo[] = [
+  {
+    id: "promessa_compra_venda",
+    nome: "Promessa de Compra e Venda",
+    descricao: "Contrato de compromisso de compra e venda de imóvel sem permuta.",
+    icone: "FileText",
+  },
+  {
+    id: "promessa_compra_venda_permuta",
+    nome: "Promessa de Compra e Venda com Permuta",
+    descricao: "Contrato com permuta parcial ou total de imóvel como parte do pagamento.",
+    icone: "ArrowLeftRight",
+    subcategoria: "Com Permuta",
+  },
+  {
+    id: "cessao_direitos",
+    nome: "Cessão de Direitos Possessórios",
+    descricao: "Transferência de direitos de posse sobre imóvel não escriturado.",
+    icone: "ScrollText",
+  },
+  {
+    id: "locacao",
+    nome: "Contrato de Locação",
+    descricao: "Locação residencial ou comercial conforme Lei 8.245/91.",
+    icone: "Home",
+  },
+];
+
 export interface Pessoa {
   id: string;
   nome: string;
@@ -39,6 +81,18 @@ export interface Imovel {
   adCorpus: boolean;
 }
 
+export interface ImovelPermuta {
+  tipo: string;
+  descricao: string;
+  localizacao: string;
+  municipio: string;
+  estadoImovel: string;
+  areaTotal: string;
+  matricula: string;
+  registroImoveis: string;
+  valorEstimado: string;
+}
+
 export interface Parcela {
   id: string;
   descricao: string;
@@ -56,12 +110,26 @@ export interface Pagamento {
   multaContratual: string;
 }
 
+export interface Locacao {
+  finalidade: "residencial" | "comercial";
+  valorAluguel: string;
+  diaVencimento: string;
+  prazoMeses: string;
+  indiceReajuste: string;
+  caucao: string;
+  valorCaucao: string;
+  multaRescisao: string;
+}
+
 export interface Contrato {
+  tipoContrato: TipoContrato;
   vendedores: Pessoa[];
   compradores: Pessoa[];
   representante?: Pessoa & { creci?: string };
   imovel: Imovel;
+  imovelPermuta?: ImovelPermuta;
   pagamento: Pagamento;
+  locacao?: Locacao;
   foro: string;
   cidade: string;
   dataContrato: string;
@@ -100,5 +168,66 @@ export function criarPessoaVazia(): Pessoa {
     cidade: "",
     estado: "",
     cep: "",
+  };
+}
+
+export function criarImovelVazio(): Imovel {
+  return {
+    tipo: "",
+    descricao: "",
+    localizacao: "",
+    municipio: "",
+    estadoImovel: "",
+    lote: "",
+    quadra: "",
+    areaTotal: "",
+    matricula: "",
+    registroImoveis: "",
+    medidasFrente: "",
+    medidasFundos: "",
+    medidasLateralEsquerda: "",
+    medidasLateralDireita: "",
+    caracteristicas: "",
+    adCorpus: true,
+  };
+}
+
+export function criarImovelPermutaVazio(): ImovelPermuta {
+  return {
+    tipo: "",
+    descricao: "",
+    localizacao: "",
+    municipio: "",
+    estadoImovel: "",
+    areaTotal: "",
+    matricula: "",
+    registroImoveis: "",
+    valorEstimado: "",
+  };
+}
+
+export function criarPagamentoVazio(): Pagamento {
+  return {
+    valorTotal: "",
+    parcelas: [
+      { id: crypto.randomUUID(), descricao: "Arras confirmatórias no ato da assinatura", valor: "", quantidade: 1, tipo: "arras" },
+    ],
+    multaMoratoria: "10",
+    jurosMora: "1",
+    indiceCorrecao: "INPC/IBGE",
+    multaContratual: "20",
+  };
+}
+
+export function criarLocacaoVazia(): Locacao {
+  return {
+    finalidade: "residencial",
+    valorAluguel: "",
+    diaVencimento: "10",
+    prazoMeses: "30",
+    indiceReajuste: "IGPM/FGV",
+    caucao: "sim",
+    valorCaucao: "",
+    multaRescisao: "",
   };
 }
