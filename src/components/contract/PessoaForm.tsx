@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Trash2, Upload, FileImage, Loader2, Sparkles, X } from "lucide-react";
+import { Trash2, Upload, FileImage, Loader2, Sparkles, X, Camera } from "lucide-react";
 import { Pessoa, estadosCivis, estadosBR, criarConjugeVazio } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -35,6 +35,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
 
@@ -144,7 +145,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
           ))}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="outline"
@@ -153,6 +154,15 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
           >
             <Upload className="w-4 h-4 mr-1" />
             Anexar Documento
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            <Camera className="w-4 h-4 mr-1" />
+            Tirar Foto
           </Button>
           {files.length > 0 && (
             <Button
@@ -180,8 +190,16 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,.pdf"
+          accept="image/jpeg,image/png,image/webp,image/heic,.pdf"
           multiple
+          onChange={handleFilesSelected}
+          className="hidden"
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
           onChange={handleFilesSelected}
           className="hidden"
         />
