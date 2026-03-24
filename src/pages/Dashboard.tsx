@@ -1,6 +1,7 @@
-import { FileText, ArrowLeftRight, ScrollText, Home } from "lucide-react";
+import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { tiposContrato, TipoContrato } from "@/types/contract";
+import { Button } from "@/components/ui/button";
 
 const iconMap: Record<string, React.ElementType> = {
   FileText,
@@ -72,6 +73,13 @@ const Dashboard = () => {
               </button>
             );
           })}
+        </div>
+
+        <div className="mt-8 pt-8 border-t border-border">
+          <Button variant="outline" onClick={() => navigate("/painel")} className="w-full md:w-auto">
+            <ClipboardList className="w-4 h-4 mr-2" />
+            Painel de Coletas (Corretores)
+          </Button>
         </div>
       </main>
     </div>
