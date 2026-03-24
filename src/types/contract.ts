@@ -253,7 +253,7 @@ export function criarPagamentoVazio(): Pagamento {
   return {
     valorTotal: "",
     parcelas: [
-      { id: crypto.randomUUID(), descricao: "Arras confirmatórias no ato da assinatura", valor: "", quantidade: 1, tipo: "arras" },
+      { id: crypto.randomUUID(), descricao: "Arras confirmatórias no ato da assinatura", valor: "", quantidade: 1, tipo: "arras", dataVencimento: "" },
     ],
     multaMoratoria: "10",
     jurosMora: "1",
