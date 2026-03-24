@@ -5,6 +5,111 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const extractionSchema = {
+  type: "object",
+  properties: {
+    nome: { type: "string" },
+    nacionalidade: { type: "string" },
+    profissao: { type: "string" },
+    estadoCivil: { type: "string" },
+    regimeBens: { type: "string" },
+    documentoTipo: { type: "string", enum: ["", "rg", "cnh"] },
+    documentoNumero: { type: "string" },
+    documentoOrgao: { type: "string" },
+    cpf: { type: "string" },
+    filiacaoPai: { type: "string" },
+    filiacaoMae: { type: "string" },
+    endereco: { type: "string" },
+    bairro: { type: "string" },
+    cidade: { type: "string" },
+    estado: { type: "string" },
+    cep: { type: "string" },
+    email: { type: "string" },
+    telefone: { type: "string" },
+  },
+  required: [
+    "nome",
+    "nacionalidade",
+    "profissao",
+    "estadoCivil",
+    "regimeBens",
+    "documentoTipo",
+    "documentoNumero",
+    "documentoOrgao",
+    "cpf",
+    "filiacaoPai",
+    "filiacaoMae",
+    "endereco",
+    "bairro",
+    "cidade",
+    "estado",
+    "cep",
+    "email",
+    "telefone",
+  ],
+  additionalProperties: false,
+};
+
+const emptyExtraction = {
+  nome: "",
+  nacionalidade: "",
+  profissao: "",
+  estadoCivil: "",
+  regimeBens: "",
+  documentoTipo: "",
+  documentoNumero: "",
+  documentoOrgao: "",
+  cpf: "",
+  filiacaoPai: "",
+  filiacaoMae: "",
+  endereco: "",
+  bairro: "",
+  cidade: "",
+  estado: "",
+  cep: "",
+  email: "",
+  telefone: "",
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function extractToolArguments(data: any) {
+  const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+  if (!args) return null;
+
+  if (typeof args === "string") {
+    return JSON.parse(args);
+  }
+
+  return args;
+}
+
+function extractJsonFallback(data: any) {
+  const rawContent = data?.choices?.[0]?.message?.content;
+  if (typeof rawContent !== "string" || !rawContent.trim()) return null;
+
+  const cleaned = rawContent
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/gi, "")
+    .trim();
+
+  return JSON.parse(cleaned);
+}
+
+function normalizeExtraction(payload: any) {
+  return {
+    ...emptyExtraction,
+    ...Object.fromEntries(
+      Object.entries(payload ?? {}).map(([key, value]) => [key, typeof value === "string" ? value.trim() : ""]),
+    ),
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -17,7 +122,6 @@ serve(async (req) => {
       throw new Error("Envie ao menos uma imagem em base64");
     }
 
-    // Validate base64 images are not too large (max ~5MB each after base64)
     for (const img of images) {
       if (typeof img !== "string" || img.length < 100) {
         throw new Error("Imagem inválida. Certifique-se de enviar fotos nítidas dos documentos.");
@@ -26,47 +130,22 @@ serve(async (req) => {
 
     const systemPrompt = `Você é um especialista em extração de dados de documentos brasileiros (RG, CNH, CPF, comprovante de endereço, certidão de casamento, etc.).
 
-Analise as imagens enviadas e extraia TODOS os dados pessoais que conseguir identificar.
-
-Responda APENAS com um JSON válido no seguinte formato (preencha apenas os campos encontrados, deixe string vazia "" para os não encontrados):
-
-{
-  "nome": "",
-  "nacionalidade": "",
-  "profissao": "",
-  "estadoCivil": "",
-  "regimeBens": "",
-  "documentoTipo": "rg ou cnh",
-  "documentoNumero": "",
-  "documentoOrgao": "",
-  "cpf": "",
-  "filiacaoPai": "",
-  "filiacaoMae": "",
-  "endereco": "",
-  "bairro": "",
-  "cidade": "",
-  "estado": "",
-  "cep": "",
-  "email": "",
-  "telefone": ""
-}
+Extraia todos os dados pessoais encontrados e chame obrigatoriamente a ferramenta com os campos preenchidos.
 
 REGRAS:
 - Para CPF, formate como 000.000.000-00
 - Para estado civil, use: Solteiro(a), Casado(a), Divorciado(a), Viúvo(a), Separado(a) consensualmente, Separado(a) judicialmente, União Estável
-- Para documentoTipo, use "rg" ou "cnh"
+- Para documentoTipo, use apenas "rg" ou "cnh"
 - Para estado, use a sigla (SP, RJ, RS, etc.)
 - Se o documento for CNH, extraia o número do registro
-- Retorne APENAS o JSON, sem markdown, sem explicações`;
+- Campos não encontrados devem ser string vazia`; 
 
     const content: any[] = [
-      { type: "text", text: "Extraia os dados pessoais destes documentos:" },
+      { type: "text", text: "Extraia os dados pessoais destes documentos e preencha a ferramenta com o resultado." },
     ];
 
     for (const img of images) {
-      // All images are now pre-compressed to JPEG on the client side
       const mediaType = img.startsWith("JVBERi0") ? "application/pdf" : "image/jpeg";
-
       content.push({
         type: "image_url",
         image_url: {
@@ -75,75 +154,65 @@ REGRAS:
       });
     }
 
-    // Try primary model, fallback to alternative if it fails
-    const models = ["google/gemini-2.5-flash", "openai/gpt-5-mini"];
+    const models = ["google/gemini-3-flash-preview", "openai/gpt-5-mini"];
     let lastError = "";
 
     for (const model of models) {
-      try {
-        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content },
-            ],
-          }),
-        });
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content },
+          ],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "extract_document_data",
+                description: "Retorna os dados extraídos do documento em formato estruturado.",
+                parameters: extractionSchema,
+              },
+            },
+          ],
+          tool_choice: { type: "function", function: { name: "extract_document_data" } },
+        }),
+      });
 
-        if (!response.ok) {
-          if (response.status === 429) {
-            return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }), {
-              status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-          }
-          if (response.status === 402) {
-            return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
-              status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-          }
-          const t = await response.text();
-          console.error(`AI error with ${model}:`, response.status, t);
-          lastError = t;
-          continue; // Try next model
+      if (!response.ok) {
+        if (response.status === 429) {
+          return jsonResponse({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }, 429);
+        }
+        if (response.status === 402) {
+          return jsonResponse({ error: "Créditos insuficientes." }, 402);
         }
 
-        const data = await response.json();
-        let raw = data.choices?.[0]?.message?.content || "";
-        raw = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-
-        let extracted;
-        try {
-          extracted = JSON.parse(raw);
-        } catch {
-          console.error("Failed to parse AI response:", raw);
-          throw new Error("Não foi possível extrair dados do documento. Tente com uma imagem mais nítida.");
-        }
-
-        return new Response(JSON.stringify({ dados: extracted }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      } catch (modelError) {
-        console.error(`Error with model ${model}:`, modelError);
-        if (modelError instanceof Error && modelError.message.includes("extrair dados")) {
-          throw modelError;
-        }
-        lastError = modelError instanceof Error ? modelError.message : String(modelError);
+        const errorText = await response.text();
+        console.error(`AI error with ${model}:`, response.status, errorText);
+        lastError = errorText;
         continue;
+      }
+
+      const data = await response.json();
+
+      try {
+        const extracted = normalizeExtraction(extractToolArguments(data) ?? extractJsonFallback(data));
+        return jsonResponse({ dados: extracted });
+      } catch (parseError) {
+        console.error(`Failed to parse AI response from ${model}:`, data);
+        lastError = parseError instanceof Error ? parseError.message : String(parseError);
       }
     }
 
-    throw new Error("Não foi possível processar a imagem. Tente tirar uma foto mais nítida e bem iluminada.");
+    console.error("extract-document exhausted models:", lastError);
+    throw new Error("Não foi possível extrair dados do documento. Tente com uma imagem mais nítida.");
   } catch (e) {
     console.error("extract-document error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: e instanceof Error ? e.message : "Erro desconhecido" }, 500);
   }
 });
