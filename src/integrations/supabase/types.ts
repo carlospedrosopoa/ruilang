@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      imobiliarias: {
+        Row: {
+          bairro: string | null
+          cep: string | null
+          cidade: string
+          created_at: string
+          creci: string
+          email: string | null
+          endereco: string | null
+          estado: string
+          id: string
+          nome: string
+          numero: string | null
+          responsavel: string | null
+          telefone: string | null
+        }
+        Insert: {
+          bairro?: string | null
+          cep?: string | null
+          cidade: string
+          created_at?: string
+          creci: string
+          email?: string | null
+          endereco?: string | null
+          estado: string
+          id?: string
+          nome: string
+          numero?: string | null
+          responsavel?: string | null
+          telefone?: string | null
+        }
+        Update: {
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string
+          created_at?: string
+          creci?: string
+          email?: string | null
+          endereco?: string | null
+          estado?: string
+          id?: string
+          nome?: string
+          numero?: string | null
+          responsavel?: string | null
+          telefone?: string | null
+        }
+        Relationships: []
+      }
       submissions: {
         Row: {
           corretor_nome: string | null
@@ -21,6 +69,7 @@ export type Database = {
           created_at: string
           dados: Json
           id: string
+          imobiliaria_id: string | null
           status: string
           tipo_contrato: string
           token: string
@@ -32,6 +81,7 @@ export type Database = {
           created_at?: string
           dados?: Json
           id?: string
+          imobiliaria_id?: string | null
           status?: string
           tipo_contrato?: string
           token?: string
@@ -43,12 +93,21 @@ export type Database = {
           created_at?: string
           dados?: Json
           id?: string
+          imobiliaria_id?: string | null
           status?: string
           tipo_contrato?: string
           token?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "submissions_imobiliaria_id_fkey"
+            columns: ["imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
