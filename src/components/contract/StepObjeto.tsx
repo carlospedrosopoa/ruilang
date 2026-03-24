@@ -50,7 +50,7 @@ const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
 
     setIsExtracting(true);
     try {
-      const images = await Promise.all(files.map(fileToBase64));
+      const images = await Promise.all(files.map((f) => compressImageToBase64(f)));
 
       const { data, error } = await supabase.functions.invoke("extract-property", {
         body: { images },
