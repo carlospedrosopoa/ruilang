@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { Button } from "@/components/ui/button";
@@ -23,23 +23,46 @@ const iconMap: Record<string, React.ElementType> = {
   Home,
 };
 
+interface Imobiliaria {
+  id: string;
+  nome: string;
+  creci: string;
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [novoTipo, setNovoTipo] = useState<TipoContrato>("promessa_compra_venda");
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [creating, setCreating] = useState(false);
+  const [imobiliarias, setImobiliarias] = useState<Imobiliaria[]>([]);
+  const [selectedImobiliaria, setSelectedImobiliaria] = useState<string>("");
+
+  useEffect(() => {
+    const loadImobiliarias = async () => {
+      const { data } = await supabase.from("imobiliarias").select("id, nome, creci").order("nome");
+      setImobiliarias((data as Imobiliaria[]) || []);
+    };
+    loadImobiliarias();
+  }, []);
 
   const handleSelect = (tipo: TipoContrato) => {
     navigate(`/contrato/${tipo}`);
   };
 
   const handleSendWhatsApp = async () => {
+    if (!selectedImobiliaria) {
+      toast.error("Selecione uma imobiliária.");
+      return;
+    }
     setCreating(true);
     try {
       const { data, error } = await supabase
         .from("submissions")
-        .insert({ tipo_contrato: novoTipo })
+        .insert({
+          tipo_contrato: novoTipo,
+          imobiliaria_id: selectedImobiliaria,
+        })
         .select()
         .single();
 
@@ -47,8 +70,9 @@ const Dashboard = () => {
 
       const link = `${window.location.origin}/coleta/${data.token}`;
       const tipoInfo = tiposContrato.find((t) => t.id === novoTipo);
+      const imob = imobiliarias.find((i) => i.id === selectedImobiliaria);
       const message = encodeURIComponent(
-        `Olá! Segue o link para preenchimento dos dados do contrato (${tipoInfo?.nome}):\n\n${link}\n\nPreencha todos os campos e clique em "Enviar Dados" ao final.`
+        `Olá${imob ? ` ${imob.nome}` : ""}! Segue o link para preenchimento dos dados do contrato (${tipoInfo?.nome}):\n\n${link}\n\nPreencha todos os campos e clique em "Enviar Dados" ao final.`
       );
 
       const phone = whatsappNumber.replace(/\D/g, "");
@@ -58,6 +82,7 @@ const Dashboard = () => {
       toast.success("Link criado! WhatsApp aberto.");
       setDialogOpen(false);
       setWhatsappNumber("");
+      setSelectedImobiliaria("");
     } catch (err) {
       toast.error("Erro ao criar link.");
     } finally {
@@ -105,6 +130,29 @@ const Dashboard = () => {
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div>
+                  <Label>Imobiliária *</Label>
+                  <Select value={selectedImobiliaria} onValueChange={setSelectedImobiliaria}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a imobiliária" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {imobiliarias.map((imob) => (
+                        <SelectItem key={imob.id} value={imob.id}>
+                          {imob.nome} (CRECI {imob.creci})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {imobiliarias.length === 0 && (
+                    <p className="text-xs text-destructive mt-1">
+                      Nenhuma imobiliária cadastrada.{" "}
+                      <button onClick={() => { setDialogOpen(false); navigate("/imobiliarias"); }} className="underline">
+                        Cadastrar agora
+                      </button>
+                    </p>
+                  )}
+                </div>
+                <div>
                   <Label>Tipo de Contrato</Label>
                   <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v as TipoContrato)}>
                     <SelectTrigger>
@@ -127,7 +175,11 @@ const Dashboard = () => {
                   />
                   <p className="text-xs text-muted-foreground mt-1">Informe o número com DDD</p>
                 </div>
-                <Button onClick={handleSendWhatsApp} disabled={creating || !whatsappNumber.trim()} className="w-full bg-success hover:bg-success/90 text-success-foreground">
+                <Button
+                  onClick={handleSendWhatsApp}
+                  disabled={creating || !whatsappNumber.trim() || !selectedImobiliaria}
+                  className="w-full bg-success hover:bg-success/90 text-success-foreground"
+                >
                   {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
                   Criar Link e Enviar
                 </Button>
@@ -168,10 +220,14 @@ const Dashboard = () => {
           })}
         </div>
 
-        <div className="mt-8 pt-8 border-t border-border">
-          <Button variant="outline" onClick={() => navigate("/painel")} className="w-full md:w-auto">
+        <div className="mt-8 pt-8 border-t border-border flex flex-wrap gap-3">
+          <Button variant="outline" onClick={() => navigate("/painel")}>
             <ClipboardList className="w-4 h-4 mr-2" />
-            Painel de Coletas (Corretores)
+            Painel de Coletas
+          </Button>
+          <Button variant="outline" onClick={() => navigate("/imobiliarias")}>
+            <Building2 className="w-4 h-4 mr-2" />
+            Imobiliárias
           </Button>
         </div>
       </main>

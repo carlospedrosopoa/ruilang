@@ -7,6 +7,7 @@ import Index from "./pages/Index.tsx";
 import ContratoPage from "./pages/ContratoPage.tsx";
 import ColetaPage from "./pages/ColetaPage.tsx";
 import PainelSubmissoes from "./pages/PainelSubmissoes.tsx";
+import ImobiliariasPage from "./pages/ImobiliariasPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/contrato/:tipo" element={<ContratoPage />} />
           <Route path="/coleta/:token" element={<ColetaPage />} />
           <Route path="/painel" element={<PainelSubmissoes />} />
+          <Route path="/imobiliarias" element={<ImobiliariasPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

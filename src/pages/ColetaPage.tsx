@@ -83,6 +83,9 @@ const ColetaPage = () => {
   const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
   const [proposta, setProposta] = useState<string | null>(null);
 
+  // Imobiliaria data
+  const [imobiliaria, setImobiliaria] = useState<any>(null);
+
   const labels = labelByTipo[tipo];
   const steps = getSteps(tipo);
   const totalSteps = steps.length;
@@ -108,6 +111,16 @@ const ColetaPage = () => {
       setStatus(data.status);
       setCorretorNome(data.corretor_nome || "");
       setCorretorTelefone(data.corretor_telefone || "");
+
+      // Load linked imobiliaria
+      if ((data as any).imobiliaria_id) {
+        const { data: imobData } = await supabase
+          .from("imobiliarias")
+          .select("*")
+          .eq("id", (data as any).imobiliaria_id)
+          .single();
+        if (imobData) setImobiliaria(imobData);
+      }
 
       const dados = data.dados as any;
       if (dados) {
@@ -182,7 +195,7 @@ const ColetaPage = () => {
     setIsGeneratingProposal(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-proposal", {
-        body: { dados: getDados(), tipoContrato: tipo },
+        body: { dados: getDados(), tipoContrato: tipo, imobiliaria },
       });
 
       if (error) throw error;

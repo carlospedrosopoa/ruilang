@@ -26,11 +26,21 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const { dados, tipoContrato } = await req.json();
+    const { dados, tipoContrato, imobiliaria } = await req.json();
     if (!dados) throw new Error("Missing 'dados' in request body");
 
     const tipoLabel = tipoLabels[tipoContrato] || "NEGÓCIO IMOBILIÁRIO";
     const tipoLabelLower = tipoLabelsLower[tipoContrato] || "negócio imobiliário";
+
+    const imobInfo = imobiliaria
+      ? `\n\nDADOS DA IMOBILIÁRIA (use no cabeçalho da proposta):
+- Nome: ${imobiliaria.nome}
+- CRECI: ${imobiliaria.creci}
+- Responsável: ${imobiliaria.responsavel || "não informado"}
+- Endereço: ${imobiliaria.endereco || ""}${imobiliaria.numero ? ", nº " + imobiliaria.numero : ""}${imobiliaria.bairro ? " - " + imobiliaria.bairro : ""}
+- Cidade/Estado: ${imobiliaria.cidade}/${imobiliaria.estado}
+- Telefone: ${imobiliaria.telefone || "não informado"}`
+      : "";
 
     const systemPrompt = `Você é um advogado especialista em direito imobiliário brasileiro. Sua tarefa é gerar uma PROPOSTA DE NEGÓCIO IMOBILIÁRIO profissional, seguindo EXATAMENTE o modelo e estrutura abaixo.
 
@@ -139,6 +149,7 @@ DADOS COLETADOS:
 ${JSON.stringify(dados, null, 2)}
 
 Tipo de contrato: ${tipoContrato}
+${imobInfo}
 
 Gere a proposta completa conforme o modelo nas instruções, com TODAS as cláusulas e espaços para assinatura.`;
 
