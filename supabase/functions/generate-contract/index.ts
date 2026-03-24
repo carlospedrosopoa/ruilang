@@ -316,18 +316,7 @@ DIRETRIZES IMPERATIVAS - aplique TODAS estas proteções:
    - Indenização integral por benfeitorias necessárias realizadas
    - Autorização ampla para benfeitorias úteis e necessárias
 
-6. CERTIDÕES E GARANTIAS DOCUMENTAIS:
-   - O ${partePrincipal} deve apresentar ANTES da assinatura:
-     a) Certidão de matrícula atualizada (máximo 30 dias)
-     b) Certidões negativas de ônus reais
-     c) Certidões negativas de ações reais e pessoais reipersecutórias
-     d) Certidões fiscais (federal, estadual, municipal)
-     e) Certidão negativa de débitos trabalhistas
-     f) Certidão de protesto
-     g) Quitação de IPTU e condomínio
-   - A não apresentação autoriza suspensão dos pagamentos sem mora
-
-7. CLÁUSULA PENAL EM FAVOR DO ${parteSecundaria}:
+6. CLÁUSULA PENAL EM FAVOR DO ${parteSecundaria}:
    - Multa de 30% do valor total por descumprimento pelo ${partePrincipal}
    - Multa diária de 0,5% do valor do imóvel por atraso na entrega da posse
    - Multa diária de 0,1% por atraso na outorga de escritura após quitação

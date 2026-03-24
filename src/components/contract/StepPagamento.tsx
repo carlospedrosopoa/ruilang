@@ -129,12 +129,17 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Vencimento</Label>
+                  <Label className="text-xs">{parcela.quantidade > 1 ? "Vencimento 1ª parcela" : "Vencimento"}</Label>
                   <Input
                     type="date"
                     value={parcela.dataVencimento}
                     onChange={(e) => updateParcela(index, "dataVencimento", e.target.value)}
                   />
+                  {parcela.quantidade > 1 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Demais parcelas nos meses subsequentes
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs">Descrição</Label>
