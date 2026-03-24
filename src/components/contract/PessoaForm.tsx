@@ -63,7 +63,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
 
     setIsExtracting(true);
     try {
-      const images = await Promise.all(files.map(fileToBase64));
+      const images = await Promise.all(files.map((f) => compressImageToBase64(f)));
 
       const { data, error } = await supabase.functions.invoke("extract-document", {
         body: { images },
