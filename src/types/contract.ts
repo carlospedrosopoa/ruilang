@@ -99,6 +99,17 @@ export interface Parcela {
   valor: string;
   quantidade: number;
   tipo: "arras" | "parcela" | "entrada";
+  dataVencimento: string;
+}
+
+export interface DadosBancarios {
+  banco: string;
+  agencia: string;
+  conta: string;
+  tipoConta: "corrente" | "poupanca";
+  titular: string;
+  cpfTitular: string;
+  pix: string;
 }
 
 export interface Pagamento {
@@ -108,6 +119,7 @@ export interface Pagamento {
   jurosMora: string;
   indiceCorrecao: string;
   multaContratual: string;
+  dadosBancarios?: DadosBancarios;
 }
 
 export interface Locacao {
@@ -241,7 +253,7 @@ export function criarPagamentoVazio(): Pagamento {
   return {
     valorTotal: "",
     parcelas: [
-      { id: crypto.randomUUID(), descricao: "Arras confirmatórias no ato da assinatura", valor: "", quantidade: 1, tipo: "arras" },
+      { id: crypto.randomUUID(), descricao: "Arras confirmatórias no ato da assinatura", valor: "", quantidade: 1, tipo: "arras", dataVencimento: "" },
     ],
     multaMoratoria: "10",
     jurosMora: "1",
