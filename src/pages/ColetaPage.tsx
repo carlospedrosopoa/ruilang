@@ -83,6 +83,9 @@ const ColetaPage = () => {
   const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
   const [proposta, setProposta] = useState<string | null>(null);
 
+  // Imobiliaria data
+  const [imobiliaria, setImobiliaria] = useState<any>(null);
+
   const labels = labelByTipo[tipo];
   const steps = getSteps(tipo);
   const totalSteps = steps.length;
