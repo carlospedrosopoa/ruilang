@@ -56,6 +56,7 @@ function getSteps(tipo: TipoContrato) {
     steps.push({ number: stepNumber++, label: "Pagamento" });
   }
 
+  steps.push({ number: stepNumber++, label: "Perfil" });
   steps.push({ number: stepNumber, label: "Gerar" });
   return steps;
 }
