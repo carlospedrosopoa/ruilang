@@ -112,6 +112,16 @@ const ColetaPage = () => {
       setCorretorNome(data.corretor_nome || "");
       setCorretorTelefone(data.corretor_telefone || "");
 
+      // Load linked imobiliaria
+      if ((data as any).imobiliaria_id) {
+        const { data: imobData } = await supabase
+          .from("imobiliarias")
+          .select("*")
+          .eq("id", (data as any).imobiliaria_id)
+          .single();
+        if (imobData) setImobiliaria(imobData);
+      }
+
       const dados = data.dados as any;
       if (dados) {
         if (dados.vendedores?.length) setVendedores(dados.vendedores);
