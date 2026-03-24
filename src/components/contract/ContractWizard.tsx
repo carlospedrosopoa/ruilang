@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, FileText, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download } from "lucide-react";
 import StepIndicator from "./StepIndicator";
 import StepVendedores from "./StepVendedores";
 import StepCompradores from "./StepCompradores";
@@ -24,6 +24,7 @@ import {
   criarLocacaoVazia,
 } from "@/types/contract";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const labelByTipo: Record<TipoContrato, { vendedor: string; comprador: string }> = {
   promessa_compra_venda: { vendedor: "Vendedor", comprador: "Comprador" },
@@ -73,6 +74,7 @@ const ContractWizard = () => {
   const [pagamento, setPagamento] = useState<Pagamento>(criarPagamentoVazio());
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
   const [isGenerating, setIsGenerating] = useState(false);
+  const [minuta, setMinuta] = useState<string | null>(null);
 
   const next = () => {
     if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
@@ -83,14 +85,51 @@ const ContractWizard = () => {
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    toast.info("Gerando contrato com IA... Aguarde.");
 
-    // TODO: call edge function
-    setTimeout(() => {
-      toast.success("Funcionalidade de geração via IA em implementação!");
+    try {
+      const contrato = {
+        tipoContrato: tipo,
+        vendedores,
+        compradores,
+        imovel,
+        ...(tipo === "promessa_compra_venda_permuta" ? { imovelPermuta } : {}),
+        ...(tipo === "locacao" ? { locacao } : { pagamento }),
+      };
+
+      const { data, error } = await supabase.functions.invoke("generate-contract", {
+        body: { contrato },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setMinuta(data.minuta);
+      toast.success("Minuta gerada com sucesso!");
+    } catch (err: any) {
+      console.error("Error generating contract:", err);
+      toast.error(err.message || "Erro ao gerar contrato. Tente novamente.");
+    } finally {
       setIsGenerating(false);
-      console.log({ tipo, vendedores, compradores, imovel, imovelPermuta, pagamento, locacao });
-    }, 2000);
+    }
+  };
+
+  const handleCopy = () => {
+    if (minuta) {
+      navigator.clipboard.writeText(minuta);
+      toast.success("Minuta copiada para a área de transferência!");
+    }
+  };
+
+  const handleDownloadTxt = () => {
+    if (minuta) {
+      const blob = new Blob([minuta], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contrato_${tipo}_${new Date().toISOString().slice(0, 10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
   };
 
   const renderStep = () => {
@@ -118,7 +157,6 @@ const ContractWizard = () => {
       return <StepObjeto imovel={imovel} onChange={setImovel} />;
     }
 
-    // Dynamic steps based on contract type
     const currentStepObj = steps[currentStep - 1];
     if (currentStepObj.label === "Permuta") {
       return <StepPermuta imovelPermuta={imovelPermuta} onChange={setImovelPermuta} />;
@@ -130,6 +168,37 @@ const ContractWizard = () => {
       return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
     }
     if (currentStepObj.label === "Gerar") {
+      if (minuta) {
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-display text-2xl font-bold text-foreground mb-1">
+                  Minuta Gerada
+                </h3>
+                <p className="text-muted-foreground">Revise o texto e faça os ajustes necessários.</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleCopy}>
+                  <Copy className="w-4 h-4 mr-1" /> Copiar
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleDownloadTxt}>
+                  <Download className="w-4 h-4 mr-1" /> Baixar .txt
+                </Button>
+              </div>
+            </div>
+            <div className="border border-border rounded-lg p-6 bg-card">
+              <pre className="whitespace-pre-wrap text-sm text-foreground font-body leading-relaxed">
+                {minuta}
+              </pre>
+            </div>
+            <p className="text-xs text-muted-foreground italic">
+              ⚠️ Esta minuta foi gerada por inteligência artificial e deve ser revisada por um advogado antes da assinatura.
+            </p>
+          </div>
+        );
+      }
+
       return (
         <div className="space-y-6">
           <div>
@@ -137,7 +206,7 @@ const ContractWizard = () => {
               Revisão e Geração
             </h3>
             <p className="text-muted-foreground">
-              Revise os dados preenchidos e clique para gerar a minuta com inteligência artificial.
+              Revise os dados e clique para gerar a minuta com inteligência artificial.
             </p>
           </div>
           <div className="border border-border rounded-lg p-6 bg-card space-y-4">
@@ -171,7 +240,6 @@ const ContractWizard = () => {
                 </div>
               )}
             </div>
-
             <div className="pt-4 border-t border-border">
               <p className="text-xs text-muted-foreground italic">
                 ⚠️ A minuta gerada por IA é um modelo e deve ser revisada por um advogado antes da assinatura.
@@ -219,7 +287,7 @@ const ContractWizard = () => {
               Próximo
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
-          ) : (
+          ) : !minuta ? (
             <Button
               onClick={handleGenerate}
               disabled={isGenerating}
@@ -227,6 +295,11 @@ const ContractWizard = () => {
             >
               <Sparkles className="w-4 h-4 mr-2" />
               {isGenerating ? "Gerando..." : "Gerar Minuta com IA"}
+            </Button>
+          ) : (
+            <Button onClick={() => { setMinuta(null); handleGenerate(); }} disabled={isGenerating} variant="outline">
+              <Sparkles className="w-4 h-4 mr-2" />
+              Regerar
             </Button>
           )}
         </div>
