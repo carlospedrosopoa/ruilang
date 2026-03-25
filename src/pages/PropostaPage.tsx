@@ -265,9 +265,7 @@ const PropostaPage = () => {
       <div className="min-h-screen bg-background">
         <header className="bg-primary border-b border-primary/20">
           <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-accent/20 flex items-center justify-center">
-              <FileText className="w-4 h-4 text-accent" />
-            </div>
+            <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-8 w-auto" />
             <div>
               <h1 className="font-display text-lg font-bold text-primary-foreground">Proposta Imobiliária</h1>
             </div>
@@ -337,9 +335,7 @@ const PropostaPage = () => {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-8">
           <div className="text-center space-y-3">
-            <div className="w-16 h-16 rounded-2xl bg-primary mx-auto flex items-center justify-center shadow-premium">
-              <FileText className="w-8 h-8 text-primary-foreground" />
-            </div>
+            <img src="/images/logo-sielichow.png" alt="Sielichow Advocacia Empresarial" className="h-16 w-auto mx-auto" />
             <h1 className="font-display text-3xl font-bold text-foreground">Proposta Imobiliária</h1>
             <p className="text-muted-foreground">
               Preencha os dados da negociação para envio ao jurídico
@@ -428,9 +424,7 @@ const PropostaPage = () => {
     <div className="min-h-screen bg-background">
       <header className="bg-primary border-b border-primary/20">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-accent/20 flex items-center justify-center">
-            <FileText className="w-4 h-4 text-accent" />
-          </div>
+          <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-8 w-auto" />
           <div>
             <h1 className="font-display text-lg font-bold text-primary-foreground">Proposta Imobiliária</h1>
             <p className="text-[10px] text-primary-foreground/60 font-medium">{corretorNome} • CRECI {corretorCreci}</p>

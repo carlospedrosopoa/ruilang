@@ -97,12 +97,10 @@ const Dashboard = () => {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-accent/20 backdrop-blur-sm flex items-center justify-center border border-accent/30">
-                <FileText className="w-5 h-5 text-accent" />
-              </div>
+              <img src="/images/logo-sielichow.png" alt="Sielichow Advocacia Empresarial" className="h-10 w-auto" />
               <div>
-                <h1 className="font-display text-xl font-bold text-primary-foreground tracking-tight">ContratoPRO</h1>
-                <p className="text-xs text-primary-foreground/60 font-medium tracking-wide uppercase">Geração Inteligente de Contratos</p>
+                <h1 className="font-display text-xl font-bold text-primary-foreground tracking-tight">Sielichow</h1>
+                <p className="text-xs text-primary-foreground/60 font-medium tracking-wide uppercase">Advocacia Empresarial</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -266,7 +264,7 @@ const Dashboard = () => {
       <footer className="border-t border-border mt-auto">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
           <p className="text-xs text-muted-foreground/60 text-center">
-            ContratoPRO — Contratos imobiliários gerados com inteligência artificial
+            Sielichow Advocacia Empresarial — Contratos imobiliários gerados com inteligência artificial
           </p>
         </div>
       </footer>

@@ -356,11 +356,9 @@ const ContractWizard = () => {
       <header className="gradient-primary border-b border-primary/20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
           <button onClick={() => navigate("/")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="w-9 h-9 rounded-lg bg-accent/20 backdrop-blur-sm flex items-center justify-center border border-accent/30">
-              <FileText className="w-4 h-4 text-accent" />
-            </div>
+            <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-8 w-auto" />
             <div>
-              <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">ContratoPRO</h1>
+              <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">Sielichow</h1>
               <p className="text-[10px] text-primary-foreground/50 font-medium uppercase tracking-wider">{tipoInfo?.nome || "Contrato"}</p>
             </div>
           </button>

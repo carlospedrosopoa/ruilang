@@ -124,11 +124,9 @@ const PainelSubmissoes = () => {
       <header className="border-b border-border bg-card">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <button onClick={() => navigate("/")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img src="/images/logo-sielichow.png" alt="Sielichow Advocacia Empresarial" className="h-9 w-auto" />
             <div>
-              <h1 className="font-display text-xl font-bold text-foreground">ContratoPRO</h1>
+              <h1 className="font-display text-xl font-bold text-foreground">Sielichow</h1>
               <p className="text-xs text-muted-foreground">Painel Administrativo</p>
             </div>
           </button>
