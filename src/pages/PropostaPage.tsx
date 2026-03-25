@@ -11,7 +11,6 @@ import {
   FileText,
   Send,
   Sparkles,
-  Copy,
   Download,
   AlertTriangle,
 } from "lucide-react";
