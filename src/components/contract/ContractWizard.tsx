@@ -112,10 +112,18 @@ const ContractWizard = () => {
   }, [submissionId]);
 
   const next = () => {
-    if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
+    if (currentStep < totalSteps) {
+      setDirection("forward");
+      setStepKey(k => k + 1);
+      setCurrentStep(currentStep + 1);
+    }
   };
   const prev = () => {
-    if (currentStep > 1) setCurrentStep(currentStep - 1);
+    if (currentStep > 1) {
+      setDirection("backward");
+      setStepKey(k => k + 1);
+      setCurrentStep(currentStep - 1);
+    }
   };
 
   const handleGenerate = async () => {
