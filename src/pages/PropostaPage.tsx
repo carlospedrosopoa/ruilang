@@ -335,9 +335,7 @@ const PropostaPage = () => {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-8">
           <div className="text-center space-y-3">
-            <div className="w-16 h-16 rounded-2xl bg-primary mx-auto flex items-center justify-center shadow-premium">
-              <FileText className="w-8 h-8 text-primary-foreground" />
-            </div>
+            <img src="/images/logo-sielichow.png" alt="Sielichow Advocacia Empresarial" className="h-16 w-auto mx-auto" />
             <h1 className="font-display text-3xl font-bold text-foreground">Proposta Imobiliária</h1>
             <p className="text-muted-foreground">
               Preencha os dados da negociação para envio ao jurídico
