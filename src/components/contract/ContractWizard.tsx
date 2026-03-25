@@ -73,6 +73,8 @@ const ContractWizard = () => {
   const submissionId = searchParams.get("submissionId");
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [direction, setDirection] = useState<"forward" | "backward">("forward");
+  const [stepKey, setStepKey] = useState(0);
   const [vendedores, setVendedores] = useState<Pessoa[]>([criarPessoaVazia()]);
   const [compradores, setCompradores] = useState<Pessoa[]>([criarPessoaVazia()]);
   const [imovel, setImovel] = useState<Imovel>(criarImovelVazio());
