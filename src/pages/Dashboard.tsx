@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2, Sparkles, ChevronRight } from "lucide-react";
+import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2, Sparkles, ChevronRight, BarChart3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { Button } from "@/components/ui/button";
