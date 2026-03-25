@@ -272,9 +272,7 @@ const ColetaPage = () => {
       <div className="min-h-screen bg-background">
         <header className="border-b border-border bg-card">
           <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-9 w-auto" />
             <div>
               <h1 className="font-display text-xl font-bold text-foreground">Coleta de Dados</h1>
               <p className="text-xs text-muted-foreground">{tipoInfo?.nome || "Contrato"}</p>
