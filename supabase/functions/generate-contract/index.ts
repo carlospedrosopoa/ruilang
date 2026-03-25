@@ -447,7 +447,14 @@ IMPORTANTE:
 - Use APENAS texto simples com letras maiúsculas para ênfase quando necessário
 - Títulos de cláusulas em LETRAS MAIÚSCULAS sem qualquer marcação
 - Descreva o imóvel objeto do contrato em um bloco separado identificado por "IMÓVEL:" no início
-- REGRA OBRIGATÓRIA SOBRE PARCELAS: Todas as parcelas do contrato têm valores FIXOS e NOMINAIS. NÃO inclua cláusula de correção monetária, atualização ou reajuste das parcelas por qualquer índice (INPC, IGPM, IPCA ou outro). As multas moratórias e compensatórias devem ser mantidas normalmente.`;
+- REGRA OBRIGATÓRIA SOBRE PARCELAS: Todas as parcelas do contrato têm valores FIXOS e NOMINAIS. NÃO inclua cláusula de correção monetária, atualização ou reajuste das parcelas por qualquer índice (INPC, IGPM, IPCA ou outro). As multas moratórias e compensatórias devem ser mantidas normalmente.
+
+REGRAS DE QUALIDADE E SEGURANÇA:
+- NUNCA inventar dados que não foram fornecidos. Se uma informação não foi fornecida, NÃO preencha com dados fictícios.
+- NÃO deixar lacunas genéricas como "a definir", "[preencher]" ou "conforme acordo". Use APENAS os dados efetivamente fornecidos.
+- Garantir COERÊNCIA TOTAL entre todas as cláusulas do contrato. Valores, prazos, condições e referências a partes devem ser consistentes do início ao fim.
+- Quando dados foram extraídos automaticamente de documentos, utilizá-los normalmente, mas NUNCA sobrescrever dados já preenchidos manualmente pelo operador.
+- Evitar termos genéricos — ser específico e preciso em todas as cláusulas.`;
 
     const peculiaridadesBlock = contrato.peculiaridades
       ? `\n\nPECULIARIDADES INFORMADAS PELO OPERADOR (CRIAR CLÁUSULAS ESPECÍFICAS PARA CADA UMA):
