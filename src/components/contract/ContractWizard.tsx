@@ -370,7 +370,12 @@ const ContractWizard = () => {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <StepIndicator steps={steps} currentStep={currentStep} />
 
-        <div className="min-h-[400px] mt-12">{renderStep()}</div>
+        <div
+          key={stepKey}
+          className={`min-h-[400px] mt-12 ${direction === "forward" ? "step-slide-enter-forward" : "step-slide-enter-backward"}`}
+        >
+          {renderStep()}
+        </div>
 
         <div className="flex items-center justify-between mt-10 pt-6 border-t border-border">
           <Button variant="outline" onClick={currentStep === 1 ? () => navigate("/") : prev} className="gap-2">
