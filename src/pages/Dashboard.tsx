@@ -264,7 +264,7 @@ const Dashboard = () => {
       <footer className="border-t border-border mt-auto">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
           <p className="text-xs text-muted-foreground/60 text-center">
-            ContratoPRO — Contratos imobiliários gerados com inteligência artificial
+            Sielichow Advocacia Empresarial — Contratos imobiliários gerados com inteligência artificial
           </p>
         </div>
       </footer>
