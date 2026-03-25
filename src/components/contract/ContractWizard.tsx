@@ -145,7 +145,21 @@ const ContractWizard = () => {
         body: { contrato },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Try to extract the error message from the response context
+        const ctx = (error as any)?.context;
+        if (ctx && typeof ctx.json === "function") {
+          try {
+            const body = await ctx.json();
+            if (body?.error) throw new Error(body.error);
+          } catch (parseErr) {
+            if (parseErr instanceof Error && parseErr.message !== "Edge Function returned a non-2xx status code") {
+              throw parseErr;
+            }
+          }
+        }
+        throw error;
+      }
       if (data?.error) throw new Error(data.error);
 
       setMinuta(data.minuta);
