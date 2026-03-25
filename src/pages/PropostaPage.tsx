@@ -11,7 +11,6 @@ import {
   FileText,
   Send,
   Sparkles,
-  Copy,
   Download,
   AlertTriangle,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import StepObjeto from "@/components/contract/StepObjeto";
 import StepProposalPagamento from "@/components/proposal/StepProposalPagamento";
 import StepDocumentos from "@/components/proposal/StepDocumentos";
 import StepRevisao from "@/components/proposal/StepRevisao";
+import ProposalEditor from "@/components/proposal/ProposalEditor";
 import {
   Pessoa,
   Imovel,
@@ -211,24 +211,6 @@ const PropostaPage = () => {
     }
   };
 
-  const handleCopy = () => {
-    if (proposta) {
-      navigator.clipboard.writeText(proposta);
-      toast.success("Proposta copiada!");
-    }
-  };
-
-  const handleDownload = () => {
-    if (proposta) {
-      const blob = new Blob([proposta], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `proposta_${new Date().toISOString().slice(0, 10)}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-  };
 
   const handleDownloadDocx = async () => {
     if (!proposta) return;
@@ -323,31 +305,18 @@ const PropostaPage = () => {
                 )}
               </Button>
             ) : (
-              <div className="space-y-4">
-                <div className="flex gap-2 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={handleCopy}>
-                    <Copy className="w-4 h-4 mr-1" /> Copiar Dados
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleDownload}>
-                    <Download className="w-4 h-4 mr-1" /> Baixar .txt
-                  </Button>
-                  <Button size="sm" onClick={handleDownloadDocx} className="bg-primary">
-                    <Download className="w-4 h-4 mr-1" /> Baixar Proposta (.DOCX)
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setProposta(null); handleGenerateProposal(); }}
-                    disabled={isGeneratingProposal}
-                  >
-                    <Sparkles className="w-4 h-4 mr-1" /> Regerar
-                  </Button>
-                </div>
-
-                <div className="border border-border rounded-lg p-6 bg-background">
-                  <pre className="whitespace-pre-wrap text-sm text-foreground font-body leading-relaxed">{proposta}</pre>
-                </div>
-              </div>
+              <ProposalEditor
+                proposta={proposta}
+                isGenerating={isGeneratingProposal}
+                onRegenerate={() => { setProposta(null); handleGenerateProposal(); }}
+                onSave={async (text) => {
+                  setProposta(text);
+                  if (propostaId) {
+                    await supabase.from("propostas").update({ proposta_texto: text }).eq("id", propostaId);
+                  }
+                }}
+                onDownloadDocx={handleDownloadDocx}
+              />
             )}
           </div>
 
