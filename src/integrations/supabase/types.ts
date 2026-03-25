@@ -62,6 +62,51 @@ export type Database = {
         }
         Relationships: []
       }
+      propostas: {
+        Row: {
+          corretor_creci: string | null
+          corretor_nome: string | null
+          corretor_telefone: string | null
+          created_at: string
+          dados: Json
+          documentos: Json
+          id: string
+          imobiliaria_nome: string | null
+          proposta_texto: string | null
+          status: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          corretor_creci?: string | null
+          corretor_nome?: string | null
+          corretor_telefone?: string | null
+          created_at?: string
+          dados?: Json
+          documentos?: Json
+          id?: string
+          imobiliaria_nome?: string | null
+          proposta_texto?: string | null
+          status?: string
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          corretor_creci?: string | null
+          corretor_nome?: string | null
+          corretor_telefone?: string | null
+          created_at?: string
+          dados?: Json
+          documentos?: Json
+          id?: string
+          imobiliaria_nome?: string | null
+          proposta_texto?: string | null
+          status?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       submissions: {
         Row: {
           corretor_nome: string | null
