@@ -22,6 +22,7 @@ import StepObjeto from "@/components/contract/StepObjeto";
 import StepProposalPagamento from "@/components/proposal/StepProposalPagamento";
 import StepDocumentos from "@/components/proposal/StepDocumentos";
 import StepRevisao from "@/components/proposal/StepRevisao";
+import ProposalEditor from "@/components/proposal/ProposalEditor";
 import {
   Pessoa,
   Imovel,
