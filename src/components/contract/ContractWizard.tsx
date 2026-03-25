@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2, Check } from "lucide-react";
 import StepIndicator from "./StepIndicator";
 import StepVendedores from "./StepVendedores";
 import StepCompradores from "./StepCompradores";
@@ -84,7 +84,6 @@ const ContractWizard = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
 
-  // Load submission data if coming from panel — skip to Perfil step
   useEffect(() => {
     if (!submissionId) return;
     const loadSubmission = async () => {
@@ -103,7 +102,6 @@ const ContractWizard = () => {
         if (d.pagamento) setPagamento(d.pagamento);
         if (d.locacao) setLocacao(d.locacao);
 
-        // Jump directly to Perfil step since data is already collected
         const perfilStep = steps.findIndex(s => s.label === "Perfil");
         if (perfilStep >= 0) setCurrentStep(perfilStep + 1);
       }
@@ -153,7 +151,7 @@ const ContractWizard = () => {
   const handleCopy = () => {
     if (minuta) {
       navigator.clipboard.writeText(minuta);
-      toast.success("Minuta copiada para a área de transferência!");
+      toast.success("Minuta copiada!");
     }
   };
 
@@ -245,81 +243,92 @@ const ContractWizard = () => {
     if (currentStepObj.label === "Gerar") {
       if (minuta) {
         return (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex items-start justify-between flex-wrap gap-4">
               <div>
-                <h3 className="font-display text-2xl font-bold text-foreground mb-1">Minuta Gerada</h3>
-                <p className="text-muted-foreground">Revise o texto e faça os ajustes necessários.</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-success/15 flex items-center justify-center">
+                    <Check className="w-4 h-4 text-success" />
+                  </div>
+                  <h3 className="font-display text-2xl font-bold text-foreground tracking-tight">Minuta Gerada</h3>
+                </div>
+                <p className="text-muted-foreground text-sm">Revise o texto e faça os ajustes necessários.</p>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={handleCopy}>
-                  <Copy className="w-4 h-4 mr-1" /> Copiar
+                <Button variant="outline" size="sm" onClick={handleCopy} className="text-xs">
+                  <Copy className="w-3.5 h-3.5 mr-1.5" /> Copiar
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleDownloadTxt}>
-                  <Download className="w-4 h-4 mr-1" /> .txt
+                <Button variant="outline" size="sm" onClick={handleDownloadTxt} className="text-xs">
+                  <Download className="w-3.5 h-3.5 mr-1.5" /> .txt
                 </Button>
-                <Button size="sm" onClick={handleDownloadDocx} disabled={isExportingDocx}>
-                  {isExportingDocx ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <FileDown className="w-4 h-4 mr-1" />}
+                <Button size="sm" onClick={handleDownloadDocx} disabled={isExportingDocx} className="text-xs bg-primary">
+                  {isExportingDocx ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1.5" />}
                   {isExportingDocx ? "Gerando..." : "Baixar .docx"}
                 </Button>
               </div>
             </div>
-            <div className="border border-border rounded-lg p-6 bg-card">
+            <div className="border border-border rounded-xl p-6 sm:p-8 bg-card shadow-card">
               <pre className="whitespace-pre-wrap text-sm text-foreground font-body leading-relaxed">{minuta}</pre>
             </div>
-            <p className="text-xs text-muted-foreground italic">
-              ⚠️ Esta minuta foi gerada por inteligência artificial e deve ser revisada por um advogado antes da assinatura.
-            </p>
+            <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-accent/[0.06] border border-accent/15">
+              <Sparkles className="w-4 h-4 text-accent shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                Esta minuta foi gerada por inteligência artificial e deve ser revisada por um advogado antes da assinatura.
+              </p>
+            </div>
           </div>
         );
       }
 
       return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
           <div>
-            <h3 className="font-display text-2xl font-bold text-foreground mb-1">Resumo e Geração</h3>
+            <h3 className="font-display text-2xl font-bold text-foreground mb-1 tracking-tight">Resumo e Geração</h3>
             <p className="text-muted-foreground">Confira os dados antes de gerar a minuta.</p>
           </div>
-          <div className="border border-border rounded-lg p-6 bg-card space-y-4">
-            <h4 className="font-semibold text-foreground text-sm">Resumo dos Dados</h4>
+          <div className="border border-border rounded-xl p-6 bg-card shadow-card space-y-5">
+            <h4 className="font-display font-semibold text-foreground text-sm uppercase tracking-wider text-muted-foreground">Resumo dos Dados</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-semibold text-foreground">Tipo:</span>{" "}
-                <span className="text-muted-foreground">{tipoInfo?.nome}</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Tipo</span>
+                <span className="text-foreground font-medium">{tipoInfo?.nome}</span>
               </div>
-              <div>
-                <span className="font-semibold text-foreground">Perfil:</span>{" "}
-                <span className="text-muted-foreground">{perfisContrato.find(p => p.id === perfilContrato)?.nome}</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Perfil</span>
+                <span className="text-foreground font-medium">{perfisContrato.find(p => p.id === perfilContrato)?.nome}</span>
               </div>
-              <div>
-                <span className="font-semibold text-foreground">{labels.vendedor}(es):</span>{" "}
-                <span className="text-muted-foreground">{vendedores.map((v) => v.nome || "—").join(", ")}</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{labels.vendedor}(es)</span>
+                <span className="text-foreground font-medium">{vendedores.map((v) => v.nome || "—").join(", ")}</span>
               </div>
-              <div>
-                <span className="font-semibold text-foreground">{labels.comprador}(es):</span>{" "}
-                <span className="text-muted-foreground">{compradores.map((c) => c.nome || "—").join(", ")}</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{labels.comprador}(es)</span>
+                <span className="text-foreground font-medium">{compradores.map((c) => c.nome || "—").join(", ")}</span>
               </div>
-              <div>
-                <span className="font-semibold text-foreground">Imóvel:</span>{" "}
-                <span className="text-muted-foreground">{imovel.localizacao || "—"}, {imovel.municipio || "—"}/{imovel.estadoImovel || "—"}</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Imóvel</span>
+                <span className="text-foreground font-medium">{imovel.localizacao || "—"}, {imovel.municipio || "—"}/{imovel.estadoImovel || "—"}</span>
               </div>
               {tipo !== "locacao" && (
-                <div>
-                  <span className="font-semibold text-foreground">Valor Total:</span>{" "}
-                  <span className="text-muted-foreground">R$ {pagamento.valorTotal || "—"}</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Valor Total</span>
+                  <span className="text-foreground font-medium">R$ {pagamento.valorTotal || "—"}</span>
                 </div>
               )}
               {tipo === "locacao" && (
-                <div>
-                  <span className="font-semibold text-foreground">Aluguel:</span>{" "}
-                  <span className="text-muted-foreground">R$ {locacao.valorAluguel || "—"}</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Aluguel</span>
+                  <span className="text-foreground font-medium">R$ {locacao.valorAluguel || "—"}</span>
                 </div>
               )}
             </div>
             <div className="pt-4 border-t border-border">
-              <p className="text-xs text-muted-foreground italic">
-                ⚠️ A minuta gerada por IA é um modelo e deve ser revisada por um advogado antes da assinatura.
-              </p>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-accent shrink-0" />
+                <p className="text-xs text-muted-foreground">
+                  A minuta gerada por IA é um modelo e deve ser revisada por um advogado antes da assinatura.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -333,48 +342,58 @@ const ContractWizard = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
+      {/* Premium Header */}
+      <header className="gradient-primary border-b border-primary/20">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
           <button onClick={() => navigate("/")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary-foreground" />
+            <div className="w-9 h-9 rounded-lg bg-accent/20 backdrop-blur-sm flex items-center justify-center border border-accent/30">
+              <FileText className="w-4 h-4 text-accent" />
             </div>
             <div>
-              <h1 className="font-display text-xl font-bold text-foreground">ContratoPRO</h1>
-              <p className="text-xs text-muted-foreground">{tipoInfo?.nome || "Contrato"}</p>
+              <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">ContratoPRO</h1>
+              <p className="text-[10px] text-primary-foreground/50 font-medium uppercase tracking-wider">{tipoInfo?.nome || "Contrato"}</p>
             </div>
           </button>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <StepIndicator steps={steps} currentStep={currentStep} />
 
-        <div className="min-h-[400px]">{renderStep()}</div>
+        <div className="min-h-[400px] mt-12">{renderStep()}</div>
 
-        <div className="flex items-center justify-between mt-8 pt-6 border-t border-border">
-          <Button variant="outline" onClick={currentStep === 1 ? () => navigate("/") : prev}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-border">
+          <Button variant="outline" onClick={currentStep === 1 ? () => navigate("/") : prev} className="gap-2">
+            <ArrowLeft className="w-4 h-4" />
             {currentStep === 1 ? "Voltar" : "Anterior"}
           </Button>
 
           {!isLastStep ? (
-            <Button onClick={next}>
+            <Button onClick={next} className="gap-2 bg-primary shadow-card hover:shadow-elevated transition-all">
               Próximo
-              <ArrowRight className="w-4 h-4 ml-2" />
+              <ArrowRight className="w-4 h-4" />
             </Button>
           ) : !minuta ? (
             <Button
               onClick={handleGenerate}
               disabled={isGenerating}
-              className="bg-success hover:bg-success/90 text-success-foreground"
+              className="gap-2 bg-accent hover:bg-accent/90 text-accent-foreground shadow-card hover:shadow-elevated transition-all font-semibold"
             >
-              <Sparkles className="w-4 h-4 mr-2" />
-              {isGenerating ? "Gerando..." : "Gerar Minuta com IA"}
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Analisando dados e gerando contrato...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Gerar Minuta com IA
+                </>
+              )}
             </Button>
           ) : (
-            <Button onClick={() => { setMinuta(null); handleGenerate(); }} disabled={isGenerating} variant="outline">
-              <Sparkles className="w-4 h-4 mr-2" />
+            <Button onClick={() => { setMinuta(null); handleGenerate(); }} disabled={isGenerating} variant="outline" className="gap-2">
+              <Sparkles className="w-4 h-4" />
               Regerar
             </Button>
           )}
