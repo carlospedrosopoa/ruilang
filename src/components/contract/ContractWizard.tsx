@@ -73,6 +73,8 @@ const ContractWizard = () => {
   const submissionId = searchParams.get("submissionId");
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [direction, setDirection] = useState<"forward" | "backward">("forward");
+  const [stepKey, setStepKey] = useState(0);
   const [vendedores, setVendedores] = useState<Pessoa[]>([criarPessoaVazia()]);
   const [compradores, setCompradores] = useState<Pessoa[]>([criarPessoaVazia()]);
   const [imovel, setImovel] = useState<Imovel>(criarImovelVazio());
@@ -110,10 +112,18 @@ const ContractWizard = () => {
   }, [submissionId]);
 
   const next = () => {
-    if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
+    if (currentStep < totalSteps) {
+      setDirection("forward");
+      setStepKey(k => k + 1);
+      setCurrentStep(currentStep + 1);
+    }
   };
   const prev = () => {
-    if (currentStep > 1) setCurrentStep(currentStep - 1);
+    if (currentStep > 1) {
+      setDirection("backward");
+      setStepKey(k => k + 1);
+      setCurrentStep(currentStep - 1);
+    }
   };
 
   const handleGenerate = async () => {
@@ -360,7 +370,12 @@ const ContractWizard = () => {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <StepIndicator steps={steps} currentStep={currentStep} />
 
-        <div className="min-h-[400px] mt-12">{renderStep()}</div>
+        <div
+          key={stepKey}
+          className={`min-h-[400px] mt-12 ${direction === "forward" ? "step-slide-enter-forward" : "step-slide-enter-backward"}`}
+        >
+          {renderStep()}
+        </div>
 
         <div className="flex items-center justify-between mt-10 pt-6 border-t border-border">
           <Button variant="outline" onClick={currentStep === 1 ? () => navigate("/") : prev} className="gap-2">
