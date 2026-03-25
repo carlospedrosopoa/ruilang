@@ -265,9 +265,7 @@ const PropostaPage = () => {
       <div className="min-h-screen bg-background">
         <header className="bg-primary border-b border-primary/20">
           <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-accent/20 flex items-center justify-center">
-              <FileText className="w-4 h-4 text-accent" />
-            </div>
+            <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-8 w-auto" />
             <div>
               <h1 className="font-display text-lg font-bold text-primary-foreground">Proposta Imobiliária</h1>
             </div>
