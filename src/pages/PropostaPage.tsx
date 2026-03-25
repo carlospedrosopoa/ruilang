@@ -212,24 +212,6 @@ const PropostaPage = () => {
     }
   };
 
-  const handleCopy = () => {
-    if (proposta) {
-      navigator.clipboard.writeText(proposta);
-      toast.success("Proposta copiada!");
-    }
-  };
-
-  const handleDownload = () => {
-    if (proposta) {
-      const blob = new Blob([proposta], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `proposta_${new Date().toISOString().slice(0, 10)}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-  };
 
   const handleDownloadDocx = async () => {
     if (!proposta) return;
