@@ -95,7 +95,7 @@ export default {
         shimmer: {
           "100%": { transform: "translateX(100%)" },
         },
-        pulse-soft: {
+        "pulse-soft": {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.7" },
         },
