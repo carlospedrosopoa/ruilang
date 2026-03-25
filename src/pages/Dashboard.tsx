@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2, Sparkles, ChevronRight } from "lucide-react";
+import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2, Sparkles, ChevronRight, BarChart3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { Button } from "@/components/ui/button";
@@ -112,6 +112,15 @@ const Dashboard = () => {
               >
                 <ClipboardList className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">Coletas</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/relatorios")}
+                className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
+              >
+                <BarChart3 className="w-4 h-4 mr-1.5" />
+                <span className="hidden sm:inline">Relatórios</span>
               </Button>
               <Button
                 variant="ghost"
