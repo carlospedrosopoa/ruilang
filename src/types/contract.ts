@@ -70,6 +70,8 @@ export interface Pessoa {
   estadoCivil: string;
   regimeBens?: string;
   conjuge?: Conjuge;
+  /** ID da pessoa à qual este cônjuge/companheiro está vinculado */
+  conjugeDeId?: string;
   documentoTipo: "rg" | "cnh";
   documentoNumero: string;
   documentoOrgao: string;
