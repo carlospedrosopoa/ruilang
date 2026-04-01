@@ -3,11 +3,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Trash2, Upload, FileImage, Loader2, Sparkles, X, Camera } from "lucide-react";
-import { Pessoa, estadosCivis, estadosBR, criarConjugeVazio } from "@/types/contract";
+import { Trash2, Upload, FileImage, Loader2, Sparkles, X, Camera, Heart, Link } from "lucide-react";
+import { Pessoa, estadosCivis, estadosBR } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import ConjugeForm from "./ConjugeForm";
 import { compressImageToBase64 } from "@/lib/imageUtils";
 
 interface PessoaFormProps {
@@ -16,26 +15,18 @@ interface PessoaFormProps {
   onRemove?: () => void;
   titulo: string;
   index: number;
+  isConjuge?: boolean;
+  hideEstadoCivil?: boolean;
 }
 
-const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormProps) => {
+const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil }: PessoaFormProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
-
   const update = (field: keyof Pessoa, value: string) => {
-    const updated = { ...pessoa, [field]: value };
-    if (field === "estadoCivil") {
-      if (needsConjuge(value) && !pessoa.conjuge) {
-        updated.conjuge = criarConjugeVazio();
-      } else if (!needsConjuge(value)) {
-        updated.conjuge = undefined;
-      }
-    }
-    onChange(updated);
+    onChange({ ...pessoa, [field]: value });
   };
 
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,7 +66,6 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
       const dados = data.dados;
       if (!dados) throw new Error("Nenhum dado extraído");
 
-      // Merge extracted data, only overwrite empty fields
       const merged = { ...pessoa };
       for (const [key, value] of Object.entries(dados)) {
         if (value && typeof value === "string" && value.trim() !== "") {
@@ -98,11 +88,20 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
   };
 
   return (
-    <div className="border border-border rounded-lg p-5 space-y-4 bg-card">
+    <div className={`border rounded-lg p-5 space-y-4 bg-card ${isConjuge ? 'border-primary/30 bg-primary/5' : 'border-border'}`}>
       <div className="flex items-center justify-between">
-        <h4 className="font-display text-lg font-semibold text-foreground">
-          {titulo} {index + 1}
-        </h4>
+        <div className="flex items-center gap-2">
+          {isConjuge && <Heart className="w-4 h-4 text-primary" />}
+          <h4 className="font-display text-lg font-semibold text-foreground">
+            {titulo} {!isConjuge && index + 1}
+          </h4>
+          {isConjuge && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium flex items-center gap-1">
+              <Link className="w-3 h-3" />
+              Parte plena no contrato
+            </span>
+          )}
+        </div>
         {onRemove && (
           <Button variant="ghost" size="icon" onClick={onRemove} className="text-destructive hover:text-destructive">
             <Trash2 className="w-4 h-4" />
@@ -133,63 +132,27 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
             <Upload className="w-4 h-4 mr-1" />
             Anexar Documento
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => cameraInputRef.current?.click()}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={() => cameraInputRef.current?.click()}>
             <Camera className="w-4 h-4 mr-1" />
             Tirar Foto
           </Button>
           {files.length > 0 && (
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleExtract}
-              disabled={isExtracting}
-              className="bg-primary text-primary-foreground"
-            >
+            <Button type="button" size="sm" onClick={handleExtract} disabled={isExtracting} className="bg-primary text-primary-foreground">
               {isExtracting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  Extraindo...
-                </>
+                <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Extraindo...</>
               ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-1" />
-                  Extrair Dados
-                </>
+                <><Sparkles className="w-4 h-4 mr-1" />Extrair Dados</>
               )}
             </Button>
           )}
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/heic,.pdf"
-          multiple
-          onChange={handleFilesSelected}
-          className="hidden"
-        />
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFilesSelected}
-          className="hidden"
-        />
+        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,.pdf" multiple onChange={handleFilesSelected} className="hidden" />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFilesSelected} className="hidden" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -208,31 +171,36 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index }: PessoaFormPro
           <Input value={pessoa.profissao} onChange={(e) => update("profissao", e.target.value)} placeholder="Ex: empresário" />
         </div>
 
-        <div>
-          <Label>Estado Civil *</Label>
-          <Select value={pessoa.estadoCivil} onValueChange={(v) => update("estadoCivil", v)}>
-            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-            <SelectContent>
-              {estadosCivis.map((ec) => (
-                <SelectItem key={ec} value={ec}>{ec}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {!hideEstadoCivil && (
+          <div>
+            <Label>Estado Civil *</Label>
+            <Select value={pessoa.estadoCivil} onValueChange={(v) => update("estadoCivil", v)}>
+              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectContent>
+                {estadosCivis.map((ec) => (
+                  <SelectItem key={ec} value={ec}>{ec}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {hideEstadoCivil && (
+          <div>
+            <Label>Estado Civil</Label>
+            <Input value={pessoa.estadoCivil} readOnly className="bg-muted" />
+          </div>
+        )}
 
         {pessoa.estadoCivil === "Casado(a)" && (
           <div>
             <Label>Regime de Bens</Label>
-            <Input value={pessoa.regimeBens || ""} onChange={(e) => update("regimeBens", e.target.value)} placeholder="Ex: comunhão universal" />
-          </div>
-        )}
-
-        {needsConjuge(pessoa.estadoCivil) && pessoa.conjuge && (
-          <div className="md:col-span-2">
-            <ConjugeForm
-              conjuge={pessoa.conjuge}
-              onChange={(c) => onChange({ ...pessoa, conjuge: c })}
-              label={pessoa.estadoCivil === "União Estável" ? "Companheiro(a)" : "Cônjuge"}
+            <Input
+              value={pessoa.regimeBens || ""}
+              onChange={(e) => update("regimeBens", e.target.value)}
+              placeholder="Ex: comunhão universal"
+              readOnly={!!isConjuge}
+              className={isConjuge ? "bg-muted" : ""}
             />
           </div>
         )}
