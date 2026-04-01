@@ -16,13 +16,51 @@ import {
   Footer,
   PageNumber,
   BorderStyle,
+  TabStopType,
+  TabStopPosition,
 } from "https://esm.sh/docx@9.5.0";
 
+// ═══════════════════════════════════════════════════════
+// ABNT NBR 14724 - Normas de Formatação
+// ═══════════════════════════════════════════════════════
+// Fonte: Arial 12pt
+// Espaçamento: 1,5 entre linhas
+// Margens: Superior 3cm, Inferior 2cm, Esquerda 3cm, Direita 2cm
+// Recuo 1ª linha: 1,25cm
+// Texto justificado
+// Papel A4 (21cm x 29,7cm)
+// ═══════════════════════════════════════════════════════
+
 const FONT = "Arial";
-const BODY_SIZE = 24; // 12pt
-const TITLE_SIZE = 28; // 14pt
-const HEADER_SIZE = 16; // 8pt
-const FOOTER_SIZE = 18; // 9pt
+const BODY_PT = 12;
+const BODY_SIZE = BODY_PT * 2;        // 24 half-points
+const TITLE_PT = 14;
+const TITLE_SIZE = TITLE_PT * 2;      // 28 half-points
+const SMALL_PT = 10;
+const SMALL_SIZE = SMALL_PT * 2;      // 20 half-points
+const HEADER_SIZE = 16;               // 8pt
+const FOOTER_SIZE = 18;               // 9pt
+
+// ABNT Margins (1cm ≈ 567 DXA)
+const MARGIN_TOP = 1701;    // 3cm
+const MARGIN_BOTTOM = 1134; // 2cm
+const MARGIN_LEFT = 1701;   // 3cm
+const MARGIN_RIGHT = 1134;  // 2cm
+
+// A4 page size in DXA
+const PAGE_WIDTH = 11906;   // 21cm
+const PAGE_HEIGHT = 16838;  // 29,7cm
+
+// ABNT first-line indent: 1,25cm = 709 DXA
+const FIRST_LINE_INDENT = 709;
+
+// Line spacing: 1.5 = 360 (in 240ths of a line)
+const LINE_SPACING = 360;
+
+// Spacing between paragraphs
+const PARA_AFTER = 120;
+const SECTION_BEFORE = 480;
+const SECTION_AFTER = 240;
 
 function stripMarkdown(text: string): string {
   return text
@@ -32,10 +70,22 @@ function stripMarkdown(text: string): string {
     .replace(/`/g, "");
 }
 
-function parseMinutaToDocx(minuta: string): typeof Document.prototype {
+function getTipoLabel(tipo?: string): string {
+  const labels: Record<string, string> = {
+    promessa_compra_venda: "PROMESSA DE COMPRA E VENDA",
+    compra_venda: "CONTRATO DE COMPRA E VENDA",
+    locacao: "CONTRATO DE LOCAÇÃO",
+    permuta: "CONTRATO DE PERMUTA",
+    proposta_comercial: "PROPOSTA COMERCIAL",
+  };
+  return labels[tipo || ""] || "MINUTA CONTRATUAL";
+}
+
+function buildDocx(minuta: string, tipoContrato?: string) {
   const cleaned = stripMarkdown(minuta);
   const lines = cleaned.split("\n");
   const children: any[] = [];
+  const headerLabel = getTipoLabel(tipoContrato);
 
   let titleFound = false;
   let i = 0;
@@ -49,13 +99,13 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
       continue;
     }
 
-    // Title detection: first substantial all-caps line
+    // ── Título principal (primeira linha ALL-CAPS substancial) ──
     if (!titleFound && trimmed === trimmed.toUpperCase() && trimmed.length > 10 && /[A-ZÀ-Ú]/.test(trimmed)) {
       titleFound = true;
       children.push(
         new Paragraph({
-          alignment: AlignmentType.LEFT,
-          spacing: { after: 360, before: 240 },
+          alignment: AlignmentType.CENTER,
+          spacing: { after: SECTION_AFTER, before: SECTION_BEFORE },
           children: [
             new TextRun({
               text: trimmed,
@@ -70,12 +120,10 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
       continue;
     }
 
-    // IMÓVEL description block: italic and indented
+    // ── Bloco IMÓVEL (itálico, indentado) ──
     if (/^IM[ÓO]VEL\s*:/i.test(trimmed)) {
-      // Collect the property description block (italic, indented)
       const imovelLines: string[] = [trimmed.replace(/^IM[ÓO]VEL\s*:\s*/i, "")];
       i++;
-      // Gather continuation lines until next §, CLÁUSULA, or empty line after content
       while (i < lines.length) {
         const nextTrimmed = lines[i].trim();
         if (!nextTrimmed || /^[§]/.test(nextTrimmed) || /^CL[ÁA]USULA\s/i.test(nextTrimmed)) break;
@@ -87,22 +135,11 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
         children.push(
           new Paragraph({
             alignment: AlignmentType.JUSTIFIED,
-            spacing: { before: 200, after: 200, line: 360 },
-            indent: { left: 1440 }, // 1 inch indent
+            spacing: { before: 200, after: 200, line: LINE_SPACING },
+            indent: { left: MARGIN_LEFT },
             children: [
-              new TextRun({
-                text: "IMÓVEL: ",
-                bold: true,
-                italics: true,
-                size: BODY_SIZE,
-                font: FONT,
-              }),
-              new TextRun({
-                text: imovelText,
-                italics: true,
-                size: BODY_SIZE,
-                font: FONT,
-              }),
+              new TextRun({ text: "IMÓVEL: ", bold: true, italics: true, size: BODY_SIZE, font: FONT }),
+              new TextRun({ text: imovelText, italics: true, size: BODY_SIZE, font: FONT }),
             ],
           })
         );
@@ -110,7 +147,7 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
       continue;
     }
 
-    // Clause headers: "CLÁUSULA PRIMEIRA", section headers in ALL CAPS
+    // ── Cabeçalho de cláusula ──
     const isClauseHeader = /^CL[ÁA]USULA\s/i.test(trimmed);
     const isSectionHeader =
       !isClauseHeader &&
@@ -125,7 +162,7 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
       children.push(
         new Paragraph({
           alignment: AlignmentType.LEFT,
-          spacing: { before: 360, after: 200 },
+          spacing: { before: SECTION_BEFORE, after: SECTION_AFTER, line: LINE_SPACING },
           children: [
             new TextRun({
               text: trimmed,
@@ -140,20 +177,16 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
       continue;
     }
 
-    // Sub-items: §, a), b), I -, II -, etc.
+    // ── Sub-itens: §, a), b), I -, II - ──
     const isSubItem = /^[§]/.test(trimmed) || /^[a-z]\)/.test(trimmed) || /^[IVXLC]+\s*[-–.]/.test(trimmed);
-
     if (isSubItem) {
       children.push(
         new Paragraph({
           alignment: AlignmentType.JUSTIFIED,
-          spacing: { after: 120, line: 360 },
+          spacing: { after: PARA_AFTER, line: LINE_SPACING },
+          indent: { left: FIRST_LINE_INDENT },
           children: [
-            new TextRun({
-              text: trimmed,
-              size: BODY_SIZE,
-              font: FONT,
-            }),
+            new TextRun({ text: trimmed, size: BODY_SIZE, font: FONT }),
           ],
         })
       );
@@ -161,35 +194,74 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
       continue;
     }
 
-    // Regular paragraph - justified with first-line indent
+    // ── Parágrafo normal – justificado com recuo ABNT ──
     children.push(
       new Paragraph({
         alignment: AlignmentType.JUSTIFIED,
-        spacing: { after: 120, line: 360 },
-        indent: { firstLine: 720 },
+        spacing: { after: PARA_AFTER, line: LINE_SPACING },
+        indent: { firstLine: FIRST_LINE_INDENT },
         children: [
-          new TextRun({
-            text: trimmed,
-            size: BODY_SIZE,
-            font: FONT,
-          }),
+          new TextRun({ text: trimmed, size: BODY_SIZE, font: FONT }),
         ],
       })
     );
     i++;
   }
 
-  // Signature spacing
-  children.push(new Paragraph({ spacing: { before: 600 } }));
-  children.push(new Paragraph({ spacing: { before: 200 } }));
+  // ── Bloco de assinaturas ──
+  children.push(new Paragraph({ spacing: { before: 720 } }));
+
+  const signatureBlock = (label: string) => [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 600 },
+      children: [
+        new TextRun({ text: "___________________________________________", size: BODY_SIZE, font: FONT }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 60 },
+      children: [
+        new TextRun({ text: label, bold: true, size: BODY_SIZE, font: FONT }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [
+        new TextRun({ text: "CPF:", size: SMALL_SIZE, font: FONT, color: "666666" }),
+      ],
+    }),
+  ];
+
+  children.push(...signatureBlock("VENDEDOR(A) / PROMITENTE VENDEDOR(A)"));
+  children.push(...signatureBlock("COMPRADOR(A) / PROMITENTE COMPRADOR(A)"));
+  children.push(...signatureBlock("TESTEMUNHA 1"));
+  children.push(...signatureBlock("TESTEMUNHA 2"));
+
+  // ── Local e data ──
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.RIGHT,
+      spacing: { before: 480, after: 120 },
+      children: [
+        new TextRun({
+          text: `________________, _____ de _______________ de ${new Date().getFullYear()}.`,
+          size: BODY_SIZE,
+          font: FONT,
+        }),
+      ],
+    })
+  );
 
   const doc = new Document({
     styles: {
       default: {
         document: {
-          run: {
-            font: FONT,
-            size: BODY_SIZE,
+          run: { font: FONT, size: BODY_SIZE },
+          paragraph: {
+            spacing: { line: LINE_SPACING },
           },
         },
       },
@@ -198,15 +270,12 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
       {
         properties: {
           page: {
-            size: {
-              width: 11906,
-              height: 16838,
-            },
+            size: { width: PAGE_WIDTH, height: PAGE_HEIGHT },
             margin: {
-              top: 1701,
-              right: 1134,
-              bottom: 1134,
-              left: 1701,
+              top: MARGIN_TOP,
+              right: MARGIN_RIGHT,
+              bottom: MARGIN_BOTTOM,
+              left: MARGIN_LEFT,
             },
           },
         },
@@ -214,13 +283,23 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
           default: new Header({
             children: [
               new Paragraph({
-                alignment: AlignmentType.RIGHT,
+                tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
                 children: [
                   new TextRun({
-                    text: "MINUTA CONTRATUAL",
+                    text: headerLabel,
                     size: HEADER_SIZE,
                     font: FONT,
-                    color: "999999",
+                    color: "888888",
+                    italics: true,
+                  }),
+                  new TextRun({
+                    text: "\t",
+                  }),
+                  new TextRun({
+                    text: "ABNT NBR 14724",
+                    size: HEADER_SIZE,
+                    font: FONT,
+                    color: "BBBBBB",
                     italics: true,
                   }),
                 ],
@@ -254,6 +333,13 @@ function parseMinutaToDocx(minuta: string): typeof Document.prototype {
                     font: FONT,
                     color: "888888",
                   }),
+                  new TextRun({
+                    text: " — Documento gerado eletronicamente",
+                    size: FOOTER_SIZE,
+                    font: FONT,
+                    color: "BBBBBB",
+                    italics: true,
+                  }),
                 ],
               }),
             ],
@@ -273,7 +359,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { minuta } = await req.json();
+    const { minuta, tipoContrato } = await req.json();
 
     if (!minuta) {
       return new Response(
@@ -282,7 +368,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const doc = parseMinutaToDocx(minuta);
+    const doc = buildDocx(minuta, tipoContrato);
     const buffer = await Packer.toBuffer(doc);
 
     const uint8 = new Uint8Array(buffer);
