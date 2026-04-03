@@ -59,7 +59,20 @@ const ImobiliariasPage = () => {
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
-    const { data } = await supabase.from("imobiliarias").select("*").order("nome");
+    setLoading(true);
+    const { data, error } = await supabase.from("imobiliarias").select("*").order("nome");
+    if (error) {
+      const hint =
+        error.message?.toLowerCase().includes("invalid api key") ||
+        error.message?.toLowerCase().includes("jwt") ||
+        error.message?.toLowerCase().includes("unauthorized")
+          ? " Verifique VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY (sem aspas) no deploy."
+          : "";
+      toast.error(`Erro ao carregar imobiliárias: ${error.message}.${hint}`);
+      setImobiliarias([]);
+      setLoading(false);
+      return;
+    }
     setImobiliarias((data as Imobiliaria[]) || []);
     setLoading(false);
   };
@@ -101,8 +114,15 @@ const ImobiliariasPage = () => {
       setEditingId(null);
       setForm(emptyForm);
       load();
-    } catch {
-      toast.error("Erro ao salvar.");
+    } catch (err: any) {
+      const message = typeof err?.message === "string" ? err.message : "Erro ao salvar.";
+      const hint =
+        message.toLowerCase().includes("invalid api key") ||
+        message.toLowerCase().includes("jwt") ||
+        message.toLowerCase().includes("unauthorized")
+          ? " Verifique VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY (sem aspas) no deploy."
+          : "";
+      toast.error(`${message}.${hint}`);
     } finally {
       setSaving(false);
     }
@@ -130,7 +150,14 @@ const ImobiliariasPage = () => {
     if (!confirm("Deseja realmente excluir esta imobiliária?")) return;
     const { error } = await supabase.from("imobiliarias").delete().eq("id", id);
     if (error) {
-      toast.error("Erro ao excluir. Pode haver coletas vinculadas.");
+      const message = typeof error.message === "string" ? error.message : "Erro ao excluir.";
+      const hint =
+        message.toLowerCase().includes("invalid api key") ||
+        message.toLowerCase().includes("jwt") ||
+        message.toLowerCase().includes("unauthorized")
+          ? " Verifique VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY (sem aspas) no deploy."
+          : "";
+      toast.error(`${message}.${hint}`);
     } else {
       toast.success("Imobiliária excluída.");
       load();
