@@ -9,7 +9,7 @@ import { Upload, FileImage, Loader2, Sparkles, X } from "lucide-react";
 import { Imovel, estadosBR } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { compressImageToBase64 } from "@/lib/imageUtils";
+import { fileToVisionBase64Images } from "@/lib/imageUtils";
 
 interface StepObjetoProps {
   imovel: Imovel;
@@ -50,7 +50,8 @@ const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
 
     setIsExtracting(true);
     try {
-      const images = await Promise.all(files.map((f) => compressImageToBase64(f)));
+      const nested = await Promise.all(files.map((f) => fileToVisionBase64Images(f)));
+      const images = nested.flat();
 
       const { data, error } = await supabase.functions.invoke("extract-property", {
         body: { images },
@@ -77,7 +78,15 @@ const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
       toast.success("Dados do imóvel extraídos com sucesso! Verifique os campos.");
     } catch (err: any) {
       console.error("Extract property error:", err);
-      toast.error(err.message || "Erro ao extrair dados do documento.");
+      let message = err?.message;
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (body?.error) message = body.error;
+        } catch {}
+      }
+      toast.error(message || "Erro ao extrair dados do documento.");
     } finally {
       setIsExtracting(false);
     }
