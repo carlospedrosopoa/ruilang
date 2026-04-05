@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 supabase/.temp/
 supabase/functions/supabase/
+.env
+.env.*
+!.env.example
