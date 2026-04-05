@@ -110,14 +110,150 @@ function normalizeExtraction(payload: any) {
   };
 }
 
+type AiProvider = "openai" | "gemini";
+
+function getProviderFromRequest(body: any): AiProvider | null {
+  const p = body?.ai?.provider;
+  if (p === "openai" || p === "gemini") return p;
+  return null;
+}
+
+function getDefaultProvider(): AiProvider {
+  const raw = (Deno.env.get("AI_PROVIDER_DEFAULT") || "").toLowerCase();
+  return raw === "gemini" ? "gemini" : "openai";
+}
+
+function isFailoverEnabled() {
+  const raw = (Deno.env.get("AI_FAILOVER_ENABLED") || "").toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+async function callOpenAiExtractDocument(params: {
+  apiKey: string;
+  systemPrompt: string;
+  content: any[];
+}) {
+  const models = [
+    Deno.env.get("OPENAI_MODEL_EXTRACT_DOCUMENT") || "gpt-4o-mini",
+    Deno.env.get("OPENAI_MODEL_EXTRACT_DOCUMENT_FALLBACK") || "gpt-4o",
+  ];
+
+  let lastError = "";
+  for (const model of models) {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: params.systemPrompt },
+          { role: "user", content: params.content },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "extract_document_data",
+              description: "Retorna os dados extraídos do documento em formato estruturado.",
+              parameters: extractionSchema,
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "extract_document_data" } },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      lastError = errorText;
+      if (response.status === 401) throw new Error("Credenciais inválidas. Verifique OPENAI_API_KEY.");
+      if (response.status === 429) throw new Error("Limite de requisições excedido. Tente novamente em alguns segundos.");
+      if (response.status >= 500) continue;
+      throw new Error(`Erro do provedor OpenAI (${response.status})`);
+    }
+
+    const data = await response.json();
+    try {
+      return normalizeExtraction(extractToolArguments(data) ?? extractJsonFallback(data));
+    } catch (parseError) {
+      lastError = parseError instanceof Error ? parseError.message : String(parseError);
+      continue;
+    }
+  }
+
+  throw new Error(lastError || "Falha ao extrair dados com OpenAI.");
+}
+
+async function callGeminiExtractDocument(params: {
+  apiKey: string;
+  systemPrompt: string;
+  userText: string;
+  images: string[];
+}) {
+  const models = [
+    Deno.env.get("GEMINI_MODEL_EXTRACT_DOCUMENT") || "gemini-2.0-flash",
+    Deno.env.get("GEMINI_MODEL_EXTRACT_DOCUMENT_FALLBACK") || "gemini-2.0-pro",
+  ];
+
+  const parts: any[] = [{ text: params.userText }];
+  for (const img of params.images) {
+    const mimeType = img.startsWith("JVBERi0") ? "application/pdf" : "image/jpeg";
+    parts.push({ inlineData: { mimeType, data: img } });
+  }
+
+  let lastError = "";
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(params.apiKey)}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: params.systemPrompt }] },
+        contents: [{ role: "user", parts }],
+        generationConfig: {
+          temperature: 0.2,
+          response_mime_type: "application/json",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      lastError = errorText;
+      if (response.status === 401 || response.status === 403) throw new Error("Credenciais inválidas. Verifique GEMINI_API_KEY.");
+      if (response.status === 429) throw new Error("Limite de requisições excedido. Tente novamente em alguns segundos.");
+      if (response.status >= 500) continue;
+      throw new Error(`Erro do provedor Gemini (${response.status})`);
+    }
+
+    const data = await response.json();
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof raw !== "string" || !raw.trim()) {
+      lastError = "Resposta vazia do Gemini.";
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      return normalizeExtraction(parsed);
+    } catch (parseError) {
+      lastError = parseError instanceof Error ? parseError.message : String(parseError);
+      continue;
+    }
+  }
+
+  throw new Error(lastError || "Falha ao extrair dados com Gemini.");
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
-
-    const { images } = await req.json();
+    const body = await req.json();
+    const { images } = body ?? {};
     if (!images || !Array.isArray(images) || images.length === 0) {
       throw new Error("Envie ao menos uma imagem em base64");
     }
@@ -138,7 +274,10 @@ REGRAS:
 - Para documentoTipo, use apenas "rg" ou "cnh"
 - Para estado, use a sigla (SP, RJ, RS, etc.)
 - Se o documento for CNH, extraia o número do registro
-- Campos não encontrados devem ser string vazia`; 
+- Campos não encontrados devem ser string vazia
+
+FORMATO DE RESPOSTA:
+- Retorne APENAS um JSON válido, sem markdown, no formato do schema informado`; 
 
     const content: any[] = [
       { type: "text", text: "Extraia os dados pessoais destes documentos e preencha a ferramenta com o resultado." },
@@ -154,63 +293,38 @@ REGRAS:
       });
     }
 
-    const models = ["gpt-4o-mini", "gpt-4o"];
-    let lastError = "";
+    const requestedProvider = getProviderFromRequest(body);
+    const provider = requestedProvider ?? getDefaultProvider();
+    const failover = isFailoverEnabled();
 
-    for (const model of models) {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content },
-          ],
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "extract_document_data",
-                description: "Retorna os dados extraídos do documento em formato estruturado.",
-                parameters: extractionSchema,
-              },
-            },
-          ],
-          tool_choice: { type: "function", function: { name: "extract_document_data" } },
-        }),
-      });
+    const tryOrder: AiProvider[] = provider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+    let lastError: unknown = null;
 
-      if (!response.ok) {
-        if (response.status === 429) {
-          return jsonResponse({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }, 429);
-        }
-        if (response.status === 401) {
-          return jsonResponse({ error: "Credenciais inválidas. Verifique OPENAI_API_KEY." }, 401);
-        }
-
-        const errorText = await response.text();
-        console.error(`AI error with ${model}:`, response.status, errorText);
-        lastError = errorText;
-        continue;
-      }
-
-      const data = await response.json();
-
+    for (const p of tryOrder) {
       try {
-        const extracted = normalizeExtraction(extractToolArguments(data) ?? extractJsonFallback(data));
+        if (p === "openai") {
+          const key = Deno.env.get("OPENAI_API_KEY");
+          if (!key) throw new Error("OPENAI_API_KEY is not configured");
+          const extracted = await callOpenAiExtractDocument({ apiKey: key, systemPrompt, content });
+          return jsonResponse({ dados: extracted });
+        }
+
+        const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+        if (!key) throw new Error("GEMINI_API_KEY is not configured");
+        const extracted = await callGeminiExtractDocument({
+          apiKey: key,
+          systemPrompt,
+          userText: "Extraia os dados pessoais destes documentos e retorne apenas o JSON final.",
+          images,
+        });
         return jsonResponse({ dados: extracted });
-      } catch (parseError) {
-        console.error(`Failed to parse AI response from ${model}:`, data);
-        lastError = parseError instanceof Error ? parseError.message : String(parseError);
+      } catch (e) {
+        lastError = e;
+        if (!failover) break;
       }
     }
 
-    console.error("extract-document exhausted models:", lastError);
-    throw new Error("Não foi possível extrair dados do documento. Tente com uma imagem mais nítida.");
+    throw lastError instanceof Error ? lastError : new Error("Não foi possível extrair dados do documento.");
   } catch (e) {
     console.error("extract-document error:", e);
     return jsonResponse({ error: e instanceof Error ? e.message : "Erro desconhecido" }, 500);

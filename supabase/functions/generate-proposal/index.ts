@@ -5,6 +5,77 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+type AiProvider = "openai" | "gemini";
+
+function getProviderFromRequest(body: any): AiProvider | null {
+  const p = body?.ai?.provider;
+  if (p === "openai" || p === "gemini") return p;
+  return null;
+}
+
+function getDefaultProvider(): AiProvider {
+  const raw = (Deno.env.get("AI_PROVIDER_DEFAULT") || "").toLowerCase();
+  return raw === "gemini" ? "gemini" : "openai";
+}
+
+function isFailoverEnabled() {
+  const raw = (Deno.env.get("AI_FAILOVER_ENABLED") || "").toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+async function callOpenAiText(params: { apiKey: string; model: string; systemPrompt: string; userPrompt: string }) {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: params.model,
+      messages: [
+        { role: "system", content: params.systemPrompt },
+        { role: "user", content: params.userPrompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("Credenciais inválidas. Verifique OPENAI_API_KEY.");
+    if (response.status === 429) throw new Error("Limite de requisições excedido. Tente novamente em alguns minutos.");
+    const t = await response.text();
+    console.error("AI error:", response.status, t);
+    throw new Error(`Erro do provedor OpenAI (${response.status})`);
+  }
+
+  const data = await response.json();
+  return (data?.choices?.[0]?.message?.content || "").trim();
+}
+
+async function callGeminiText(params: { apiKey: string; model: string; systemPrompt: string; userPrompt: string }) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(params.model)}:generateContent?key=${encodeURIComponent(params.apiKey)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: params.systemPrompt }] },
+      contents: [{ role: "user", parts: [{ text: params.userPrompt }] }],
+      generationConfig: { temperature: 0.2 },
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) throw new Error("Credenciais inválidas. Verifique GEMINI_API_KEY.");
+    if (response.status === 429) throw new Error("Limite de requisições excedido. Tente novamente em alguns minutos.");
+    const t = await response.text();
+    console.error("Gemini error:", response.status, t);
+    throw new Error(`Erro do provedor Gemini (${response.status})`);
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join("\n") || "";
+  return text.trim();
+}
+
 const tipoLabels: Record<string, string> = {
   promessa_compra_venda: "COMPRA DE IMÓVEL",
   promessa_compra_venda_permuta: "COMPRA DE IMÓVEL COM PERMUTA",
@@ -23,10 +94,8 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
-
-    const { dados, tipoContrato, imobiliaria } = await req.json();
+    const body = await req.json();
+    const { dados, tipoContrato, imobiliaria } = body ?? {};
     if (!dados) throw new Error("Missing 'dados' in request body");
 
     const tipoLabel = tipoLabels[tipoContrato] || "NEGÓCIO IMOBILIÁRIO";
@@ -153,41 +222,38 @@ ${imobInfo}
 
 Gere a proposta completa conforme o modelo nas instruções, com TODAS as cláusulas e espaços para assinatura.`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
+    const requestedProvider = getProviderFromRequest(body);
+    const provider = requestedProvider ?? getDefaultProvider();
+    const failover = isFailoverEnabled();
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns minutos." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    const tryOrder: AiProvider[] = provider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+    let lastError: unknown = null;
+    let proposta = "";
+
+    for (const p of tryOrder) {
+      try {
+        if (p === "openai") {
+          const key = Deno.env.get("OPENAI_API_KEY");
+          if (!key) throw new Error("OPENAI_API_KEY is not configured");
+          const model = Deno.env.get("OPENAI_MODEL_PROPOSAL") || "gpt-4o-mini";
+          proposta = await callOpenAiText({ apiKey: key, model, systemPrompt, userPrompt });
+        } else {
+          const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+          if (!key) throw new Error("GEMINI_API_KEY is not configured");
+          const model = Deno.env.get("GEMINI_MODEL_PROPOSAL") || "gemini-2.0-flash";
+          proposta = await callGeminiText({ apiKey: key, model, systemPrompt, userPrompt });
+        }
+        break;
+      } catch (e) {
+        lastError = e;
+        if (!failover) break;
       }
-      if (response.status === 401) {
-        return new Response(JSON.stringify({ error: "Credenciais inválidas. Verifique OPENAI_API_KEY." }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI error:", response.status, t);
-      return new Response(JSON.stringify({ error: "Erro ao gerar proposta" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
-    const data = await response.json();
-    let proposta = data.choices?.[0]?.message?.content || "";
+    if (!proposta) {
+      throw lastError instanceof Error ? lastError : new Error("Erro ao gerar proposta");
+    }
+
     proposta = proposta.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
 
     return new Response(JSON.stringify({ proposta }), {
