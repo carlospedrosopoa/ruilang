@@ -1,1 +1,16 @@
-project_id = "pidxzhbnvjvioukanlax"
+project_id = "qdctfnxxexibteoeqyfi"
+
+[functions.extract-document]
+verify_jwt = false
+
+[functions.extract-property]
+verify_jwt = false
+
+[functions.generate-contract]
+verify_jwt = false
+
+[functions.generate-proposal]
+verify_jwt = false
+
+[functions.generate-docx]
+verify_jwt = false
