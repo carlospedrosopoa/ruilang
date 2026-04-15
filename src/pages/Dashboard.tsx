@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
 
 const iconMap: Record<string, React.ElementType> = {
@@ -31,6 +32,7 @@ interface Imobiliaria {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { activeTenantId, isPlatformAdmin, signOut } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [novoTipo, setNovoTipo] = useState<TipoContrato>("promessa_compra_venda");
   const [whatsappNumber, setWhatsappNumber] = useState("");
@@ -45,6 +47,10 @@ const Dashboard = () => {
     };
     loadImobiliarias();
   }, []);
+
+  useEffect(() => {
+    if (activeTenantId && !selectedImobiliaria) setSelectedImobiliaria(activeTenantId);
+  }, [activeTenantId, selectedImobiliaria]);
 
   const handleSelect = (tipo: TipoContrato) => {
     navigate(`/contrato/${tipo}`);
@@ -122,14 +128,25 @@ const Dashboard = () => {
                 <BarChart3 className="w-4 h-4 mr-1.5" />
                 <span className="hidden sm:inline">Relatórios</span>
               </Button>
+              {isPlatformAdmin ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/imobiliarias")}
+                  className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                >
+                  <Building2 className="w-4 h-4 mr-1.5" />
+                  <span className="hidden sm:inline">Imobiliárias</span>
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate("/imobiliarias")}
+                onClick={() => signOut()}
                 className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
               >
-                <Building2 className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">Imobiliárias</span>
+                <ChevronRight className="w-4 h-4 mr-1.5 rotate-180" />
+                <span className="hidden sm:inline">Sair</span>
               </Button>
             </div>
           </div>

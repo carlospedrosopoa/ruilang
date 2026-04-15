@@ -14,3 +14,12 @@ verify_jwt = false
 
 [functions.generate-docx]
 verify_jwt = false
+
+[functions.public-submission]
+verify_jwt = false
+
+[functions.public-proposta]
+verify_jwt = false
+
+[functions.admin-create-user]
+verify_jwt = true

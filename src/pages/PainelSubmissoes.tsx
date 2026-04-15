@@ -16,6 +16,7 @@ import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCh
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/auth/AuthProvider";
 
 interface Submission {
   id: string;
@@ -49,6 +50,7 @@ const statusLabels: Record<string, { label: string; icon: React.ElementType; col
 
 const PainelSubmissoes = () => {
   const navigate = useNavigate();
+  const { activeTenantId, isPlatformAdmin } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [propostas, setPropostas] = useState<Proposta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,21 +60,34 @@ const PainelSubmissoes = () => {
   const [novoTipo, setNovoTipo] = useState<TipoContrato>("promessa_compra_venda");
 
   const loadData = async () => {
-    const [subRes, propRes] = await Promise.all([
-      supabase.from("submissions").select("*").order("created_at", { ascending: false }),
-      supabase.from("propostas").select("*").order("created_at", { ascending: false }),
-    ]);
+    const subQuery = supabase.from("submissions").select("*").order("created_at", { ascending: false });
+    const propQuery = supabase.from("propostas").select("*").order("created_at", { ascending: false });
+
+    if (!isPlatformAdmin && activeTenantId) {
+      subQuery.eq("imobiliaria_id", activeTenantId);
+      propQuery.eq("imobiliaria_id", activeTenantId);
+    }
+
+    const [subRes, propRes] = await Promise.all([subQuery, propQuery]);
     setSubmissions((subRes.data as Submission[]) || []);
     setPropostas((propRes.data as Proposta[]) || []);
     setLoading(false);
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [activeTenantId, isPlatformAdmin]);
 
   const handleCreateLink = async () => {
+    if (!activeTenantId) {
+      toast.error("Selecione uma imobiliária/tenant para criar links.");
+      return;
+    }
     setCreating(true);
     try {
-      const { data, error } = await supabase.from("submissions").insert({ tipo_contrato: novoTipo }).select().single();
+      const { data, error } = await supabase
+        .from("submissions")
+        .insert({ tipo_contrato: novoTipo, imobiliaria_id: activeTenantId })
+        .select()
+        .single();
       if (error) throw error;
       const link = `${window.location.origin}/coleta/${data.token}`;
       await navigator.clipboard.writeText(link);
@@ -83,9 +98,17 @@ const PainelSubmissoes = () => {
   };
 
   const handleCreateProposalLink = async () => {
+    if (!activeTenantId) {
+      toast.error("Selecione uma imobiliária/tenant para criar links.");
+      return;
+    }
     setCreating(true);
     try {
-      const { data, error } = await supabase.from("propostas").insert({}).select().single();
+      const { data, error } = await supabase
+        .from("propostas")
+        .insert({ imobiliaria_id: activeTenantId })
+        .select()
+        .single();
       if (error) throw error;
       const link = `${window.location.origin}/proposta/${data.token}`;
       await navigator.clipboard.writeText(link);

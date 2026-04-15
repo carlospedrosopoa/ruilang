@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Building2, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { ArrowLeft, Building2, Plus, Pencil, Trash2, Loader2, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -57,6 +57,12 @@ const ImobiliariasPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [userDialogOpen, setUserDialogOpen] = useState(false);
+  const [userTenantId, setUserTenantId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState("");
+  const [userRole, setUserRole] = useState<"owner" | "admin" | "member">("admin");
+  const [userPassword, setUserPassword] = useState("");
+  const [creatingUser, setCreatingUser] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -170,6 +176,50 @@ const ImobiliariasPage = () => {
     setDialogOpen(true);
   };
 
+  const openCreateUser = (tenantId: string) => {
+    setUserTenantId(tenantId);
+    setUserEmail("");
+    setUserRole("admin");
+    setUserPassword("");
+    setUserDialogOpen(true);
+  };
+
+  const handleCreateUser = async () => {
+    if (!userTenantId) return;
+    const email = userEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      toast.error("Informe um e-mail válido.");
+      return;
+    }
+
+    setCreatingUser(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-create-user", {
+        body: {
+          email,
+          tenantId: userTenantId,
+          role: userRole,
+          password: userPassword.trim() ? userPassword.trim() : undefined,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      if (data?.temporaryPassword) {
+        toast.success(`Usuário criado. Senha temporária: ${data.temporaryPassword}`);
+      } else {
+        toast.success("Usuário criado com sucesso.");
+      }
+      setUserDialogOpen(false);
+    } catch (err: any) {
+      const message = typeof err?.message === "string" ? err.message : "Erro ao criar usuário.";
+      toast.error(message);
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
   const updateField = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
 
   return (
@@ -219,6 +269,9 @@ const ImobiliariasPage = () => {
                     <p className="text-sm text-muted-foreground">CRECI: {imob.creci}</p>
                   </div>
                   <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => openCreateUser(imob.id)}>
+                      <UserPlus className="w-4 h-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(imob)}>
                       <Pencil className="w-4 h-4" />
                     </Button>
@@ -239,6 +292,39 @@ const ImobiliariasPage = () => {
             ))}
           </div>
         )}
+
+        <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Criar Usuário</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div>
+                <Label>E-mail</Label>
+                <Input value={userEmail} onChange={(e) => setUserEmail(e.target.value)} placeholder="usuario@imobiliaria.com" type="email" />
+              </div>
+              <div>
+                <Label>Perfil</Label>
+                <Select value={userRole} onValueChange={(v) => setUserRole(v as any)}>
+                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="owner">Owner</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="member">Member</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Senha (opcional)</Label>
+                <Input value={userPassword} onChange={(e) => setUserPassword(e.target.value)} placeholder="Deixe em branco para gerar" type="password" />
+              </div>
+              <Button onClick={handleCreateUser} disabled={creatingUser} className="w-full">
+                {creatingUser ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Criar Usuário
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">

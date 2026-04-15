@@ -7,6 +7,10 @@ declare module "https://deno.land/std@0.168.0/http/server.ts" {
   ): void;
 }
 
+declare module "https://esm.sh/@supabase/supabase-js@2.49.1" {
+  export const createClient: any;
+}
+
 declare const Deno: {
   env: {
     get(key: string): string | undefined;

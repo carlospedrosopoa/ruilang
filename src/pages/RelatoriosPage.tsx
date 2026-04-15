@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +26,7 @@ interface Proposta {
   token: string;
   corretor_nome: string | null;
   corretor_creci: string | null;
+  imobiliaria_id?: string | null;
   imobiliaria_nome: string | null;
   dados: any;
   status: string;
@@ -77,6 +79,7 @@ const formatCurrency = (value: number) =>
 
 const RelatoriosPage = () => {
   const navigate = useNavigate();
+  const { activeTenantId, isPlatformAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [propostas, setPropostas] = useState<Proposta[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -93,18 +96,24 @@ const RelatoriosPage = () => {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [propRes, subRes, imobRes] = await Promise.all([
-        supabase.from("propostas").select("*").order("created_at", { ascending: false }),
-        supabase.from("submissions").select("*").order("created_at", { ascending: false }),
-        supabase.from("imobiliarias").select("id, nome").order("nome"),
-      ]);
+      const propQuery = supabase.from("propostas").select("*").order("created_at", { ascending: false });
+      const subQuery = supabase.from("submissions").select("*").order("created_at", { ascending: false });
+      const imobQuery = supabase.from("imobiliarias").select("id, nome").order("nome");
+
+      if (!isPlatformAdmin && activeTenantId) {
+        propQuery.eq("imobiliaria_id", activeTenantId);
+        subQuery.eq("imobiliaria_id", activeTenantId);
+        imobQuery.eq("id", activeTenantId);
+      }
+
+      const [propRes, subRes, imobRes] = await Promise.all([propQuery, subQuery, imobQuery]);
       setPropostas((propRes.data as Proposta[]) || []);
       setSubmissions((subRes.data as Submission[]) || []);
       setImobiliarias((imobRes.data as Imobiliaria[]) || []);
       setLoading(false);
     };
     load();
-  }, []);
+  }, [activeTenantId, isPlatformAdmin]);
 
   // Filtered data
   const filteredPropostas = useMemo(() => {

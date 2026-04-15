@@ -62,6 +62,21 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_admins: {
+        Row: {
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       propostas: {
         Row: {
           corretor_creci: string | null
@@ -71,6 +86,7 @@ export type Database = {
           dados: Json
           documentos: Json
           id: string
+          imobiliaria_id: string | null
           imobiliaria_nome: string | null
           proposta_texto: string | null
           status: string
@@ -85,6 +101,7 @@ export type Database = {
           dados?: Json
           documentos?: Json
           id?: string
+          imobiliaria_id?: string | null
           imobiliaria_nome?: string | null
           proposta_texto?: string | null
           status?: string
@@ -99,13 +116,22 @@ export type Database = {
           dados?: Json
           documentos?: Json
           id?: string
+          imobiliaria_id?: string | null
           imobiliaria_nome?: string | null
           proposta_texto?: string | null
           status?: string
           token?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "propostas_imobiliaria_id_fkey"
+            columns: ["imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       submissions: {
         Row: {
@@ -148,6 +174,38 @@ export type Database = {
           {
             foreignKeyName: "submissions_imobiliaria_id_fkey"
             columns: ["imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_members: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_members_tenant_id_fkey"
+            columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "imobiliarias"
             referencedColumns: ["id"]

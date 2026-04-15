@@ -71,21 +71,20 @@ const PropostaPage = () => {
     const load = async () => {
       if (!token) { setLoading(false); return; }
 
-      const { data, error } = await supabase
-        .from("propostas")
-        .select("*")
-        .eq("token", token)
-        .single();
+      const { data, error } = await supabase.functions.invoke("public-proposta", {
+        body: { token },
+      });
 
-      if (error || !data) { setLoading(false); return; }
+      if (error || !data?.proposta) { setLoading(false); return; }
 
-      setPropostaId(data.id);
-      setStatus(data.status);
-      setCorretorNome(data.corretor_nome || "");
-      setCorretorCreci(data.corretor_creci || "");
-      setImobiliariaNome(data.imobiliaria_nome || "");
+      const propostaRow = data.proposta as any;
+      setPropostaId(propostaRow.id);
+      setStatus(propostaRow.status);
+      setCorretorNome(propostaRow.corretor_nome || "");
+      setCorretorCreci(propostaRow.corretor_creci || "");
+      setImobiliariaNome(propostaRow.imobiliaria_nome || "");
 
-      const dados = data.dados as any;
+      const dados = propostaRow.dados as any;
       if (dados) {
         if (dados.vendedores?.length) setVendedores(dados.vendedores);
         if (dados.compradores?.length) setCompradores(dados.compradores);
@@ -93,12 +92,12 @@ const PropostaPage = () => {
         if (dados.pagamento) setPagamento(dados.pagamento);
       }
 
-      const docs = data.documentos as any;
+      const docs = propostaRow.documentos as any;
       if (Array.isArray(docs) && docs.length > 0) setDocumentos(docs);
 
-      if (data.proposta_texto) setProposta(data.proposta_texto);
+      if (propostaRow.proposta_texto) setProposta(propostaRow.proposta_texto);
 
-      if (data.status === "enviado") setSubmitted(true);
+      if (propostaRow.status === "enviado") setSubmitted(true);
 
       setLoading(false);
     };
@@ -113,19 +112,22 @@ const PropostaPage = () => {
   }), [vendedores, compradores, imovel, pagamento]);
 
   const saveDraft = useCallback(async () => {
-    if (!propostaId) return;
+    if (!propostaId || !token) return;
     setIsSaving(true);
     try {
-      await supabase
-        .from("propostas")
-        .update({
-          corretor_nome: corretorNome,
-          corretor_creci: corretorCreci,
-          imobiliaria_nome: imobiliariaNome,
-          dados: getDados() as any,
-          documentos: documentos as any,
-        })
-        .eq("id", propostaId);
+      const { error } = await supabase.functions.invoke("public-proposta", {
+        body: {
+          token,
+          update: {
+            corretor_nome: corretorNome,
+            corretor_creci: corretorCreci,
+            imobiliaria_nome: imobiliariaNome,
+            dados: getDados() as any,
+            documentos: documentos as any,
+          },
+        },
+      });
+      if (error) throw error;
     } finally {
       setIsSaving(false);
     }
@@ -160,20 +162,22 @@ const PropostaPage = () => {
   };
 
   const handleSubmit = async () => {
-    if (!propostaId) return;
+    if (!propostaId || !token) return;
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from("propostas")
-        .update({
-          corretor_nome: corretorNome,
-          corretor_creci: corretorCreci,
-          imobiliaria_nome: imobiliariaNome,
-          dados: getDados() as any,
-          documentos: documentos as any,
-          status: "enviado",
-        })
-        .eq("id", propostaId);
+      const { error } = await supabase.functions.invoke("public-proposta", {
+        body: {
+          token,
+          update: {
+            corretor_nome: corretorNome,
+            corretor_creci: corretorCreci,
+            imobiliaria_nome: imobiliariaNome,
+            dados: getDados() as any,
+            documentos: documentos as any,
+            status: "enviado",
+          },
+        },
+      });
 
       if (error) throw error;
       setSubmitted(true);
@@ -200,8 +204,10 @@ const PropostaPage = () => {
       setProposta(data.proposta);
 
       // Save proposal text
-      if (propostaId) {
-        await supabase.from("propostas").update({ proposta_texto: data.proposta }).eq("id", propostaId);
+      if (propostaId && token) {
+        await supabase.functions.invoke("public-proposta", {
+          body: { token, update: { proposta_texto: data.proposta } },
+        });
       }
       toast.success("Proposta gerada com sucesso!");
     } catch (err: any) {
@@ -309,8 +315,10 @@ const PropostaPage = () => {
                 onRegenerate={() => { setProposta(null); handleGenerateProposal(); }}
                 onSave={async (text) => {
                   setProposta(text);
-                  if (propostaId) {
-                    await supabase.from("propostas").update({ proposta_texto: text }).eq("id", propostaId);
+                  if (propostaId && token) {
+                    await supabase.functions.invoke("public-proposta", {
+                      body: { token, update: { proposta_texto: text } },
+                    });
                   }
                 }}
                 onDownloadDocx={handleDownloadDocx}

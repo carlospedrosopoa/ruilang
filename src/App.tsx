@@ -3,7 +3,10 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/auth/AuthProvider";
+import { RequireAuth } from "@/auth/RequireAuth";
 import Index from "./pages/Index.tsx";
+import Login from "./pages/Login.tsx";
 import ContratoPage from "./pages/ContratoPage.tsx";
 import ColetaPage from "./pages/ColetaPage.tsx";
 import PainelSubmissoes from "./pages/PainelSubmissoes.tsx";
@@ -19,19 +22,56 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/contrato/:tipo" element={<ContratoPage />} />
-          <Route path="/coleta/:token" element={<ColetaPage />} />
-          <Route path="/painel" element={<PainelSubmissoes />} />
-          <Route path="/imobiliarias" element={<ImobiliariasPage />} />
-          <Route path="/proposta/:token" element={<PropostaPage />} />
-          <Route path="/relatorios" element={<RelatoriosPage />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <Index />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/contrato/:tipo"
+              element={
+                <RequireAuth>
+                  <ContratoPage />
+                </RequireAuth>
+              }
+            />
+            <Route path="/coleta/:token" element={<ColetaPage />} />
+            <Route
+              path="/painel"
+              element={
+                <RequireAuth>
+                  <PainelSubmissoes />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/imobiliarias"
+              element={
+                <RequireAuth requirePlatformAdmin>
+                  <ImobiliariasPage />
+                </RequireAuth>
+              }
+            />
+            <Route path="/proposta/:token" element={<PropostaPage />} />
+            <Route
+              path="/relatorios"
+              element={
+                <RequireAuth>
+                  <RelatoriosPage />
+                </RequireAuth>
+              }
+            />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

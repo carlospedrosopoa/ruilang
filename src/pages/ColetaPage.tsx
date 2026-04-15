@@ -95,34 +95,25 @@ const ColetaPage = () => {
     const loadSubmission = async () => {
       if (!token) return;
 
-      const { data, error } = await supabase
-        .from("submissions")
-        .select("*")
-        .eq("token", token)
-        .single();
+      const { data, error } = await supabase.functions.invoke("public-submission", {
+        body: { token },
+      });
 
-      if (error || !data) {
+      if (error || !data?.submission) {
         setLoading(false);
         return;
       }
 
-      setSubmissionId(data.id);
-      setTipo(data.tipo_contrato as TipoContrato);
-      setStatus(data.status);
-      setCorretorNome(data.corretor_nome || "");
-      setCorretorTelefone(data.corretor_telefone || "");
+      const submission = data.submission as any;
 
-      // Load linked imobiliaria
-      if ((data as any).imobiliaria_id) {
-        const { data: imobData } = await supabase
-          .from("imobiliarias")
-          .select("*")
-          .eq("id", (data as any).imobiliaria_id)
-          .single();
-        if (imobData) setImobiliaria(imobData);
-      }
+      setSubmissionId(submission.id);
+      setTipo(submission.tipo_contrato as TipoContrato);
+      setStatus(submission.status);
+      setCorretorNome(submission.corretor_nome || "");
+      setCorretorTelefone(submission.corretor_telefone || "");
+      if (submission.imobiliarias) setImobiliaria(submission.imobiliarias);
 
-      const dados = data.dados as any;
+      const dados = submission.dados as any;
       if (dados) {
         if (dados.vendedores?.length) setVendedores(dados.vendedores);
         if (dados.compradores?.length) setCompradores(dados.compradores);
@@ -132,7 +123,7 @@ const ColetaPage = () => {
         if (dados.locacao) setLocacao(dados.locacao);
       }
 
-      if (data.status === "enviado" || data.status === "contrato_gerado") {
+      if (submission.status === "enviado" || submission.status === "contrato_gerado") {
         setSubmitted(true);
       }
 
@@ -151,35 +142,40 @@ const ColetaPage = () => {
   });
 
   const saveDraft = async () => {
-    if (!submissionId) return;
+    if (!submissionId || !token) return;
     setIsSaving(true);
     try {
-      await supabase
-        .from("submissions")
-        .update({
-          corretor_nome: corretorNome,
-          corretor_telefone: corretorTelefone,
-          dados: getDados() as any,
-        })
-        .eq("id", submissionId);
+      const { error } = await supabase.functions.invoke("public-submission", {
+        body: {
+          token,
+          update: {
+            corretor_nome: corretorNome,
+            corretor_telefone: corretorTelefone,
+            dados: getDados() as any,
+          },
+        },
+      });
+      if (error) throw error;
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleSubmit = async () => {
-    if (!submissionId) return;
+    if (!submissionId || !token) return;
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from("submissions")
-        .update({
-          corretor_nome: corretorNome,
-          corretor_telefone: corretorTelefone,
-          dados: getDados() as any,
-          status: "enviado",
-        })
-        .eq("id", submissionId);
+      const { error } = await supabase.functions.invoke("public-submission", {
+        body: {
+          token,
+          update: {
+            corretor_nome: corretorNome,
+            corretor_telefone: corretorTelefone,
+            dados: getDados() as any,
+            status: "enviado",
+          },
+        },
+      });
 
       if (error) throw error;
       setSubmitted(true);
