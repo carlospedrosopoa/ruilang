@@ -54,7 +54,7 @@ const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
       const images = nested.flat();
 
       const { data, error } = await supabase.functions.invoke("extract-property", {
-        body: { images },
+        body: { images, ai: { provider: "openai" } },
       });
 
       if (error) throw error;

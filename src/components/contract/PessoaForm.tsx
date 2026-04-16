@@ -58,7 +58,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
       const images = nested.flat();
 
       const { data, error } = await supabase.functions.invoke("extract-document", {
-        body: { images },
+        body: { images, ai: { provider: "openai" } },
       });
 
       if (error) throw error;
