@@ -14,6 +14,78 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function asText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function collectClientCandidates(dados: any) {
+  const out: Array<{ tipo: "comprador" | "vendedor"; payload: any }> = [];
+  const compradores = Array.isArray(dados?.compradores) ? dados.compradores : [];
+  const vendedores = Array.isArray(dados?.vendedores) ? dados.vendedores : [];
+  for (const p of compradores) out.push({ tipo: "comprador", payload: p || {} });
+  for (const p of vendedores) out.push({ tipo: "vendedor", payload: p || {} });
+  return out;
+}
+
+async function syncClientesFromProposta(admin: any, proposta: any) {
+  if (!proposta?.imobiliaria_id) return;
+
+  const candidatos = collectClientCandidates(proposta?.dados || {});
+  const docs = Array.isArray(proposta?.documentos) ? proposta.documentos : [];
+
+  for (const item of candidatos) {
+    const payload = item.payload || {};
+    const nome = asText(payload.nomeCompleto);
+    if (!nome) continue;
+
+    const clienteInsert = {
+      imobiliaria_id: proposta.imobiliaria_id,
+      origem_proposta_id: proposta.id,
+      tipo_pessoa: item.tipo,
+      nome_completo: nome,
+      cpf: asText(payload.cpf) || null,
+      documento_tipo: asText(payload.documentoTipo) || null,
+      documento_numero: asText(payload.documentoNumero) || null,
+      email: asText(payload.email) || null,
+      telefone: asText(payload.telefone) || null,
+      endereco: asText(payload.endereco) || null,
+      bairro: asText(payload.bairro) || null,
+      cidade: asText(payload.cidade) || null,
+      estado: asText(payload.estado) || null,
+      cep: asText(payload.cep) || null,
+      payload,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: cliente, error: clienteError } = await admin
+      .from("clientes")
+      .upsert(clienteInsert, { onConflict: "origem_proposta_id,tipo_pessoa,nome_completo" })
+      .select("id")
+      .single();
+
+    if (clienteError || !cliente?.id) continue;
+
+    for (const doc of docs) {
+      const url = asText(doc?.url);
+      const nomeDoc = asText(doc?.nome);
+      if (!url || !nomeDoc) continue;
+
+      await admin.from("cliente_documentos").upsert(
+        {
+          cliente_id: cliente.id,
+          nome: nomeDoc,
+          tipo: asText(doc?.tipo) || null,
+          tamanho: typeof doc?.tamanho === "number" ? doc.tamanho : null,
+          url,
+          uploaded_at: asText(doc?.uploadedAt) || null,
+          origem_proposta_id: proposta.id,
+        },
+        { onConflict: "cliente_id,url" },
+      );
+    }
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -75,6 +147,13 @@ serve(async (req: Request) => {
       .single();
 
     if (updateError) return jsonResponse({ error: updateError.message }, 400);
+
+    const transitionedToEnviado =
+      patch.status === "enviado" &&
+      (existing.status !== "enviado" || "dados" in patch || "documentos" in patch);
+    if (transitionedToEnviado) {
+      await syncClientesFromProposta(admin, updated);
+    }
 
     return jsonResponse({ proposta: updated });
   } catch (e) {

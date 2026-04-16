@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Briefcase, BarChart3, Building2, ChevronRight } from "lucide-react";
+import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Briefcase, BarChart3, Building2, ChevronRight, Users } from "lucide-react";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -159,6 +159,10 @@ const PainelSubmissoes = () => {
             <Button variant="ghost" size="sm" onClick={() => navigate("/relatorios")}>
               <BarChart3 className="w-4 h-4 mr-1.5" />
               <span className="hidden sm:inline">Relatórios</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/clientes")}>
+              <Users className="w-4 h-4 mr-1.5" />
+              <span className="hidden sm:inline">Clientes</span>
             </Button>
             {isPlatformAdmin ? (
               <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>

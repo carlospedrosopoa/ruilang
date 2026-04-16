@@ -14,6 +14,135 @@ export type Database = {
   }
   public: {
     Tables: {
+      cliente_documentos: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          id: string
+          nome: string
+          origem_proposta_id: string | null
+          tamanho: number | null
+          tipo: string | null
+          uploaded_at: string | null
+          url: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          id?: string
+          nome: string
+          origem_proposta_id?: string | null
+          tamanho?: number | null
+          tipo?: string | null
+          uploaded_at?: string | null
+          url: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          id?: string
+          nome?: string
+          origem_proposta_id?: string | null
+          tamanho?: number | null
+          tipo?: string | null
+          uploaded_at?: string | null
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cliente_documentos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cliente_documentos_origem_proposta_id_fkey"
+            columns: ["origem_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "propostas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clientes: {
+        Row: {
+          bairro: string | null
+          cep: string | null
+          cidade: string | null
+          cpf: string | null
+          created_at: string
+          documento_numero: string | null
+          documento_tipo: string | null
+          email: string | null
+          endereco: string | null
+          estado: string | null
+          id: string
+          imobiliaria_id: string
+          nome_completo: string
+          origem_proposta_id: string | null
+          payload: Json
+          telefone: string | null
+          tipo_pessoa: string
+          updated_at: string
+        }
+        Insert: {
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string | null
+          cpf?: string | null
+          created_at?: string
+          documento_numero?: string | null
+          documento_tipo?: string | null
+          email?: string | null
+          endereco?: string | null
+          estado?: string | null
+          id?: string
+          imobiliaria_id: string
+          nome_completo: string
+          origem_proposta_id?: string | null
+          payload?: Json
+          telefone?: string | null
+          tipo_pessoa: string
+          updated_at?: string
+        }
+        Update: {
+          bairro?: string | null
+          cep?: string | null
+          cidade?: string | null
+          cpf?: string | null
+          created_at?: string
+          documento_numero?: string | null
+          documento_tipo?: string | null
+          email?: string | null
+          endereco?: string | null
+          estado?: string | null
+          id?: string
+          imobiliaria_id?: string
+          nome_completo?: string
+          origem_proposta_id?: string | null
+          payload?: Json
+          telefone?: string | null
+          tipo_pessoa?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clientes_imobiliaria_id_fkey"
+            columns: ["imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clientes_origem_proposta_id_fkey"
+            columns: ["origem_proposta_id"]
+            isOneToOne: false
+            referencedRelation: "propostas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       imobiliarias: {
         Row: {
           bairro: string | null

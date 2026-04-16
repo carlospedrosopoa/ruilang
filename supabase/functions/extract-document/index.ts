@@ -135,8 +135,8 @@ async function callOpenAiExtractDocument(params: {
   content: any[];
 }) {
   const models = [
-    Deno.env.get("OPENAI_MODEL_EXTRACT_DOCUMENT") || "gpt-4o-mini",
-    Deno.env.get("OPENAI_MODEL_EXTRACT_DOCUMENT_FALLBACK") || "gpt-4o",
+    Deno.env.get("OPENAI_MODEL_EXTRACT_DOCUMENT") || "gpt-4o",
+    Deno.env.get("OPENAI_MODEL_EXTRACT_DOCUMENT_FALLBACK") || "gpt-4o-mini",
   ];
 
   let lastError = "";
@@ -282,6 +282,16 @@ REGRAS:
 - Para estado, use a sigla (SP, RJ, RS, etc.)
 - Se o documento for CNH, extraia o número do registro
 - Campos não encontrados devem ser string vazia
+
+REGRAS ESPECÍFICAS PARA CNH DIGITAL/FÍSICA:
+- Se houver "CARTEIRA NACIONAL DE HABILITAÇÃO", "CNH", "CAT HAB", "Nº REGISTRO" ou layout típico da CNH, documentoTipo DEVE ser "cnh".
+- Para CNH, priorize:
+  - documentoNumero: campo "Nº REGISTRO" (ou número principal da habilitação).
+  - documentoOrgao: órgão emissor/UF visível no documento (ex.: Detran + UF, quando disponível).
+- No bloco "FILIAÇÃO" da CNH, normalmente há duas linhas:
+  - primeira linha = filiacaoPai
+  - segunda linha = filiacaoMae
+- Não confunda o nome do titular com filiação. Se filiação estiver legível, não deixar em branco.
 
 FORMATO DE RESPOSTA:
 - Retorne APENAS um JSON válido, sem markdown, no formato do schema informado`; 

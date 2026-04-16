@@ -19,6 +19,34 @@ interface PessoaFormProps {
   hideEstadoCivil?: boolean;
 }
 
+const UF_REGEX = /\b(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i;
+
+function cleanAddressValue(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function parseAddressParts(fullAddress: string) {
+  const text = cleanAddressValue(fullAddress);
+  if (!text) return { bairro: "", cidade: "", estado: "", cep: "" };
+
+  const cep = text.match(/\b\d{5}-?\d{3}\b/)?.[0] || "";
+  const estado = text.match(UF_REGEX)?.[0]?.toUpperCase() || "";
+
+  let bairro = text.match(/(?:\bbairro\b\s*[:\-]?\s*)([^,;/]+)/i)?.[1]?.trim() || "";
+  let cidade =
+    text.match(/(?:\bmunic[ií]pio\b|\bcidade\b)\s*[:\-]?\s*([^,;/]+)/i)?.[1]?.trim() || "";
+
+  if (!cidade) {
+    const cityState = text.match(/(?:,\s*|-\s*)([^,;/]+?)\s*[-/]\s*(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i);
+    if (cityState?.[1]) cidade = cityState[1].trim();
+  }
+
+  if (bairro) bairro = cleanAddressValue(bairro);
+  if (cidade) cidade = cleanAddressValue(cidade);
+
+  return { bairro, cidade, estado, cep };
+}
+
 const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil }: PessoaFormProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -71,12 +99,20 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
       for (const [key, value] of Object.entries(dados)) {
         if (value && typeof value === "string" && value.trim() !== "") {
           const pessoaKey = key as keyof Pessoa;
-          const currentValue = merged[pessoaKey];
-          if (!currentValue || currentValue === "") {
-            (merged as any)[pessoaKey] = value;
-          }
+          if (pessoaKey in merged) (merged as any)[pessoaKey] = value.trim();
         }
       }
+
+      const explicitBairro = typeof dados.bairro === "string" && dados.bairro.trim() !== "";
+      const explicitCidade = typeof dados.cidade === "string" && dados.cidade.trim() !== "";
+      const explicitEstado = typeof dados.estado === "string" && dados.estado.trim() !== "";
+      const explicitCep = typeof dados.cep === "string" && dados.cep.trim() !== "";
+
+      const parsed = parseAddressParts(merged.endereco || "");
+      if (parsed.bairro && !explicitBairro) merged.bairro = parsed.bairro;
+      if (parsed.cidade && !explicitCidade) merged.cidade = parsed.cidade;
+      if (parsed.estado && !explicitEstado) merged.estado = parsed.estado;
+      if (parsed.cep && !explicitCep) merged.cep = parsed.cep;
 
       onChange(merged);
       toast.success("Dados extraídos com sucesso! Verifique e complete os campos.");

@@ -13,6 +13,7 @@ import PainelSubmissoes from "./pages/PainelSubmissoes.tsx";
 import ImobiliariasPage from "./pages/ImobiliariasPage.tsx";
 import PropostaPage from "./pages/PropostaPage.tsx";
 import RelatoriosPage from "./pages/RelatoriosPage.tsx";
+import ClientesPage from "./pages/ClientesPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -65,6 +66,14 @@ const App = () => (
               element={
                 <RequireAuth>
                   <RelatoriosPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/clientes"
+              element={
+                <RequireAuth>
+                  <ClientesPage />
                 </RequireAuth>
               }
             />
