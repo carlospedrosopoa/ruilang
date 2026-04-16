@@ -65,6 +65,45 @@ export type Database = {
           },
         ]
       }
+      cliente_propostas: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          id: string
+          proposta_id: string
+          tipo_pessoa: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          id?: string
+          proposta_id: string
+          tipo_pessoa: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          id?: string
+          proposta_id?: string
+          tipo_pessoa?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cliente_propostas_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cliente_propostas_proposta_id_fkey"
+            columns: ["proposta_id"]
+            isOneToOne: false
+            referencedRelation: "propostas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clientes: {
         Row: {
           bairro: string | null

@@ -1,20 +1,33 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, ChevronRight, FileText, Loader2, Users, BarChart3, ClipboardList } from "lucide-react";
+import { Building2, ChevronRight, FileText, Loader2, Users, BarChart3, ClipboardList, Pencil, Upload, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
+import { toast } from "sonner";
 
 type ClienteRow = {
   id: string;
   nome_completo: string;
-  tipo_pessoa: string;
   cpf: string | null;
+  documento_tipo: string | null;
+  documento_numero: string | null;
   telefone: string | null;
   email: string | null;
+  endereco: string | null;
+  bairro: string | null;
   cidade: string | null;
   estado: string | null;
+  cep: string | null;
+  imobiliaria_id: string;
   origem_proposta_id: string | null;
   created_at: string;
 };
@@ -26,6 +39,17 @@ type ClienteDocumentoRow = {
   url: string;
 };
 
+type ClientePropostaRow = {
+  cliente_id: string;
+  tipo_pessoa: string;
+  propostas: {
+    id: string;
+    token: string;
+    status: string;
+    created_at: string;
+  } | null;
+};
+
 export default function ClientesPage() {
   const navigate = useNavigate();
   const { isPlatformAdmin, signOut } = useAuth();
@@ -33,18 +57,30 @@ export default function ClientesPage() {
   const [search, setSearch] = useState("");
   const [clientes, setClientes] = useState<ClienteRow[]>([]);
   const [docs, setDocs] = useState<ClienteDocumentoRow[]>([]);
+  const [clientePropostas, setClientePropostas] = useState<ClientePropostaRow[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState<ClienteRow | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [uploadingForClienteId, setUploadingForClienteId] = useState<string | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  const load = async () => {
+    setLoading(true);
+    const [clientesRes, docsRes, relRes] = await Promise.all([
+      supabase.from("clientes").select("*").order("created_at", { ascending: false }).limit(1000),
+      supabase.from("cliente_documentos").select("id, cliente_id, nome, url").limit(6000),
+      supabase
+        .from("cliente_propostas")
+        .select("cliente_id, tipo_pessoa, propostas(id, token, status, created_at)")
+        .limit(6000),
+    ]);
+    setClientes((clientesRes.data as ClienteRow[]) || []);
+    setDocs((docsRes.data as ClienteDocumentoRow[]) || []);
+    setClientePropostas((relRes.data as any[]) || []);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      const [clientesRes, docsRes] = await Promise.all([
-        supabase.from("clientes").select("*").order("created_at", { ascending: false }).limit(500),
-        supabase.from("cliente_documentos").select("id, cliente_id, nome, url").limit(3000),
-      ]);
-      setClientes((clientesRes.data as ClienteRow[]) || []);
-      setDocs((docsRes.data as ClienteDocumentoRow[]) || []);
-      setLoading(false);
-    };
     load();
   }, []);
 
@@ -58,6 +94,16 @@ export default function ClientesPage() {
     return map;
   }, [docs]);
 
+  const propostasByCliente = useMemo(() => {
+    const map = new Map<string, ClientePropostaRow[]>();
+    for (const r of clientePropostas) {
+      const arr = map.get(r.cliente_id) || [];
+      arr.push(r);
+      map.set(r.cliente_id, arr);
+    }
+    return map;
+  }, [clientePropostas]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return clientes;
@@ -70,6 +116,76 @@ export default function ClientesPage() {
       );
     });
   }, [clientes, search]);
+
+  const openEdit = (cliente: ClienteRow) => {
+    setEditing({ ...cliente });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const patch = {
+        nome_completo: editing.nome_completo,
+        cpf: editing.cpf,
+        documento_tipo: editing.documento_tipo,
+        documento_numero: editing.documento_numero,
+        telefone: editing.telefone,
+        email: editing.email,
+        endereco: editing.endereco,
+        bairro: editing.bairro,
+        cidade: editing.cidade,
+        estado: editing.estado,
+        cep: editing.cep,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from("clientes").update(patch).eq("id", editing.id);
+      if (error) throw error;
+      toast.success("Cliente atualizado com sucesso.");
+      setEditOpen(false);
+      await load();
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao atualizar cliente.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openUpload = (clienteId: string) => {
+    setUploadingForClienteId(clienteId);
+    uploadInputRef.current?.click();
+  };
+
+  const handleUploadForCliente = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!uploadingForClienteId || files.length === 0) return;
+
+    try {
+      for (const file of files) {
+        const path = `clientes/${uploadingForClienteId}/${Date.now()}_${file.name}`;
+        const upload = await supabase.storage.from("proposta-docs").upload(path, file);
+        if (upload.error) throw upload.error;
+        const { data: urlData } = supabase.storage.from("proposta-docs").getPublicUrl(path);
+        const ins = await supabase.from("cliente_documentos").insert({
+          cliente_id: uploadingForClienteId,
+          nome: file.name,
+          tipo: file.type || null,
+          tamanho: file.size,
+          url: urlData.publicUrl,
+          uploaded_at: new Date().toISOString(),
+        } as any);
+        if (ins.error) throw ins.error;
+      }
+      toast.success("Documento(s) anexado(s) ao cliente.");
+      await load();
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao anexar documentos.");
+    } finally {
+      setUploadingForClienteId(null);
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -118,6 +234,14 @@ export default function ClientesPage() {
             className="w-full sm:w-96"
           />
         </div>
+        <input
+          ref={uploadInputRef}
+          type="file"
+          multiple
+          onChange={handleUploadForCliente}
+          className="hidden"
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+        />
 
         {loading ? (
           <div className="py-16 flex items-center justify-center">
@@ -131,18 +255,31 @@ export default function ClientesPage() {
           <div className="grid gap-4">
             {filtered.map((c) => {
               const clienteDocs = docsByCliente.get(c.id) || [];
+              const rels = propostasByCliente.get(c.id) || [];
               return (
                 <div key={c.id} className="border border-border rounded-xl p-5 bg-card">
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
                       <h3 className="font-semibold text-foreground text-lg">{c.nome_completo}</h3>
                       <p className="text-sm text-muted-foreground">
-                        {c.tipo_pessoa === "comprador" ? "Comprador" : "Vendedor"}
+                        {rels.length > 0
+                          ? Array.from(new Set(rels.map((r) => (r.tipo_pessoa === "comprador" ? "Comprador" : "Vendedor")))).join(" / ")
+                          : "Cliente"}
                         {c.cpf ? ` • CPF ${c.cpf}` : ""}
                       </p>
                     </div>
-                    <div className="text-xs px-2 py-1 rounded-md border border-border text-muted-foreground">
-                      {new Date(c.created_at).toLocaleDateString("pt-BR")}
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs px-2 py-1 rounded-md border border-border text-muted-foreground">
+                        {new Date(c.created_at).toLocaleDateString("pt-BR")}
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => openUpload(c.id)}>
+                        <Upload className="w-4 h-4 mr-1.5" />
+                        Anexar
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => openEdit(c)}>
+                        <Pencil className="w-4 h-4 mr-1.5" />
+                        Editar
+                      </Button>
                     </div>
                   </div>
 
@@ -150,10 +287,38 @@ export default function ClientesPage() {
                     <p>{c.telefone || "-"}</p>
                     <p>{c.email || "-"}</p>
                     <p>{[c.cidade, c.estado].filter(Boolean).join(" / ") || "-"}</p>
-                    <p>Proposta: {c.origem_proposta_id ? "Vinculada" : "Manual"}</p>
+                    <p>Propostas: {rels.length}</p>
                   </div>
 
                   <div className="mt-4">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Propostas vinculadas ({rels.length})
+                    </p>
+                    {rels.length === 0 ? (
+                      <p className="text-sm text-muted-foreground mb-3">Sem propostas vinculadas.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {rels.slice(0, 8).map((r, idx) => {
+                          const prop = r.propostas;
+                          if (!prop) return null;
+                          return (
+                            <a
+                              key={`${prop.id}-${idx}`}
+                              href={`/proposta/${prop.token}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border hover:bg-muted/40"
+                            >
+                              <Link2 className="w-3.5 h-3.5" />
+                              <span>
+                                {new Date(prop.created_at).toLocaleDateString("pt-BR")} • {prop.status}
+                              </span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                       Documentos anexados ({clienteDocs.length})
                     </p>
@@ -182,6 +347,67 @@ export default function ClientesPage() {
           </div>
         )}
       </main>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Editar Cliente</DialogTitle>
+          </DialogHeader>
+          {editing ? (
+            <div className="space-y-3">
+              <div>
+                <Label>Nome Completo</Label>
+                <Input value={editing.nome_completo} onChange={(e) => setEditing({ ...editing, nome_completo: e.target.value })} />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <Label>CPF</Label>
+                  <Input value={editing.cpf || ""} onChange={(e) => setEditing({ ...editing, cpf: e.target.value || null })} />
+                </div>
+                <div>
+                  <Label>Telefone</Label>
+                  <Input value={editing.telefone || ""} onChange={(e) => setEditing({ ...editing, telefone: e.target.value || null })} />
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <Label>E-mail</Label>
+                  <Input value={editing.email || ""} onChange={(e) => setEditing({ ...editing, email: e.target.value || null })} />
+                </div>
+                <div>
+                  <Label>Documento</Label>
+                  <Input value={editing.documento_numero || ""} onChange={(e) => setEditing({ ...editing, documento_numero: e.target.value || null })} />
+                </div>
+              </div>
+              <div>
+                <Label>Endereço</Label>
+                <Input value={editing.endereco || ""} onChange={(e) => setEditing({ ...editing, endereco: e.target.value || null })} />
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <div>
+                  <Label>Bairro</Label>
+                  <Input value={editing.bairro || ""} onChange={(e) => setEditing({ ...editing, bairro: e.target.value || null })} />
+                </div>
+                <div>
+                  <Label>Cidade</Label>
+                  <Input value={editing.cidade || ""} onChange={(e) => setEditing({ ...editing, cidade: e.target.value || null })} />
+                </div>
+                <div>
+                  <Label>Estado</Label>
+                  <Input value={editing.estado || ""} onChange={(e) => setEditing({ ...editing, estado: e.target.value || null })} />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+                <Button onClick={saveEdit} disabled={saving}>
+                  {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

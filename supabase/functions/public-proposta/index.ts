@@ -27,16 +27,30 @@ function collectClientCandidates(dados: any) {
   return out;
 }
 
+function extractNome(payload: any) {
+  return (
+    asText(payload?.nomeCompleto) ||
+    asText(payload?.nome_completo) ||
+    asText(payload?.nome) ||
+    asText(payload?.fullName)
+  );
+}
+
 async function syncClientesFromProposta(admin: any, proposta: any) {
-  if (!proposta?.imobiliaria_id) return;
+  const stats = { candidatos: 0, clientesSincronizados: 0, docsSincronizados: 0, puladosSemNome: 0, erros: 0 };
+  if (!proposta?.imobiliaria_id) return stats;
 
   const candidatos = collectClientCandidates(proposta?.dados || {});
   const docs = Array.isArray(proposta?.documentos) ? proposta.documentos : [];
+  stats.candidatos = candidatos.length;
 
   for (const item of candidatos) {
     const payload = item.payload || {};
-    const nome = asText(payload.nomeCompleto);
-    if (!nome) continue;
+    const nome = extractNome(payload);
+    if (!nome) {
+      stats.puladosSemNome++;
+      continue;
+    }
 
     const clienteInsert = {
       imobiliaria_id: proposta.imobiliaria_id,
@@ -57,20 +71,101 @@ async function syncClientesFromProposta(admin: any, proposta: any) {
       updated_at: new Date().toISOString(),
     };
 
-    const { data: cliente, error: clienteError } = await admin
-      .from("clientes")
-      .upsert(clienteInsert, { onConflict: "origem_proposta_id,tipo_pessoa,nome_completo" })
-      .select("id")
-      .single();
+    const cpf = clienteInsert.cpf;
+    const docNumero = clienteInsert.documento_numero;
+    const docTipo = clienteInsert.documento_tipo;
+    let cliente: any = null;
+    let clienteError: any = null;
 
-    if (clienteError || !cliente?.id) continue;
+    if (cpf) {
+      const existingByCpf = await admin
+        .from("clientes")
+        .select("id")
+        .eq("imobiliaria_id", proposta.imobiliaria_id)
+        .eq("cpf", cpf)
+        .limit(1)
+        .maybeSingle();
+      if (!existingByCpf.error && existingByCpf.data?.id) {
+        cliente = existingByCpf.data;
+      }
+    }
+
+    if (!cliente && docNumero) {
+      const existingByDoc = await admin
+        .from("clientes")
+        .select("id")
+        .eq("imobiliaria_id", proposta.imobiliaria_id)
+        .eq("documento_numero", docNumero)
+        .eq("documento_tipo", docTipo || "")
+        .limit(1)
+        .maybeSingle();
+      if (!existingByDoc.error && existingByDoc.data?.id) {
+        cliente = existingByDoc.data;
+      }
+    }
+
+    if (cliente?.id) {
+      const clienteUpdate = {
+        imobiliaria_id: clienteInsert.imobiliaria_id,
+        origem_proposta_id: clienteInsert.origem_proposta_id,
+        nome_completo: clienteInsert.nome_completo,
+        cpf: clienteInsert.cpf,
+        documento_tipo: clienteInsert.documento_tipo,
+        documento_numero: clienteInsert.documento_numero,
+        email: clienteInsert.email,
+        telefone: clienteInsert.telefone,
+        endereco: clienteInsert.endereco,
+        bairro: clienteInsert.bairro,
+        cidade: clienteInsert.cidade,
+        estado: clienteInsert.estado,
+        cep: clienteInsert.cep,
+        payload: clienteInsert.payload,
+        updated_at: clienteInsert.updated_at,
+      };
+      const updatedCliente = await admin
+        .from("clientes")
+        .update(clienteUpdate)
+        .eq("id", cliente.id)
+        .select("id")
+        .single();
+      clienteError = updatedCliente.error;
+      cliente = updatedCliente.data || cliente;
+    } else {
+      const insertedCliente = await admin
+        .from("clientes")
+        .insert(clienteInsert)
+        .select("id")
+        .single();
+      clienteError = insertedCliente.error;
+      cliente = insertedCliente.data || null;
+    }
+
+    if (clienteError || !cliente?.id) {
+      stats.erros++;
+      console.error("syncClientesFromProposta upsert cliente error:", clienteError);
+      continue;
+    }
+    stats.clientesSincronizados++;
+
+    const { error: relError } = await admin.from("cliente_propostas").upsert(
+      {
+        cliente_id: cliente.id,
+        proposta_id: proposta.id,
+        tipo_pessoa: item.tipo,
+      },
+      { onConflict: "cliente_id,proposta_id,tipo_pessoa" },
+    );
+    if (relError) {
+      stats.erros++;
+      console.error("syncClientesFromProposta upsert cliente_propostas error:", relError);
+    }
 
     for (const doc of docs) {
       const url = asText(doc?.url);
       const nomeDoc = asText(doc?.nome);
       if (!url || !nomeDoc) continue;
 
-      await admin.from("cliente_documentos").upsert(
+      const { error: docError } = await admin.from("cliente_documentos").upsert(
         {
           cliente_id: cliente.id,
           nome: nomeDoc,
@@ -82,8 +177,16 @@ async function syncClientesFromProposta(admin: any, proposta: any) {
         },
         { onConflict: "cliente_id,url" },
       );
+      if (docError) {
+        stats.erros++;
+        console.error("syncClientesFromProposta upsert doc error:", docError);
+      } else {
+        stats.docsSincronizados++;
+      }
     }
   }
+
+  return stats;
 }
 
 serve(async (req: Request) => {
@@ -113,11 +216,15 @@ serve(async (req: Request) => {
     if (!existing) return jsonResponse({ error: "Not found" }, 404);
 
     if (!update) {
+      let sync: any = null;
+      if (existing.status === "enviado") {
+        sync = await syncClientesFromProposta(admin, existing);
+      }
       const proposta = {
         ...existing,
         imobiliaria_nome: existing?.imobiliaria_nome || existing?.imobiliarias?.nome || null,
       };
-      return jsonResponse({ proposta });
+      return jsonResponse({ proposta, sync });
     }
 
     const patch: any = {};
@@ -139,23 +246,26 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "Invalid status" }, 400);
     }
 
-    const { data: updated, error: updateError } = await admin
-      .from("propostas")
-      .update(patch)
-      .eq("id", existing.id)
-      .select("*")
-      .single();
-
-    if (updateError) return jsonResponse({ error: updateError.message }, 400);
-
-    const transitionedToEnviado =
-      patch.status === "enviado" &&
-      (existing.status !== "enviado" || "dados" in patch || "documentos" in patch);
-    if (transitionedToEnviado) {
-      await syncClientesFromProposta(admin, updated);
+    let updated = existing;
+    if (Object.keys(patch).length > 0) {
+      const result = await admin
+        .from("propostas")
+        .update(patch)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      if (result.error) return jsonResponse({ error: result.error.message }, 400);
+      updated = result.data;
     }
 
-    return jsonResponse({ proposta: updated });
+    let sync: any = null;
+    const shouldSyncClientes =
+      patch.status === "enviado" || "dados" in patch || "documentos" in patch;
+    if (shouldSyncClientes) {
+      sync = await syncClientesFromProposta(admin, updated);
+    }
+
+    return jsonResponse({ proposta: updated, sync });
   } catch (e) {
     console.error("public-proposta error:", e);
     return jsonResponse({ error: e instanceof Error ? e.message : "Erro desconhecido" }, 500);
