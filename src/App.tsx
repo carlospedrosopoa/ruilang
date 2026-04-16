@@ -29,7 +29,7 @@ const App = () => (
             <Route
               path="/"
               element={
-                <RequireAuth>
+                <RequireAuth requirePlatformAdmin>
                   <Index />
                 </RequireAuth>
               }
@@ -37,7 +37,7 @@ const App = () => (
             <Route
               path="/contrato/:tipo"
               element={
-                <RequireAuth>
+                <RequireAuth requirePlatformAdmin>
                   <ContratoPage />
                 </RequireAuth>
               }

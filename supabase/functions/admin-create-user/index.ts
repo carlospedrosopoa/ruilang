@@ -71,7 +71,19 @@ serve(async (req: Request) => {
       email_confirm: true,
     });
 
-    if (createError) return jsonResponse({ error: createError.message }, 400);
+    if (createError) {
+      const msg = (createError.message || "").toLowerCase();
+      if (msg.includes("already") || msg.includes("registered") || msg.includes("exists")) {
+        return jsonResponse(
+          {
+            error:
+              "Este e-mail já está cadastrado no Auth. Use outro e-mail ou implemente um fluxo de convite para usuário existente.",
+          },
+          409,
+        );
+      }
+      return jsonResponse({ error: createError.message }, 400);
+    }
     if (!created?.user) return jsonResponse({ error: "Failed to create user" }, 500);
 
     const userId = created.user.id;

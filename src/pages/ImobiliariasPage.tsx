@@ -213,7 +213,16 @@ const ImobiliariasPage = () => {
       }
       setUserDialogOpen(false);
     } catch (err: any) {
-      const message = typeof err?.message === "string" ? err.message : "Erro ao criar usuário.";
+      let message = typeof err?.message === "string" ? err.message : "Erro ao criar usuário.";
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (typeof body?.error === "string" && body.error.trim()) {
+            message = body.error;
+          }
+        } catch {}
+      }
       toast.error(message);
     } finally {
       setCreatingUser(false);

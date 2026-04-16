@@ -25,7 +25,7 @@ export function RequireAuth({
   }
 
   if (requirePlatformAdmin && !isPlatformAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/painel" replace />;
   }
 
   if (!isPlatformAdmin && !activeTenantId) {
