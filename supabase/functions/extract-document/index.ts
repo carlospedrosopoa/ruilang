@@ -125,6 +125,7 @@ function getDefaultProvider(): AiProvider {
 
 function isFailoverEnabled() {
   const raw = (Deno.env.get("AI_FAILOVER_ENABLED") || "").toLowerCase();
+  if (!raw) return true;
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
@@ -152,32 +153,30 @@ async function callOpenAiExtractDocument(params: {
           { role: "system", content: params.systemPrompt },
           { role: "user", content: params.content },
         ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_document_data",
-              description: "Retorna os dados extraídos do documento em formato estruturado.",
-              parameters: extractionSchema,
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "extract_document_data" } },
+        response_format: { type: "json_object" },
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       lastError = errorText;
-      if (response.status === 401) throw new Error("Credenciais inválidas. Verifique OPENAI_API_KEY.");
-      if (response.status === 429) throw new Error("Limite de requisições excedido. Tente novamente em alguns segundos.");
+      if (response.status === 401) {
+        const e: any = new Error("Credenciais inválidas. Verifique OPENAI_API_KEY.");
+        e.status = 401;
+        throw e;
+      }
+      if (response.status === 429) {
+        const e: any = new Error("Limite de requisições excedido. Tente novamente em alguns segundos.");
+        e.status = 429;
+        throw e;
+      }
       if (response.status >= 500) continue;
       throw new Error(`Erro do provedor OpenAI (${response.status})`);
     }
 
     const data = await response.json();
     try {
-      return normalizeExtraction(extractToolArguments(data) ?? extractJsonFallback(data));
+      return normalizeExtraction(extractJsonFallback(data));
     } catch (parseError) {
       lastError = parseError instanceof Error ? parseError.message : String(parseError);
       continue;
@@ -223,8 +222,16 @@ async function callGeminiExtractDocument(params: {
     if (!response.ok) {
       const errorText = await response.text();
       lastError = errorText;
-      if (response.status === 401 || response.status === 403) throw new Error("Credenciais inválidas. Verifique GEMINI_API_KEY.");
-      if (response.status === 429) throw new Error("Limite de requisições excedido. Tente novamente em alguns segundos.");
+      if (response.status === 401 || response.status === 403) {
+        const e: any = new Error("Credenciais inválidas. Verifique GEMINI_API_KEY.");
+        e.status = response.status;
+        throw e;
+      }
+      if (response.status === 429) {
+        const e: any = new Error("Limite de requisições excedido. Tente novamente em alguns segundos.");
+        e.status = 429;
+        throw e;
+      }
       if (response.status >= 500) continue;
       throw new Error(`Erro do provedor Gemini (${response.status})`);
     }
@@ -327,6 +334,7 @@ FORMATO DE RESPOSTA:
     throw lastError instanceof Error ? lastError : new Error("Não foi possível extrair dados do documento.");
   } catch (e) {
     console.error("extract-document error:", e);
-    return jsonResponse({ error: e instanceof Error ? e.message : "Erro desconhecido" }, 500);
+    const status = typeof (e as any)?.status === "number" ? (e as any).status : 500;
+    return jsonResponse({ error: e instanceof Error ? e.message : "Erro desconhecido" }, status);
   }
 });

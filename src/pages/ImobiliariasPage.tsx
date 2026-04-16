@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Building2, Plus, Pencil, Trash2, Loader2, UserPlus } from "lucide-react";
+import { ArrowLeft, Building2, Plus, Pencil, Trash2, Loader2, UserPlus, Activity } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -63,6 +63,7 @@ const ImobiliariasPage = () => {
   const [userRole, setUserRole] = useState<"owner" | "admin" | "member">("admin");
   const [userPassword, setUserPassword] = useState("");
   const [creatingUser, setCreatingUser] = useState(false);
+  const [testingAI, setTestingAI] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -231,6 +232,33 @@ const ImobiliariasPage = () => {
 
   const updateField = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
 
+  const handleTestOpenAI = async () => {
+    setTestingAI(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-ai-health", {
+        body: { provider: "openai" },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const remainingReq = data?.rateLimit?.requestsRemaining ?? "?";
+      const remainingTok = data?.rateLimit?.tokensRemaining ?? "?";
+      toast.success(`OpenAI ok (${data?.model || "model"}). Restante: req ${remainingReq} / tokens ${remainingTok}`);
+    } catch (err: any) {
+      let message = typeof err?.message === "string" ? err.message : "Falha no teste da OpenAI.";
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (typeof body?.error === "string" && body.error.trim()) message = body.error;
+        } catch {}
+      }
+      toast.error(`OpenAI falhou: ${message}`);
+    } finally {
+      setTestingAI(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
@@ -251,9 +279,15 @@ const ImobiliariasPage = () => {
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="font-display text-2xl font-bold text-foreground">Imobiliárias Cadastradas</h2>
-          <Button onClick={openNew}>
-            <Plus className="w-4 h-4 mr-2" /> Nova Imobiliária
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleTestOpenAI} disabled={testingAI}>
+              {testingAI ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Activity className="w-4 h-4 mr-2" />}
+              Testar OpenAI
+            </Button>
+            <Button onClick={openNew}>
+              <Plus className="w-4 h-4 mr-2" /> Nova Imobiliária
+            </Button>
+          </div>
         </div>
 
         {loading ? (

@@ -33,14 +33,20 @@ serve(async (req: Request) => {
 
     const { data: existing, error: findError } = await admin
       .from("propostas")
-      .select("*")
+      .select("*, imobiliarias(id, nome)")
       .eq("token", token)
       .maybeSingle();
 
     if (findError) return jsonResponse({ error: findError.message }, 400);
     if (!existing) return jsonResponse({ error: "Not found" }, 404);
 
-    if (!update) return jsonResponse({ proposta: existing });
+    if (!update) {
+      const proposta = {
+        ...existing,
+        imobiliaria_nome: existing?.imobiliaria_nome || existing?.imobiliarias?.nome || null,
+      };
+      return jsonResponse({ proposta });
+    }
 
     const patch: any = {};
     if (typeof update?.dados !== "undefined") patch.dados = update.dados;
@@ -50,7 +56,6 @@ serve(async (req: Request) => {
     if (typeof update?.corretor_nome === "string") patch.corretor_nome = update.corretor_nome;
     if (typeof update?.corretor_creci === "string") patch.corretor_creci = update.corretor_creci;
     if (typeof update?.corretor_telefone === "string") patch.corretor_telefone = update.corretor_telefone;
-    if (typeof update?.imobiliaria_nome === "string") patch.imobiliaria_nome = update.imobiliaria_nome;
 
     if (existing.status !== "rascunho") {
       if ("dados" in patch || "documentos" in patch || ("status" in patch && patch.status !== existing.status)) {

@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Briefcase } from "lucide-react";
+import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Briefcase, BarChart3, Building2, ChevronRight } from "lucide-react";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -50,7 +50,7 @@ const statusLabels: Record<string, { label: string; icon: React.ElementType; col
 
 const PainelSubmissoes = () => {
   const navigate = useNavigate();
-  const { activeTenantId, isPlatformAdmin } = useAuth();
+  const { activeTenantId, isPlatformAdmin, memberships, signOut } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [propostas, setPropostas] = useState<Proposta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,9 +104,11 @@ const PainelSubmissoes = () => {
     }
     setCreating(true);
     try {
+      const activeTenant = memberships.find((m) => m.tenantId === activeTenantId);
+      const activeTenantName = activeTenant?.tenant?.nome || null;
       const { data, error } = await supabase
         .from("propostas")
-        .insert({ imobiliaria_id: activeTenantId })
+        .insert({ imobiliaria_id: activeTenantId, imobiliaria_nome: activeTenantName })
         .select()
         .single();
       if (error) throw error;
@@ -153,6 +155,22 @@ const PainelSubmissoes = () => {
               <p className="text-xs text-muted-foreground">Painel Administrativo</p>
             </div>
           </button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/relatorios")}>
+              <BarChart3 className="w-4 h-4 mr-1.5" />
+              <span className="hidden sm:inline">Relatórios</span>
+            </Button>
+            {isPlatformAdmin ? (
+              <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
+                <Building2 className="w-4 h-4 mr-1.5" />
+                <span className="hidden sm:inline">Imobiliárias</span>
+              </Button>
+            ) : null}
+            <Button variant="ghost" size="sm" onClick={() => signOut()}>
+              <ChevronRight className="w-4 h-4 mr-1.5 rotate-180" />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
+          </div>
         </div>
       </header>
 

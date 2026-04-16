@@ -82,7 +82,7 @@ const PropostaPage = () => {
       setStatus(propostaRow.status);
       setCorretorNome(propostaRow.corretor_nome || "");
       setCorretorCreci(propostaRow.corretor_creci || "");
-      setImobiliariaNome(propostaRow.imobiliaria_nome || "");
+      setImobiliariaNome(propostaRow.imobiliaria_nome || propostaRow.imobiliarias?.nome || "");
 
       const dados = propostaRow.dados as any;
       if (dados) {
@@ -368,11 +368,12 @@ const PropostaPage = () => {
               />
             </div>
             <div>
-              <Label>Imobiliária <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+              <Label>Imobiliária</Label>
               <Input
                 value={imobiliariaNome}
-                onChange={(e) => setImobiliariaNome(e.target.value)}
-                placeholder="Nome da imobiliária"
+                placeholder="Imobiliária vinculada ao link"
+                readOnly
+                disabled
               />
             </div>
 
