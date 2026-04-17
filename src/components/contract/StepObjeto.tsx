@@ -14,9 +14,10 @@ import { fileToVisionBase64Images } from "@/lib/imageUtils";
 interface StepObjetoProps {
   imovel: Imovel;
   onChange: (imovel: Imovel) => void;
+  onExtractFiles?: (files: File[]) => Promise<void> | void;
 }
 
-const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
+const StepObjeto = ({ imovel, onChange, onExtractFiles }: StepObjetoProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,6 +51,15 @@ const StepObjeto = ({ imovel, onChange }: StepObjetoProps) => {
 
     setIsExtracting(true);
     try {
+      if (onExtractFiles) {
+        try {
+          await onExtractFiles(files);
+        } catch (uploadErr) {
+          console.warn("Auto-attach docs failed:", uploadErr);
+          toast.error("Não foi possível anexar automaticamente os arquivos da extração.");
+        }
+      }
+
       const nested = await Promise.all(files.map((f) => fileToVisionBase64Images(f)));
       const images = nested.flat();
 

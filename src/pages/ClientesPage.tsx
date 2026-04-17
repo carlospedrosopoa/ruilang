@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, ChevronRight, FileText, Loader2, Users, BarChart3, ClipboardList, Pencil, Upload, Link2 } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, ChevronUp, FileText, Loader2, Users, BarChart3, ClipboardList, Pencil, Upload, Link2, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +64,7 @@ export default function ClientesPage() {
   const [editing, setEditing] = useState<ClienteRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingForClienteId, setUploadingForClienteId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -187,6 +190,16 @@ export default function ClientesPage() {
     }
   };
 
+  const toggleExpanded = (clienteId: string) => {
+    setExpanded((prev) => ({ ...prev, [clienteId]: !prev[clienteId] }));
+  };
+
+  const getStatusVariant = (status: string) => {
+    if (status === "enviado") return "default";
+    if (status === "rascunho") return "secondary";
+    return "outline";
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
@@ -252,98 +265,160 @@ export default function ClientesPage() {
             <p className="text-muted-foreground">Nenhum cliente encontrado.</p>
           </div>
         ) : (
-          <div className="grid gap-4">
+          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="w-[34%]">Cliente</TableHead>
+                  <TableHead>Papel</TableHead>
+                  <TableHead>Contato</TableHead>
+                  <TableHead>Cidade/UF</TableHead>
+                  <TableHead className="text-center">Propostas</TableHead>
+                  <TableHead className="text-center">Docs</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
             {filtered.map((c) => {
               const clienteDocs = docsByCliente.get(c.id) || [];
               const rels = propostasByCliente.get(c.id) || [];
+              const papeis = rels.length > 0
+                ? Array.from(new Set(rels.map((r) => (r.tipo_pessoa === "comprador" ? "Comprador" : "Vendedor")))).join(" / ")
+                : "Cliente";
+              const isExpanded = !!expanded[c.id];
               return (
-                <div key={c.id} className="border border-border rounded-xl p-5 bg-card">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                      <h3 className="font-semibold text-foreground text-lg">{c.nome_completo}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {rels.length > 0
-                          ? Array.from(new Set(rels.map((r) => (r.tipo_pessoa === "comprador" ? "Comprador" : "Vendedor")))).join(" / ")
-                          : "Cliente"}
-                        {c.cpf ? ` • CPF ${c.cpf}` : ""}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs px-2 py-1 rounded-md border border-border text-muted-foreground">
-                        {new Date(c.created_at).toLocaleDateString("pt-BR")}
+                <Fragment key={c.id}>
+                  <TableRow>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <p className="font-semibold text-foreground">{c.nome_completo}</p>
+                        <p className="text-xs text-muted-foreground">{c.cpf ? `CPF ${c.cpf}` : "CPF não informado"}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Criado em {new Date(c.created_at).toLocaleDateString("pt-BR")}
+                        </p>
                       </div>
-                      <Button variant="outline" size="sm" onClick={() => openUpload(c.id)}>
-                        <Upload className="w-4 h-4 mr-1.5" />
-                        Anexar
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => openEdit(c)}>
-                        <Pencil className="w-4 h-4 mr-1.5" />
-                        Editar
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 text-sm text-muted-foreground grid sm:grid-cols-2 gap-2">
-                    <p>{c.telefone || "-"}</p>
-                    <p>{c.email || "-"}</p>
-                    <p>{[c.cidade, c.estado].filter(Boolean).join(" / ") || "-"}</p>
-                    <p>Propostas: {rels.length}</p>
-                  </div>
-
-                  <div className="mt-4">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Propostas vinculadas ({rels.length})
-                    </p>
-                    {rels.length === 0 ? (
-                      <p className="text-sm text-muted-foreground mb-3">Sem propostas vinculadas.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {rels.slice(0, 8).map((r, idx) => {
-                          const prop = r.propostas;
-                          if (!prop) return null;
-                          return (
-                            <a
-                              key={`${prop.id}-${idx}`}
-                              href={`/proposta/${prop.token}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border hover:bg-muted/40"
-                            >
-                              <Link2 className="w-3.5 h-3.5" />
-                              <span>
-                                {new Date(prop.created_at).toLocaleDateString("pt-BR")} • {prop.status}
-                              </span>
-                            </a>
-                          );
-                        })}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{papeis}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>{c.telefone || "-"}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5" />
+                          <span className="max-w-[210px] truncate">{c.email || "-"}</span>
+                        </div>
                       </div>
-                    )}
-
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Documentos anexados ({clienteDocs.length})
-                    </p>
-                    {clienteDocs.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Sem documentos vinculados.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {clienteDocs.slice(0, 8).map((d) => (
-                          <a
-                            key={d.id}
-                            href={d.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md border border-border hover:bg-muted/40"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            <span className="max-w-[180px] truncate">{d.nome}</span>
-                          </a>
-                        ))}
+                    </TableCell>
+                    <TableCell>{[c.cidade, c.estado].filter(Boolean).join(" / ") || "-"}</TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="secondary">{rels.length}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="secondary">{clienteDocs.length}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="inline-flex items-center gap-1">
+                        <Button variant="outline" size="sm" onClick={() => openUpload(c.id)}>
+                          <Upload className="w-3.5 h-3.5 mr-1.5" />
+                          Anexar
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => openEdit(c)}>
+                          <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                          Editar
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => toggleExpanded(c.id)}>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </Button>
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </TableCell>
+                  </TableRow>
+
+                  {isExpanded ? (
+                    <TableRow className="bg-muted/20 hover:bg-muted/20">
+                      <TableCell colSpan={7}>
+                        <div className="grid lg:grid-cols-2 gap-4">
+                          <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Detalhes do Cliente
+                            </p>
+                            <div className="grid sm:grid-cols-2 gap-2 text-sm">
+                              <p><span className="text-muted-foreground">Documento:</span> {c.documento_numero || "-"}</p>
+                              <p><span className="text-muted-foreground">Tipo:</span> {c.documento_tipo || "-"}</p>
+                              <p><span className="text-muted-foreground">CEP:</span> {c.cep || "-"}</p>
+                              <p><span className="text-muted-foreground">Bairro:</span> {c.bairro || "-"}</p>
+                              <p className="sm:col-span-2">
+                                <span className="text-muted-foreground">Endereço:</span> {c.endereco || "-"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Propostas Vinculadas ({rels.length})
+                            </p>
+                            {rels.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">Sem propostas vinculadas.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {rels.slice(0, 10).map((r, idx) => {
+                                  const prop = r.propostas;
+                                  if (!prop) return null;
+                                  return (
+                                    <a
+                                      key={`${prop.id}-${idx}`}
+                                      href={`/proposta/${prop.token}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex items-center justify-between text-sm px-2.5 py-2 rounded-md border border-border hover:bg-muted/40"
+                                    >
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <Link2 className="w-3.5 h-3.5" />
+                                        {new Date(prop.created_at).toLocaleDateString("pt-BR")} • {r.tipo_pessoa}
+                                      </span>
+                                      <Badge variant={getStatusVariant(prop.status) as any}>{prop.status}</Badge>
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="rounded-lg border border-border bg-background p-4 space-y-3 lg:col-span-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Documentos Anexados ({clienteDocs.length})
+                            </p>
+                            {clienteDocs.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">Sem documentos vinculados.</p>
+                            ) : (
+                              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {clienteDocs.map((d) => (
+                                  <a
+                                    key={d.id}
+                                    href={d.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-sm px-2.5 py-2 rounded-md border border-border hover:bg-muted/40"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span className="truncate">{d.nome}</span>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </Fragment>
               );
             })}
+              </TableBody>
+            </Table>
           </div>
         )}
       </main>

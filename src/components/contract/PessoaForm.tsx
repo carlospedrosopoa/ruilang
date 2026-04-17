@@ -17,6 +17,7 @@ interface PessoaFormProps {
   index: number;
   isConjuge?: boolean;
   hideEstadoCivil?: boolean;
+  onExtractFiles?: (files: File[]) => Promise<void> | void;
 }
 
 const UF_REGEX = /\b(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i;
@@ -47,7 +48,7 @@ function parseAddressParts(fullAddress: string) {
   return { bairro, cidade, estado, cep };
 }
 
-const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil }: PessoaFormProps) => {
+const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil, onExtractFiles }: PessoaFormProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -82,6 +83,15 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
 
     setIsExtracting(true);
     try {
+      if (onExtractFiles) {
+        try {
+          await onExtractFiles(files);
+        } catch (uploadErr) {
+          console.warn("Auto-attach docs failed:", uploadErr);
+          toast.error("Não foi possível anexar automaticamente os arquivos da extração.");
+        }
+      }
+
       const nested = await Promise.all(files.map((f) => fileToVisionBase64Images(f)));
       const images = nested.flat();
 

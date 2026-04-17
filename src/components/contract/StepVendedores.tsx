@@ -8,11 +8,12 @@ interface StepVendedoresProps {
   onChange: (vendedores: Pessoa[]) => void;
   titulo?: string;
   tituloPlural?: string;
+  onExtractFiles?: (files: File[]) => Promise<void> | void;
 }
 
 const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
 
-const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlural = "Vendedor(es)" }: StepVendedoresProps) => {
+const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlural = "Vendedor(es)", onExtractFiles }: StepVendedoresProps) => {
   const addVendedor = () => onChange([...vendedores, criarPessoaVazia()]);
 
   const updateVendedor = (index: number, pessoa: Pessoa) => {
@@ -111,6 +112,7 @@ const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlura
             index={index}
             isConjuge={!!vendedor.conjugeDeId}
             hideEstadoCivil={!!vendedor.conjugeDeId}
+            onExtractFiles={onExtractFiles}
           />
         );
       })}

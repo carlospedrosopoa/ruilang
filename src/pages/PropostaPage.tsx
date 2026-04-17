@@ -67,6 +67,39 @@ const PropostaPage = () => {
   const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
   const [proposta, setProposta] = useState<string | null>(null);
 
+  const autoAttachExtractFiles = useCallback(async (files: File[]) => {
+    if (!propostaId || !token || files.length === 0) return;
+
+    const already = new Set(documentos.map((d) => `${d.nome}::${d.tamanho}`));
+    const toUpload = files.filter((f) => !already.has(`${f.name}::${f.size}`));
+    if (toUpload.length === 0) return;
+
+    const uploaded: PropostaDocumento[] = [];
+    for (const file of toUpload) {
+      const filePath = `${propostaId}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage.from("proposta-docs").upload(filePath, file);
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from("proposta-docs").getPublicUrl(filePath);
+      uploaded.push({
+        id: crypto.randomUUID(),
+        nome: file.name,
+        tipo: file.type || "application/octet-stream",
+        tamanho: file.size,
+        url: urlData.publicUrl,
+        uploadedAt: new Date().toISOString(),
+      });
+    }
+
+    if (uploaded.length > 0) {
+      const nextDocs = [...documentos, ...uploaded];
+      setDocumentos(nextDocs);
+      await supabase.functions.invoke("public-proposta", {
+        body: { token, update: { documentos: nextDocs as any } },
+      });
+      toast.success(`${uploaded.length} documento(s) da extração anexado(s) automaticamente.`);
+    }
+  }, [propostaId, token, documentos]);
+
   useEffect(() => {
     const load = async () => {
       if (!token) { setLoading(false); return; }
@@ -397,14 +430,14 @@ const PropostaPage = () => {
       case 1:
         return (
           <div className="space-y-8">
-            <StepVendedores vendedores={vendedores} onChange={setVendedores} />
+            <StepVendedores vendedores={vendedores} onChange={setVendedores} onExtractFiles={autoAttachExtractFiles} />
             <div className="border-t border-border pt-8">
-              <StepCompradores compradores={compradores} onChange={setCompradores} />
+              <StepCompradores compradores={compradores} onChange={setCompradores} onExtractFiles={autoAttachExtractFiles} />
             </div>
           </div>
         );
       case 2:
-        return <StepObjeto imovel={imovel} onChange={setImovel} />;
+        return <StepObjeto imovel={imovel} onChange={setImovel} onExtractFiles={autoAttachExtractFiles} />;
       case 3:
         return <StepProposalPagamento pagamento={pagamento} onChange={setPagamento} />;
       case 4:
