@@ -216,6 +216,9 @@ serve(async (req: Request) => {
     if (!existing) return jsonResponse({ error: "Not found" }, 404);
 
     if (!update) {
+      if (!existing.first_opened_at) {
+        await admin.from("propostas").update({ first_opened_at: new Date().toISOString() }).eq("id", existing.id);
+      }
       let sync: any = null;
       if (existing.status === "enviado") {
         sync = await syncClientesFromProposta(admin, existing);
@@ -244,6 +247,10 @@ serve(async (req: Request) => {
 
     if (typeof patch.status === "string" && !["rascunho", "enviado"].includes(patch.status)) {
       return jsonResponse({ error: "Invalid status" }, 400);
+    }
+
+    if (patch.status === "enviado" && existing.status !== "enviado" && !existing.submitted_at) {
+      patch.submitted_at = new Date().toISOString();
     }
 
     let updated = existing;

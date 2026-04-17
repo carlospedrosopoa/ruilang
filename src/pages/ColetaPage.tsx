@@ -70,6 +70,7 @@ const ColetaPage = () => {
 
   const [corretorNome, setCorretorNome] = useState("");
   const [corretorTelefone, setCorretorTelefone] = useState("");
+  const [corretorLocked, setCorretorLocked] = useState(false);
   const [vendedores, setVendedores] = useState<Pessoa[]>([criarPessoaVazia()]);
   const [compradores, setCompradores] = useState<Pessoa[]>([criarPessoaVazia()]);
   const [imovel, setImovel] = useState<Imovel>(criarImovelVazio());
@@ -111,6 +112,7 @@ const ColetaPage = () => {
       setStatus(submission.status);
       setCorretorNome(submission.corretor_nome || "");
       setCorretorTelefone(submission.corretor_telefone || "");
+      setCorretorLocked(Boolean(submission.corretor_id));
       if (submission.imobiliarias) setImobiliaria(submission.imobiliarias);
 
       const dados = submission.dados as any;
@@ -361,11 +363,11 @@ const ColetaPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label>Nome</Label>
-              <Input value={corretorNome} onChange={(e) => setCorretorNome(e.target.value)} placeholder="Seu nome completo" />
+              <Input value={corretorNome} onChange={(e) => setCorretorNome(e.target.value)} placeholder="Seu nome completo" readOnly={corretorLocked} disabled={corretorLocked} />
             </div>
             <div>
               <Label>Telefone</Label>
-              <Input value={corretorTelefone} onChange={(e) => setCorretorTelefone(e.target.value)} placeholder="(00) 00000-0000" />
+              <Input value={corretorTelefone} onChange={(e) => setCorretorTelefone(e.target.value)} placeholder="(00) 00000-0000" readOnly={corretorLocked} disabled={corretorLocked} />
             </div>
           </div>
         </div>

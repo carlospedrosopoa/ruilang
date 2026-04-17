@@ -47,7 +47,7 @@ async function callOpenAiText(params: { apiKey: string; model: string; systemPro
       throw e;
     }
     if (response.status === 429) {
-      const e: any = new Error("Limite de requisições excedido. Tente novamente em alguns minutos.");
+      const e: any = new Error(`OpenAI (${params.model}) com limite de requisições/tokens excedido. Tente novamente em alguns minutos.`);
       e.status = 429;
       throw e;
     }
@@ -81,8 +81,13 @@ async function callGeminiText(params: { apiKey: string; model: string; systemPro
       throw e;
     }
     if (response.status === 429) {
-      const e: any = new Error("Limite de requisições excedido. Tente novamente em alguns minutos.");
+      const e: any = new Error(`Gemini (${params.model}) com limite de requisições/tokens excedido. Tente novamente em alguns minutos.`);
       e.status = 429;
+      throw e;
+    }
+    if (response.status === 404) {
+      const e: any = new Error(`Gemini (${params.model}) não encontrado/disponível neste projeto (404).`);
+      e.status = 404;
       throw e;
     }
     const t = await response.text();
@@ -256,18 +261,50 @@ Gere a proposta completa conforme o modelo nas instruções, com TODAS as cláus
         if (p === "openai") {
           const key = Deno.env.get("OPENAI_API_KEY");
           if (!key) throw new Error("OPENAI_API_KEY is not configured");
-          const model = Deno.env.get("OPENAI_MODEL_PROPOSAL") || "gpt-4o";
-          proposta = await callOpenAiText({ apiKey: key, model, systemPrompt, userPrompt });
+          const models = [
+            Deno.env.get("OPENAI_MODEL_PROPOSAL") || "gpt-4o-mini",
+            Deno.env.get("OPENAI_MODEL_PROPOSAL_FALLBACK") || "gpt-4o",
+          ];
+          let openAiError: unknown = null;
+          for (const model of models) {
+            try {
+              proposta = await callOpenAiText({ apiKey: key, model, systemPrompt, userPrompt });
+              break;
+            } catch (e) {
+              openAiError = e;
+              const status = (e as any)?.status;
+              if (status === 429) continue;
+              throw e;
+            }
+          }
+          if (!proposta && openAiError) throw openAiError;
         } else {
           const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
           if (!key) throw new Error("GEMINI_API_KEY is not configured");
-          const model = Deno.env.get("GEMINI_MODEL_PROPOSAL") || "gemini-2.0-flash";
-          proposta = await callGeminiText({ apiKey: key, model, systemPrompt, userPrompt });
+          const models = [
+            Deno.env.get("GEMINI_MODEL_PROPOSAL") || "gemini-1.5-flash",
+            Deno.env.get("GEMINI_MODEL_PROPOSAL_FALLBACK") || "gemini-1.5-pro",
+          ];
+          let geminiError: unknown = null;
+          for (const model of models) {
+            try {
+              proposta = await callGeminiText({ apiKey: key, model, systemPrompt, userPrompt });
+              break;
+            } catch (e) {
+              geminiError = e;
+              const status = (e as any)?.status;
+              if (status === 429) continue;
+              throw e;
+            }
+          }
+          if (!proposta && geminiError) throw geminiError;
         }
         break;
       } catch (e) {
         lastError = e;
-        if (!failover) break;
+        const status = (e as any)?.status;
+        const shouldForceFallback = status === 404;
+        if (!failover && !shouldForceFallback) break;
       }
     }
 

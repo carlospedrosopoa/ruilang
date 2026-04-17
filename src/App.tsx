@@ -14,6 +14,7 @@ import ImobiliariasPage from "./pages/ImobiliariasPage.tsx";
 import PropostaPage from "./pages/PropostaPage.tsx";
 import RelatoriosPage from "./pages/RelatoriosPage.tsx";
 import ClientesPage from "./pages/ClientesPage.tsx";
+import CorretoresPage from "./pages/CorretoresPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -74,6 +75,14 @@ const App = () => (
               element={
                 <RequireAuth>
                   <ClientesPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/corretores"
+              element={
+                <RequireAuth>
+                  <CorretoresPage />
                 </RequireAuth>
               }
             />

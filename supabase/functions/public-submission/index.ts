@@ -40,7 +40,12 @@ serve(async (req: Request) => {
     if (findError) return jsonResponse({ error: findError.message }, 400);
     if (!existing) return jsonResponse({ error: "Not found" }, 404);
 
-    if (!update) return jsonResponse({ submission: existing });
+    if (!update) {
+      if (!existing.first_opened_at) {
+        await admin.from("submissions").update({ first_opened_at: new Date().toISOString() }).eq("id", existing.id);
+      }
+      return jsonResponse({ submission: existing });
+    }
 
     const nextStatus = typeof update?.status === "string" ? update.status : undefined;
     const nextDados = update?.dados;
@@ -59,6 +64,10 @@ serve(async (req: Request) => {
 
     if (typeof patch.status === "string" && !["rascunho", "enviado", "contrato_gerado"].includes(patch.status)) {
       return jsonResponse({ error: "Invalid status" }, 400);
+    }
+
+    if (patch.status === "enviado" && existing.status !== "enviado" && !existing.submitted_at) {
+      patch.submitted_at = new Date().toISOString();
     }
 
     const { data: updated, error: updateError } = await admin

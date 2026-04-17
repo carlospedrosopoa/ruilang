@@ -53,6 +53,7 @@ const PropostaPage = () => {
   const [corretorNome, setCorretorNome] = useState("");
   const [corretorCreci, setCorretorCreci] = useState("");
   const [imobiliariaNome, setImobiliariaNome] = useState("");
+  const [corretorLocked, setCorretorLocked] = useState(false);
 
   // Dados
   const [vendedores, setVendedores] = useState<Pessoa[]>([criarPessoaVazia()]);
@@ -116,6 +117,7 @@ const PropostaPage = () => {
       setCorretorNome(propostaRow.corretor_nome || "");
       setCorretorCreci(propostaRow.corretor_creci || "");
       setImobiliariaNome(propostaRow.imobiliaria_nome || propostaRow.imobiliarias?.nome || "");
+      setCorretorLocked(Boolean(propostaRow.corretor_id));
 
       const dados = propostaRow.dados as any;
       if (dados) {
@@ -398,6 +400,8 @@ const PropostaPage = () => {
                 value={corretorNome}
                 onChange={(e) => setCorretorNome(e.target.value)}
                 placeholder="Seu nome completo"
+                readOnly={corretorLocked}
+                disabled={corretorLocked}
               />
             </div>
             <div>
@@ -406,6 +410,8 @@ const PropostaPage = () => {
                 value={corretorCreci}
                 onChange={(e) => setCorretorCreci(e.target.value)}
                 placeholder="Ex: 12345-F"
+                readOnly={corretorLocked}
+                disabled={corretorLocked}
               />
             </div>
             <div>

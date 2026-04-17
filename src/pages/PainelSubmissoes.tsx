@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Briefcase, BarChart3, Building2, ChevronRight, Users } from "lucide-react";
+import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Briefcase, BarChart3, Building2, ChevronRight, Users, UserCog } from "lucide-react";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -36,10 +36,19 @@ interface Proposta {
   corretor_nome: string | null;
   corretor_creci: string | null;
   imobiliaria_nome: string | null;
+  corretor_id?: string | null;
   dados: any;
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+interface Corretor {
+  id: string;
+  nome: string;
+  creci: string | null;
+  telefone: string | null;
+  email: string | null;
 }
 
 const statusLabels: Record<string, { label: string; icon: React.ElementType; color: string }> = {
@@ -58,6 +67,8 @@ const PainelSubmissoes = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [proposalDialogOpen, setProposalDialogOpen] = useState(false);
   const [novoTipo, setNovoTipo] = useState<TipoContrato>("promessa_compra_venda");
+  const [corretores, setCorretores] = useState<Corretor[]>([]);
+  const [selectedCorretorId, setSelectedCorretorId] = useState<string | null>(null);
 
   const loadData = async () => {
     const subQuery = supabase.from("submissions").select("*").order("created_at", { ascending: false });
@@ -76,6 +87,25 @@ const PainelSubmissoes = () => {
 
   useEffect(() => { loadData(); }, [activeTenantId, isPlatformAdmin]);
 
+  useEffect(() => {
+    const loadCorretores = async () => {
+      if (!activeTenantId) {
+        setCorretores([]);
+        setSelectedCorretorId(null);
+        return;
+      }
+      const { data } = await supabase
+        .from("corretores")
+        .select("id, nome, creci, telefone, email")
+        .eq("imobiliaria_id", activeTenantId)
+        .order("nome");
+      const list = (data as Corretor[]) || [];
+      setCorretores(list);
+      setSelectedCorretorId(list[0]?.id || null);
+    };
+    loadCorretores();
+  }, [activeTenantId]);
+
   const handleCreateLink = async () => {
     if (!activeTenantId) {
       toast.error("Selecione uma imobiliária/tenant para criar links.");
@@ -83,9 +113,16 @@ const PainelSubmissoes = () => {
     }
     setCreating(true);
     try {
+      const corretor = corretores.find((c) => c.id === selectedCorretorId) || null;
       const { data, error } = await supabase
         .from("submissions")
-        .insert({ tipo_contrato: novoTipo, imobiliaria_id: activeTenantId })
+        .insert({
+          tipo_contrato: novoTipo,
+          imobiliaria_id: activeTenantId,
+          corretor_id: corretor?.id || null,
+          corretor_nome: corretor?.nome || null,
+          corretor_telefone: corretor?.telefone || null,
+        } as any)
         .select()
         .single();
       if (error) throw error;
@@ -106,9 +143,17 @@ const PainelSubmissoes = () => {
     try {
       const activeTenant = memberships.find((m) => m.tenantId === activeTenantId);
       const activeTenantName = activeTenant?.tenant?.nome || null;
+      const corretor = corretores.find((c) => c.id === selectedCorretorId) || null;
       const { data, error } = await supabase
         .from("propostas")
-        .insert({ imobiliaria_id: activeTenantId, imobiliaria_nome: activeTenantName })
+        .insert({
+          imobiliaria_id: activeTenantId,
+          imobiliaria_nome: activeTenantName,
+          corretor_id: corretor?.id || null,
+          corretor_nome: corretor?.nome || null,
+          corretor_creci: corretor?.creci || null,
+          corretor_telefone: corretor?.telefone || null,
+        } as any)
         .select()
         .single();
       if (error) throw error;
@@ -164,6 +209,10 @@ const PainelSubmissoes = () => {
               <Users className="w-4 h-4 mr-1.5" />
               <span className="hidden sm:inline">Clientes</span>
             </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/corretores")}>
+              <UserCog className="w-4 h-4 mr-1.5" />
+              <span className="hidden sm:inline">Corretores</span>
+            </Button>
             {isPlatformAdmin ? (
               <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
                 <Building2 className="w-4 h-4 mr-1.5" />
@@ -204,6 +253,15 @@ const PainelSubmissoes = () => {
                       <p className="text-sm text-muted-foreground">
                         Um link único será criado para o corretor preencher os dados da negociação imobiliária.
                       </p>
+                      <div>
+                        <Label>Corretor</Label>
+                        <Select value={selectedCorretorId || ""} onValueChange={(v) => setSelectedCorretorId(v || null)}>
+                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                          <SelectContent>
+                            {corretores.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <Button onClick={handleCreateProposalLink} disabled={creating} className="w-full">
                         {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
                         Criar e Copiar Link
@@ -225,6 +283,15 @@ const PainelSubmissoes = () => {
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {tiposContrato.map((t) => (<SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Corretor</Label>
+                        <Select value={selectedCorretorId || ""} onValueChange={(v) => setSelectedCorretorId(v || null)}>
+                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                          <SelectContent>
+                            {corretores.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
                           </SelectContent>
                         </Select>
                       </div>

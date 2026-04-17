@@ -182,6 +182,50 @@ export type Database = {
           },
         ]
       }
+      corretores: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          creci: string | null
+          email: string | null
+          id: string
+          imobiliaria_id: string
+          nome: string
+          telefone: string | null
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          creci?: string | null
+          email?: string | null
+          id?: string
+          imobiliaria_id: string
+          nome: string
+          telefone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          creci?: string | null
+          email?: string | null
+          id?: string
+          imobiliaria_id?: string
+          nome?: string
+          telefone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "corretores_imobiliaria_id_fkey"
+            columns: ["imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       imobiliarias: {
         Row: {
           bairro: string | null
@@ -247,47 +291,56 @@ export type Database = {
       }
       propostas: {
         Row: {
+          corretor_id: string | null
           corretor_creci: string | null
           corretor_nome: string | null
           corretor_telefone: string | null
           created_at: string
           dados: Json
           documentos: Json
+          first_opened_at: string | null
           id: string
           imobiliaria_id: string | null
           imobiliaria_nome: string | null
           proposta_texto: string | null
           status: string
+          submitted_at: string | null
           token: string
           updated_at: string
         }
         Insert: {
+          corretor_id?: string | null
           corretor_creci?: string | null
           corretor_nome?: string | null
           corretor_telefone?: string | null
           created_at?: string
           dados?: Json
           documentos?: Json
+          first_opened_at?: string | null
           id?: string
           imobiliaria_id?: string | null
           imobiliaria_nome?: string | null
           proposta_texto?: string | null
           status?: string
+          submitted_at?: string | null
           token?: string
           updated_at?: string
         }
         Update: {
+          corretor_id?: string | null
           corretor_creci?: string | null
           corretor_nome?: string | null
           corretor_telefone?: string | null
           created_at?: string
           dados?: Json
           documentos?: Json
+          first_opened_at?: string | null
           id?: string
           imobiliaria_id?: string | null
           imobiliaria_nome?: string | null
           proposta_texto?: string | null
           status?: string
+          submitted_at?: string | null
           token?: string
           updated_at?: string
         }
@@ -299,41 +352,57 @@ export type Database = {
             referencedRelation: "imobiliarias"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "propostas_corretor_id_fkey"
+            columns: ["corretor_id"]
+            isOneToOne: false
+            referencedRelation: "corretores"
+            referencedColumns: ["id"]
+          },
         ]
       }
       submissions: {
         Row: {
+          corretor_id: string | null
           corretor_nome: string | null
           corretor_telefone: string | null
           created_at: string
           dados: Json
+          first_opened_at: string | null
           id: string
           imobiliaria_id: string | null
           status: string
+          submitted_at: string | null
           tipo_contrato: string
           token: string
           updated_at: string
         }
         Insert: {
+          corretor_id?: string | null
           corretor_nome?: string | null
           corretor_telefone?: string | null
           created_at?: string
           dados?: Json
+          first_opened_at?: string | null
           id?: string
           imobiliaria_id?: string | null
           status?: string
+          submitted_at?: string | null
           tipo_contrato?: string
           token?: string
           updated_at?: string
         }
         Update: {
+          corretor_id?: string | null
           corretor_nome?: string | null
           corretor_telefone?: string | null
           created_at?: string
           dados?: Json
+          first_opened_at?: string | null
           id?: string
           imobiliaria_id?: string | null
           status?: string
+          submitted_at?: string | null
           tipo_contrato?: string
           token?: string
           updated_at?: string
@@ -344,6 +413,13 @@ export type Database = {
             columns: ["imobiliaria_id"]
             isOneToOne: false
             referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "submissions_corretor_id_fkey"
+            columns: ["corretor_id"]
+            isOneToOne: false
+            referencedRelation: "corretores"
             referencedColumns: ["id"]
           },
         ]
