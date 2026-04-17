@@ -244,7 +244,15 @@ const PropostaPage = () => {
       }
       toast.success("Proposta gerada com sucesso!");
     } catch (err: any) {
-      toast.error(err.message || "Erro ao gerar proposta.");
+      let message = err?.message;
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (body?.error) message = body.error;
+        } catch {}
+      }
+      toast.error(message || "Erro ao gerar proposta.");
     } finally {
       setIsGeneratingProposal(false);
     }
