@@ -371,6 +371,8 @@ export type Database = {
           first_opened_at: string | null
           id: string
           imobiliaria_id: string | null
+          proposta_gerada_em: string | null
+          proposta_texto: string | null
           status: string
           submitted_at: string | null
           tipo_contrato: string
@@ -386,6 +388,8 @@ export type Database = {
           first_opened_at?: string | null
           id?: string
           imobiliaria_id?: string | null
+          proposta_gerada_em?: string | null
+          proposta_texto?: string | null
           status?: string
           submitted_at?: string | null
           tipo_contrato?: string
@@ -401,6 +405,8 @@ export type Database = {
           first_opened_at?: string | null
           id?: string
           imobiliaria_id?: string | null
+          proposta_gerada_em?: string | null
+          proposta_texto?: string | null
           status?: string
           submitted_at?: string | null
           tipo_contrato?: string

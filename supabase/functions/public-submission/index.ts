@@ -51,15 +51,18 @@ serve(async (req: Request) => {
     const nextDados = update?.dados;
     const nextCorretorNome = typeof update?.corretor_nome === "string" ? update.corretor_nome : undefined;
     const nextCorretorTelefone = typeof update?.corretor_telefone === "string" ? update.corretor_telefone : undefined;
+    const nextPropostaTexto = typeof update?.proposta_texto === "string" ? update.proposta_texto : undefined;
 
     const patch: any = {};
     if (typeof nextDados !== "undefined") patch.dados = nextDados;
     if (typeof nextStatus !== "undefined") patch.status = nextStatus;
     if (typeof nextCorretorNome !== "undefined") patch.corretor_nome = nextCorretorNome;
     if (typeof nextCorretorTelefone !== "undefined") patch.corretor_telefone = nextCorretorTelefone;
+    if (typeof nextPropostaTexto !== "undefined") patch.proposta_texto = nextPropostaTexto;
 
     if (existing.status !== "rascunho") {
-      if ("dados" in patch || "status" in patch) return jsonResponse({ error: "Submission is not editable" }, 400);
+      const forbidden = "dados" in patch || "status" in patch;
+      if (forbidden) return jsonResponse({ error: "Submission is not editable" }, 400);
     }
 
     if (typeof patch.status === "string" && !["rascunho", "enviado", "contrato_gerado"].includes(patch.status)) {
@@ -68,6 +71,9 @@ serve(async (req: Request) => {
 
     if (patch.status === "enviado" && existing.status !== "enviado" && !existing.submitted_at) {
       patch.submitted_at = new Date().toISOString();
+    }
+    if (typeof patch.proposta_texto === "string" && patch.proposta_texto.trim() !== "" && !existing.proposta_gerada_em) {
+      patch.proposta_gerada_em = new Date().toISOString();
     }
 
     const { data: updated, error: updateError } = await admin

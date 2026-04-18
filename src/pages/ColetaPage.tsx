@@ -114,6 +114,7 @@ const ColetaPage = () => {
       setCorretorTelefone(submission.corretor_telefone || "");
       setCorretorLocked(Boolean(submission.corretor_id));
       if (submission.imobiliarias) setImobiliaria(submission.imobiliarias);
+      if (submission.proposta_texto) setProposta(submission.proposta_texto);
 
       const dados = submission.dados as any;
       if (dados) {
@@ -200,6 +201,11 @@ const ColetaPage = () => {
       if (data?.error) throw new Error(data.error);
 
       setProposta(data.proposta);
+      if (submissionId && token) {
+        await supabase.functions.invoke("public-submission", {
+          body: { token, update: { proposta_texto: data.proposta } },
+        });
+      }
       toast.success("Proposta gerada com sucesso!");
     } catch (err: any) {
       console.error("Error generating proposal:", err);
