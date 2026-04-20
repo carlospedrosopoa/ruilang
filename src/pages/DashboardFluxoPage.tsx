@@ -343,7 +343,7 @@ export default function DashboardFluxoPage() {
                 </TableBody>
               </Table>
               <p className="text-xs text-muted-foreground mt-3">
-                Prazo médio considera submitted_at - first_opened_at (ou created_at se não houver first_opened_at).
+                Prazo médio: tempo entre a primeira abertura do link e o envio da coleta. Se não houver primeira abertura registrada, usa a data de criação do link como referência.
               </p>
             </div>
           </>
