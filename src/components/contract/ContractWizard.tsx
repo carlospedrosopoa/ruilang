@@ -152,7 +152,15 @@ const ContractWizard = () => {
       toast.success("Minuta gerada com sucesso!");
     } catch (err: any) {
       console.error("Error generating contract:", err);
-      toast.error(err.message || "Erro ao gerar contrato. Tente novamente.");
+      let message = err?.message || "Erro ao gerar contrato. Tente novamente.";
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (typeof body?.error === "string" && body.error.trim()) message = body.error;
+        } catch {}
+      }
+      toast.error(message);
     } finally {
       setIsGenerating(false);
     }

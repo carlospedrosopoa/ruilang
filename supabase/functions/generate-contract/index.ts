@@ -21,6 +21,7 @@ function getDefaultProvider(): AiProvider {
 
 function isFailoverEnabled() {
   const raw = (Deno.env.get("AI_FAILOVER_ENABLED") || "").toLowerCase();
+  if (!raw) return true;
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
@@ -41,11 +42,21 @@ async function callOpenAiText(params: { apiKey: string; model: string; systemPro
   });
 
   if (!response.ok) {
-    if (response.status === 401) throw new Error("Credenciais inválidas. Verifique OPENAI_API_KEY.");
-    if (response.status === 429) throw new Error("Limite de requisições excedido. Tente novamente em alguns minutos.");
+    if (response.status === 401) {
+      const e: any = new Error("Credenciais inválidas. Verifique OPENAI_API_KEY.");
+      e.status = 401;
+      throw e;
+    }
+    if (response.status === 429) {
+      const e: any = new Error(`OpenAI (${params.model}) com limite de requisições/tokens excedido. Tente novamente em alguns minutos.`);
+      e.status = 429;
+      throw e;
+    }
     const t = await response.text();
     console.error("AI error:", response.status, t);
-    throw new Error(`Erro do provedor OpenAI (${response.status})`);
+    const e: any = new Error(`Erro do provedor OpenAI (${response.status})`);
+    e.status = response.status;
+    throw e;
   }
 
   const data = await response.json();
@@ -65,11 +76,26 @@ async function callGeminiText(params: { apiKey: string; model: string; systemPro
   });
 
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) throw new Error("Credenciais inválidas. Verifique GEMINI_API_KEY.");
-    if (response.status === 429) throw new Error("Limite de requisições excedido. Tente novamente em alguns minutos.");
+    if (response.status === 401 || response.status === 403) {
+      const e: any = new Error("Credenciais inválidas. Verifique GEMINI_API_KEY.");
+      e.status = response.status;
+      throw e;
+    }
+    if (response.status === 429) {
+      const e: any = new Error(`Gemini (${params.model}) com limite de requisições/tokens excedido. Tente novamente em alguns minutos.`);
+      e.status = 429;
+      throw e;
+    }
+    if (response.status === 404) {
+      const e: any = new Error(`Gemini (${params.model}) não encontrado/disponível neste projeto (404).`);
+      e.status = 404;
+      throw e;
+    }
     const t = await response.text();
     console.error("Gemini error:", response.status, t);
-    throw new Error(`Erro do provedor Gemini (${response.status})`);
+    const e: any = new Error(`Erro do provedor Gemini (${response.status})`);
+    e.status = response.status;
+    throw e;
   }
 
   const data = await response.json();
@@ -563,18 +589,50 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
         if (p === "openai") {
           const key = Deno.env.get("OPENAI_API_KEY");
           if (!key) throw new Error("OPENAI_API_KEY is not configured");
-          const model = Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o";
-          minuta = await callOpenAiText({ apiKey: key, model, systemPrompt, userPrompt });
+          const models = [
+            Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+            Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+          ];
+          let openAiError: unknown = null;
+          for (const model of models) {
+            try {
+              minuta = await callOpenAiText({ apiKey: key, model, systemPrompt, userPrompt });
+              break;
+            } catch (e) {
+              openAiError = e;
+              const status = (e as any)?.status;
+              if (status === 429) continue;
+              throw e;
+            }
+          }
+          if (!minuta && openAiError) throw openAiError;
         } else {
           const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
           if (!key) throw new Error("GEMINI_API_KEY is not configured");
-          const model = Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-2.0-pro";
-          minuta = await callGeminiText({ apiKey: key, model, systemPrompt, userPrompt });
+          const models = [
+            Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
+            Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+          ];
+          let geminiError: unknown = null;
+          for (const model of models) {
+            try {
+              minuta = await callGeminiText({ apiKey: key, model, systemPrompt, userPrompt });
+              break;
+            } catch (e) {
+              geminiError = e;
+              const status = (e as any)?.status;
+              if (status === 429 || status === 404) continue;
+              throw e;
+            }
+          }
+          if (!minuta && geminiError) throw geminiError;
         }
         break;
       } catch (e) {
         lastError = e;
-        if (!failover) break;
+        const status = (e as any)?.status;
+        const shouldForceFallback = status === 404;
+        if (!failover && !shouldForceFallback) break;
       }
     }
 
@@ -606,9 +664,10 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     });
   } catch (e) {
     console.error("generate-contract error:", e);
+    const status = typeof (e as any)?.status === "number" ? (e as any).status : 500;
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
