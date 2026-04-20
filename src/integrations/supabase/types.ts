@@ -363,6 +363,8 @@ export type Database = {
       }
       submissions: {
         Row: {
+          contract_generated_at: string | null
+          contract_generated_by: string | null
           corretor_id: string | null
           corretor_nome: string | null
           corretor_telefone: string | null
@@ -380,6 +382,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          contract_generated_at?: string | null
+          contract_generated_by?: string | null
           corretor_id?: string | null
           corretor_nome?: string | null
           corretor_telefone?: string | null
@@ -397,6 +401,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          contract_generated_at?: string | null
+          contract_generated_by?: string | null
           corretor_id?: string | null
           corretor_nome?: string | null
           corretor_telefone?: string | null

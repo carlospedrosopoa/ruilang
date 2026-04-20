@@ -142,7 +142,7 @@ const ContractWizard = () => {
       };
 
       const { data, error } = await supabase.functions.invoke("generate-contract", {
-        body: { contrato },
+        body: { contrato, submissionId },
       });
 
       if (error) throw error;

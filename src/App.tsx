@@ -15,6 +15,7 @@ import PropostaPage from "./pages/PropostaPage.tsx";
 import RelatoriosPage from "./pages/RelatoriosPage.tsx";
 import ClientesPage from "./pages/ClientesPage.tsx";
 import CorretoresPage from "./pages/CorretoresPage.tsx";
+import DashboardFluxoPage from "./pages/DashboardFluxoPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -83,6 +84,14 @@ const App = () => (
               element={
                 <RequireAuth>
                   <CorretoresPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <RequireAuth>
+                  <DashboardFluxoPage />
                 </RequireAuth>
               }
             />

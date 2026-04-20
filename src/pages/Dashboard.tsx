@@ -122,11 +122,11 @@ const Dashboard = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate("/relatorios")}
+                onClick={() => navigate("/dashboard")}
                 className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
               >
                 <BarChart3 className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">Relatórios</span>
+                <span className="hidden sm:inline">Dashboard</span>
               </Button>
               <Button
                 variant="ghost"

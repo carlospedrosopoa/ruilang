@@ -216,9 +216,9 @@ export default function ClientesPage() {
               <ClipboardList className="w-4 h-4 mr-1.5" />
               <span className="hidden sm:inline">Coletas</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/relatorios")}>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
               <BarChart3 className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Relatórios</span>
+              <span className="hidden sm:inline">Dashboard</span>
             </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate("/corretores")}>
               <UserCog className="w-4 h-4 mr-1.5" />

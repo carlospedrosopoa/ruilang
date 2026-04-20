@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -463,9 +464,18 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const admin =
+      SUPABASE_URL && SERVICE_ROLE ? createClient(SUPABASE_URL, SERVICE_ROLE) : null;
+
+    const authHeader = req.headers.get("Authorization") || "";
+    const accessToken = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : authHeader;
+
     const body = await req.json();
     const { contrato } = body ?? {};
     if (!contrato) throw new Error("Missing 'contrato' in request body");
+    const submissionId = typeof body?.submissionId === "string" ? body.submissionId : null;
 
     const tipoLabel = tipoLabels[contrato.tipoContrato] || "Contrato Imobiliário";
     const clausulasTipo = getClausulasEspecificasTipo(contrato.tipoContrato);
@@ -574,6 +584,22 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     
     // Strip any remaining markdown formatting
     minuta = minuta.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+
+    if (admin && submissionId) {
+      let userId: string | null = null;
+      if (accessToken) {
+        const { data: userData } = await admin.auth.getUser(accessToken);
+        userId = userData?.user?.id || null;
+      }
+      await admin
+        .from("submissions")
+        .update({
+          status: "contrato_gerado",
+          contract_generated_at: new Date().toISOString(),
+          contract_generated_by: userId,
+        })
+        .eq("id", submissionId);
+    }
 
     return new Response(JSON.stringify({ minuta }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
