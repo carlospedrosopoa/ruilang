@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowLeft, CalendarIcon, Loader2, TrendingUp, Link2, Users, FileText, Sparkles, FileCheck } from "lucide-react";
+import { ArrowLeft, CalendarIcon, Loader2, TrendingUp, Link2, Users, FileText, Sparkles, FileCheck, List } from "lucide-react";
 
 type Submission = {
   id: string;
@@ -37,13 +38,20 @@ function diffHours(a: string, b: string) {
   return (db - da) / (1000 * 60 * 60);
 }
 
+function durationHours(from: string | null, to: string | null, fallbackFrom?: string) {
+  const start = from || fallbackFrom;
+  if (!start || !to) return null;
+  return diffHours(start, to);
+}
+
 function avg(values: number[]) {
   if (values.length === 0) return null;
   return values.reduce((s, v) => s + v, 0) / values.length;
 }
 
-function formatHours(value: number | null) {
+function formatDuration(value: number | null) {
   if (value === null) return "-";
+  if (value < 1) return `${Math.max(1, Math.round(value * 60))}m`;
   if (value < 24) return `${value.toFixed(1)}h`;
   const days = value / 24;
   return `${days.toFixed(1)}d`;
@@ -63,6 +71,8 @@ export default function DashboardFluxoPage() {
   const [filterImobiliaria, setFilterImobiliaria] = useState("all");
   const [filterCorretor, setFilterCorretor] = useState("all");
   const [filterTipo, setFilterTipo] = useState("all");
+  const [analiticoOpen, setAnaliticoOpen] = useState(false);
+  const [analiticoCorretorId, setAnaliticoCorretorId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -122,7 +132,7 @@ export default function DashboardFluxoPage() {
     const contratosGerados = filtered.filter((s) => Boolean(s.contract_generated_at) || s.status === "contrato_gerado").length;
 
     const prazos = filtered
-      .map((s) => (s.submitted_at ? diffHours(s.created_at, s.submitted_at) : null))
+      .map((s) => durationHours(s.first_opened_at, s.submitted_at, s.created_at))
       .filter((v): v is number => typeof v === "number" && v >= 0);
     const avgPrazo = avg(prazos);
 
@@ -135,14 +145,14 @@ export default function DashboardFluxoPage() {
   }, [filtered]);
 
   const byCorretor = useMemo(() => {
-    const map = new Map<string, { corretor: string; links: number; opened: number; submitted: number; avgPrazo: number | null }>();
+    const map = new Map<string, { id: string; corretor: string; links: number; opened: number; submitted: number; avgPrazo: number | null }>();
     for (const s of filtered) {
       const id = s.corretor_id || "sem";
       const nome =
         s.corretor_nome ||
         corretores.find((c) => c.id === s.corretor_id)?.nome ||
         "Sem corretor";
-      const current = map.get(id) || { corretor: nome, links: 0, opened: 0, submitted: 0, avgPrazo: null };
+      const current = map.get(id) || { id, corretor: nome, links: 0, opened: 0, submitted: 0, avgPrazo: null };
       current.links++;
       if (s.first_opened_at) current.opened++;
       if (s.submitted_at || s.status === "enviado" || s.status === "contrato_gerado") current.submitted++;
@@ -152,7 +162,7 @@ export default function DashboardFluxoPage() {
     const prazosBy = new Map<string, number[]>();
     for (const s of filtered) {
       if (!s.submitted_at) continue;
-      const h = diffHours(s.created_at, s.submitted_at);
+      const h = durationHours(s.first_opened_at, s.submitted_at, s.created_at);
       if (h === null || h < 0) continue;
       const key = s.corretor_id || "sem";
       const list = prazosBy.get(key) || [];
@@ -166,6 +176,22 @@ export default function DashboardFluxoPage() {
 
     return Array.from(map.values()).sort((a, b) => b.links - a.links);
   }, [filtered, corretores]);
+
+  const analiticoRows = useMemo(() => {
+    if (!analiticoCorretorId) return [];
+    const rows = filtered.filter((s) => {
+      if (analiticoCorretorId === "sem") return !s.corretor_id;
+      return s.corretor_id === analiticoCorretorId;
+    });
+    return rows
+      .slice()
+      .sort((a, b) => parseISO(b.created_at).getTime() - parseISO(a.created_at).getTime());
+  }, [analiticoCorretorId, filtered]);
+
+  const openAnalitico = (corretorId: string) => {
+    setAnaliticoCorretorId(corretorId);
+    setAnaliticoOpen(true);
+  };
 
   const clearFilters = () => {
     setDateFrom(undefined);
@@ -282,7 +308,7 @@ export default function DashboardFluxoPage() {
               <Kpi icon={Users} label="Enviadas" value={String(kpis.submitted)} />
               <Kpi icon={Sparkles} label="Propostas" value={String(kpis.propostasGeradas)} />
               <Kpi icon={FileCheck} label="Contratos" value={String(kpis.contratosGerados)} />
-              <Kpi icon={FileText} label="Prazo Médio" value={formatHours(kpis.avgPrazo)} />
+              <Kpi icon={FileText} label="Prazo Médio" value={formatDuration(kpis.avgPrazo)} />
             </div>
 
             <div className="border border-border rounded-xl bg-card p-5 shadow-sm">
@@ -295,27 +321,84 @@ export default function DashboardFluxoPage() {
                     <TableHead className="text-center">Abertos</TableHead>
                     <TableHead className="text-center">Enviados</TableHead>
                     <TableHead className="text-right">Prazo Médio</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {byCorretor.map((r) => (
-                    <TableRow key={r.corretor}>
+                    <TableRow key={r.id}>
                       <TableCell className="font-medium">{r.corretor}</TableCell>
                       <TableCell className="text-center">{r.links}</TableCell>
                       <TableCell className="text-center">{r.opened}</TableCell>
                       <TableCell className="text-center">{r.submitted}</TableCell>
-                      <TableCell className="text-right">{formatHours(r.avgPrazo)}</TableCell>
+                      <TableCell className="text-right">{formatDuration(r.avgPrazo)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => openAnalitico(r.id)}>
+                          <List className="w-4 h-4 mr-1.5" />
+                          Analítico
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
               <p className="text-xs text-muted-foreground mt-3">
-                Prazo médio considera submitted_at - created_at.
+                Prazo médio considera submitted_at - first_opened_at (ou created_at se não houver first_opened_at).
               </p>
             </div>
           </>
         )}
       </main>
+
+      <Dialog open={analiticoOpen} onOpenChange={setAnaliticoOpen}>
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Analítico por Corretor</DialogTitle>
+          </DialogHeader>
+          <div className="border border-border rounded-lg overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableHead>Link</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Criado</TableHead>
+                  <TableHead>1ª Abertura</TableHead>
+                  <TableHead>Enviado</TableHead>
+                  <TableHead>Proposta</TableHead>
+                  <TableHead>Contrato</TableHead>
+                  <TableHead className="text-right">Prazo (Abertura→Envio)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {analiticoRows.map((s) => {
+                  const prazo = durationHours(s.first_opened_at, s.submitted_at, s.created_at);
+                  return (
+                    <TableRow key={s.id}>
+                      <TableCell className="font-mono text-xs">{s.id.slice(0, 8)}</TableCell>
+                      <TableCell className="text-xs">{s.tipo_contrato}</TableCell>
+                      <TableCell className="text-xs">{s.status}</TableCell>
+                      <TableCell className="text-xs">{format(parseISO(s.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}</TableCell>
+                      <TableCell className="text-xs">
+                        {s.first_opened_at ? format(parseISO(s.first_opened_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "-"}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {s.submitted_at ? format(parseISO(s.submitted_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "-"}
+                      </TableCell>
+                      <TableCell className="text-xs">{s.proposta_gerada_em ? "sim" : "-"}</TableCell>
+                      <TableCell className="text-xs">{s.contract_generated_at ? "sim" : "-"}</TableCell>
+                      <TableCell className="text-right text-xs">{formatDuration(prazo)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Dica: se submitted_at estiver vazio em links antigos, ele só aparece quando o corretor reenviar a coleta.
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -339,4 +422,3 @@ function Kpi({
     </div>
   );
 }
-
