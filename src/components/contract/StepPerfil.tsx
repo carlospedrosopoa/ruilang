@@ -1,10 +1,17 @@
 import { ShieldCheck, ShieldAlert, Scale, MessageSquarePlus, Check } from "lucide-react";
-import { PerfilContrato, perfisContrato } from "@/types/contract";
+import { useEffect, useMemo, useState } from "react";
+import { PerfilContrato, TipoContrato, perfisContrato } from "@/types/contract";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useAuth } from "@/auth/AuthProvider";
 
 interface StepPerfilProps {
+  tipoContrato: TipoContrato;
   perfilContrato: PerfilContrato;
   onChange: (perfil: PerfilContrato) => void;
   peculiaridades?: string;
@@ -38,7 +45,118 @@ const perfilColors: Record<PerfilContrato, { bg: string; border: string; icon: s
   },
 };
 
-const StepPerfil = ({ perfilContrato, onChange, peculiaridades = "", onPeculiaridadesChange }: StepPerfilProps) => {
+const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "", onPeculiaridadesChange }: StepPerfilProps) => {
+  const { isPlatformAdmin } = useAuth();
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [loadingTemplate, setLoadingTemplate] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateText, setTemplateText] = useState("");
+  const [instructionsIa, setInstructionsIa] = useState("");
+  const [hasActiveTemplate, setHasActiveTemplate] = useState(false);
+
+  const selectedPerfilLabel = useMemo(() => {
+    return perfisContrato.find((p) => p.id === perfilContrato)?.nome || "Perfil";
+  }, [perfilContrato]);
+
+  const loadTemplate = async () => {
+    setLoadingTemplate(true);
+    const { data, error } = await supabase
+      .from("contract_templates")
+      .select("template_text, instructions_ia, active")
+      .eq("tipo_contrato", tipoContrato)
+      .eq("perfil", perfilContrato)
+      .eq("active", true)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      setHasActiveTemplate(false);
+      setTemplateText("");
+      setInstructionsIa("");
+      setLoadingTemplate(false);
+      return;
+    }
+
+    setHasActiveTemplate(Boolean(data?.active));
+    setTemplateText(data?.template_text || "");
+    setInstructionsIa(data?.instructions_ia || "");
+    setLoadingTemplate(false);
+  };
+
+  useEffect(() => {
+    if (!templateOpen) return;
+    loadTemplate();
+  }, [templateOpen, tipoContrato, perfilContrato]);
+
+  useEffect(() => {
+    const refreshBadge = async () => {
+      const { data } = await supabase
+        .from("contract_templates")
+        .select("id")
+        .eq("tipo_contrato", tipoContrato)
+        .eq("perfil", perfilContrato)
+        .eq("active", true)
+        .limit(1)
+        .maybeSingle();
+      setHasActiveTemplate(Boolean(data?.id));
+    };
+    refreshBadge();
+  }, [tipoContrato, perfilContrato]);
+
+  const save = async () => {
+    if (!isPlatformAdmin) {
+      toast.error("Apenas o administrador da plataforma pode alterar o modelo base.");
+      return;
+    }
+    if (!templateText.trim()) {
+      toast.error("Informe o texto do modelo base.");
+      return;
+    }
+
+    setSavingTemplate(true);
+    try {
+      const last = await supabase
+        .from("contract_templates")
+        .select("version")
+        .eq("tipo_contrato", tipoContrato)
+        .eq("perfil", perfilContrato)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (last.error) throw last.error;
+
+      const nextVersion = (last.data?.version || 0) + 1;
+
+      await supabase
+        .from("contract_templates")
+        .update({ active: false })
+        .eq("tipo_contrato", tipoContrato)
+        .eq("perfil", perfilContrato);
+
+      const { error: insErr } = await supabase.from("contract_templates").insert({
+        tipo_contrato: tipoContrato,
+        perfil: perfilContrato,
+        provider: "manual",
+        model: null,
+        version: nextVersion,
+        active: true,
+        template_text: templateText.trim(),
+        instructions_ia: instructionsIa.trim() || null,
+        updated_at: new Date().toISOString(),
+      } as any);
+
+      if (insErr) throw insErr;
+      toast.success("Modelo base atualizado.");
+      setTemplateOpen(false);
+      setHasActiveTemplate(true);
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao salvar modelo base.");
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
@@ -113,6 +231,70 @@ const StepPerfil = ({ perfilContrato, onChange, peculiaridades = "", onPeculiari
           />
         </div>
       </div>
+
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h4 className="font-semibold text-foreground">Modelo Base</h4>
+            <p className="text-sm text-muted-foreground">
+              Contrato base usado para manter a minuta consistente. Perfil: {selectedPerfilLabel}.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={cn("text-xs px-2 py-1 rounded-md border", hasActiveTemplate ? "border-success/30 text-success" : "border-border text-muted-foreground")}>
+              {hasActiveTemplate ? "Configurado" : "Padrão (IA)"}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setTemplateOpen(true)}>
+              Configurar
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Configurar Modelo Base</DialogTitle>
+          </DialogHeader>
+          {loadingTemplate ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">Carregando...</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-4">
+                <div>
+                  <Label>Texto do Modelo Base</Label>
+                  <Textarea
+                    value={templateText}
+                    onChange={(e) => setTemplateText(e.target.value)}
+                    className="min-h-[260px]"
+                    placeholder="Cole aqui o texto do contrato base (sem peculiaridades)."
+                  />
+                </div>
+                <div>
+                  <Label>Instruções adicionais para IA (opcional)</Label>
+                  <Textarea
+                    value={instructionsIa}
+                    onChange={(e) => setInstructionsIa(e.target.value)}
+                    className="min-h-[120px]"
+                    placeholder="Ex.: Não alterar valores fixos; manter redação do modelo; inserir peculiaridades como cláusulas adicionais."
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setTemplateOpen(false)}>Cancelar</Button>
+                <Button onClick={save} disabled={savingTemplate}>
+                  {savingTemplate ? "Salvando..." : "Salvar"}
+                </Button>
+              </div>
+              {!isPlatformAdmin ? (
+                <p className="text-xs text-muted-foreground">
+                  Apenas o administrador da plataforma pode salvar alterações do modelo base.
+                </p>
+              ) : null}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

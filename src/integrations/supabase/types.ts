@@ -226,6 +226,48 @@ export type Database = {
           },
         ]
       }
+      contract_templates: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          instructions_ia: string | null
+          model: string | null
+          perfil: string
+          provider: string | null
+          template_text: string
+          tipo_contrato: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          instructions_ia?: string | null
+          model?: string | null
+          perfil: string
+          provider?: string | null
+          template_text: string
+          tipo_contrato: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          instructions_ia?: string | null
+          model?: string | null
+          perfil?: string
+          provider?: string | null
+          template_text?: string
+          tipo_contrato?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       imobiliarias: {
         Row: {
           bairro: string | null
