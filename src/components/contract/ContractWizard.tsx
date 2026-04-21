@@ -300,7 +300,7 @@ const ContractWizard = () => {
       return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
     }
     if (currentStepObj.label === "Perfil") {
-      return <StepPerfil tipoContrato={tipoContrato} perfilContrato={perfilContrato} onChange={setPerfilContrato} peculiaridades={peculiaridades} onPeculiaridadesChange={setPeculiaridades} imobiliariaId={imobiliariaId} />;
+      return <StepPerfil tipoContrato={tipo as TipoContrato} perfilContrato={perfilContrato} onChange={setPerfilContrato} peculiaridades={peculiaridades} onPeculiaridadesChange={setPeculiaridades} imobiliariaId={imobiliariaId} />;
     }
     if (currentStepObj.label === "Gerar") {
       if (minuta) {
