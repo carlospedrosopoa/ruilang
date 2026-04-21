@@ -510,6 +510,59 @@ export type Database = {
           },
         ]
       }
+      tipos_contrato: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          created_by: string | null
+          descricao: string | null
+          icone: string
+          id: string
+          imobiliaria_id: string
+          label_comprador: string
+          label_vendedor: string
+          modelo_base: string | null
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          icone?: string
+          id?: string
+          imobiliaria_id: string
+          label_comprador?: string
+          label_vendedor?: string
+          modelo_base?: string | null
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          icone?: string
+          id?: string
+          imobiliaria_id?: string
+          label_comprador?: string
+          label_vendedor?: string
+          modelo_base?: string | null
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tipos_contrato_imobiliaria_id_fkey"
+            columns: ["imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

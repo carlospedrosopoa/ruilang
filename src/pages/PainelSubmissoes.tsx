@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -16,6 +18,7 @@ import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Submission {
   id: string;
@@ -41,6 +44,16 @@ interface Corretor {
   email: string | null;
 }
 
+interface CustomTipoContrato {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  icone: string;
+  label_vendedor: string;
+  label_comprador: string;
+  modelo_base: string | null;
+}
+
 const statusLabels: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   rascunho: { label: "Rascunho", icon: Clock, color: "text-yellow-500" },
   enviado: { label: "Enviado", icon: CheckCircle, color: "text-green-500" },
@@ -54,13 +67,23 @@ const PainelSubmissoes = () => {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [novoTipo, setNovoTipo] = useState<TipoContrato>("promessa_compra_venda");
+  const [novoTipo, setNovoTipo] = useState<string>("promessa_compra_venda");
   const [corretores, setCorretores] = useState<Corretor[]>([]);
   const [selectedCorretorId, setSelectedCorretorId] = useState<string | null>(null);
   const [proposalOpen, setProposalOpen] = useState(false);
   const [proposalLoading, setProposalLoading] = useState(false);
   const [proposalSubmissionId, setProposalSubmissionId] = useState<string | null>(null);
   const [proposalText, setProposalText] = useState<string>("");
+
+  const [customTipos, setCustomTipos] = useState<CustomTipoContrato[]>([]);
+  const [tipoDialogOpen, setTipoDialogOpen] = useState(false);
+  const [editingTipo, setEditingTipo] = useState<CustomTipoContrato | null>(null);
+  const [tipoNome, setTipoNome] = useState("");
+  const [tipoDescricao, setTipoDescricao] = useState("");
+  const [tipoLabelVendedor, setTipoLabelVendedor] = useState("Vendedor");
+  const [tipoLabelComprador, setTipoLabelComprador] = useState("Comprador");
+  const [tipoModeloBase, setTipoModeloBase] = useState("");
+  const [savingTipo, setSavingTipo] = useState(false);
 
   const loadData = async () => {
     const subQuery = supabase.from("submissions").select("*, imobiliarias(*)").order("created_at", { ascending: false });
@@ -94,6 +117,116 @@ const PainelSubmissoes = () => {
     };
     loadCorretores();
   }, [activeTenantId]);
+
+  useEffect(() => {
+    const loadCustomTipos = async () => {
+      if (!activeTenantId) {
+        setCustomTipos([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("tipos_contrato")
+        .select("id, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
+        .eq("imobiliaria_id", activeTenantId)
+        .eq("ativo", true)
+        .order("created_at", { ascending: true });
+      setCustomTipos((data as CustomTipoContrato[]) || []);
+    };
+    loadCustomTipos();
+  }, [activeTenantId]);
+
+  const allTipos = useMemo(() => {
+    return [
+      ...tiposContrato.map((t) => ({ id: t.id as string, nome: t.nome, descricao: t.descricao, icone: t.icone })),
+      ...customTipos.map((t) => ({ id: t.id, nome: t.nome, descricao: t.descricao || "", icone: t.icone })),
+    ];
+  }, [customTipos]);
+
+  const openCreateTipo = () => {
+    setEditingTipo(null);
+    setTipoNome("");
+    setTipoDescricao("");
+    setTipoLabelVendedor("Vendedor");
+    setTipoLabelComprador("Comprador");
+    setTipoModeloBase("");
+    setTipoDialogOpen(true);
+  };
+
+  const openEditTipo = (ct: CustomTipoContrato) => {
+    setEditingTipo(ct);
+    setTipoNome(ct.nome);
+    setTipoDescricao(ct.descricao || "");
+    setTipoLabelVendedor(ct.label_vendedor || "Vendedor");
+    setTipoLabelComprador(ct.label_comprador || "Comprador");
+    setTipoModeloBase(ct.modelo_base || "");
+    setTipoDialogOpen(true);
+  };
+
+  const saveTipo = async () => {
+    if (!activeTenantId) {
+      toast.error("Selecione uma imobiliária para criar tipos.");
+      return;
+    }
+    if (!tipoNome.trim()) {
+      toast.error("Informe o nome do tipo de contrato.");
+      return;
+    }
+    setSavingTipo(true);
+    try {
+      if (editingTipo) {
+        const { data, error } = await supabase
+          .from("tipos_contrato")
+          .update({
+            nome: tipoNome.trim(),
+            descricao: tipoDescricao.trim() || null,
+            label_vendedor: tipoLabelVendedor.trim() || "Vendedor",
+            label_comprador: tipoLabelComprador.trim() || "Comprador",
+            modelo_base: tipoModeloBase.trim() || null,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq("id", editingTipo.id)
+          .select("id, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
+          .single();
+        if (error) throw error;
+        setCustomTipos((prev) => prev.map((t) => (t.id === data.id ? (data as any) : t)));
+        toast.success("Tipo de contrato atualizado!");
+      } else {
+        const { data: authData } = await supabase.auth.getUser();
+        const userId = authData?.user?.id || null;
+        const { data, error } = await supabase
+          .from("tipos_contrato")
+          .insert({
+            imobiliaria_id: activeTenantId,
+            nome: tipoNome.trim(),
+            descricao: tipoDescricao.trim() || null,
+            label_vendedor: tipoLabelVendedor.trim() || "Vendedor",
+            label_comprador: tipoLabelComprador.trim() || "Comprador",
+            modelo_base: tipoModeloBase.trim() || null,
+            created_by: userId,
+          } as any)
+          .select("id, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
+          .single();
+        if (error) throw error;
+        setCustomTipos((prev) => [...prev, data as any]);
+        toast.success("Tipo de contrato criado!");
+      }
+      setTipoDialogOpen(false);
+      setEditingTipo(null);
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao salvar tipo de contrato.");
+    } finally {
+      setSavingTipo(false);
+    }
+  };
+
+  const deleteTipo = async (id: string) => {
+    const { error } = await supabase.from("tipos_contrato").delete().eq("id", id);
+    if (error) toast.error("Erro ao excluir tipo de contrato.");
+    else {
+      setCustomTipos((prev) => prev.filter((t) => t.id !== id));
+      toast.success("Tipo de contrato excluído.");
+    }
+  };
 
   const handleCreateLink = async () => {
     if (!activeTenantId) {
@@ -263,12 +396,32 @@ const PainelSubmissoes = () => {
                     <div className="space-y-4 pt-4">
                       <div>
                         <Label>Tipo de Contrato</Label>
-                        <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v as TipoContrato)}>
+                        <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v)}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {tiposContrato.map((t) => (<SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>))}
+                            {allTipos.map((t) => (<SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>))}
                           </SelectContent>
                         </Select>
+                        <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
+                          <Button variant="ghost" size="sm" className="px-0" onClick={openCreateTipo}>
+                            <Plus className="w-4 h-4 mr-1.5" />
+                            Criar Novo Tipo de Contrato
+                          </Button>
+                          {customTipos.length > 0 ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="px-0"
+                              onClick={() => {
+                                const ct = customTipos.find((x) => x.id === novoTipo);
+                                if (ct) openEditTipo(ct);
+                                else toast.error("Selecione um tipo personalizado para editar.");
+                              }}
+                            >
+                              Editar Tipo Selecionado
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
                       <div>
                         <Label>Corretor</Label>
@@ -298,7 +451,7 @@ const PainelSubmissoes = () => {
             ) : (
               <div className="space-y-4">
                 {submissions.map((sub) => {
-                  const tipoInfo = tiposContrato.find((t) => t.id === sub.tipo_contrato);
+                  const tipoInfo = allTipos.find((t) => t.id === sub.tipo_contrato);
                   const statusInfo = statusLabels[sub.status] || statusLabels.rascunho;
                   const StatusIcon = statusInfo.icon;
                   const hasProposal = Boolean(sub.proposta_texto && String(sub.proposta_texto).trim());
@@ -384,6 +537,70 @@ const PainelSubmissoes = () => {
               </div>
             ) : (
               <pre className="whitespace-pre-wrap text-sm text-foreground">{proposalText || "Nenhuma proposta gerada ainda."}</pre>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={tipoDialogOpen} onOpenChange={setTipoDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{editingTipo ? "Editar Tipo de Contrato" : "Criar Tipo de Contrato"}</DialogTitle>
+            <DialogDescription>
+              Define um novo tipo de contrato para a imobiliária atual. Opcionalmente cole um modelo base para manter a minuta consistente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Nome</Label>
+                <Input value={tipoNome} onChange={(e) => setTipoNome(e.target.value)} placeholder="Ex: Contrato de Arrendamento" />
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Input value={tipoDescricao} onChange={(e) => setTipoDescricao(e.target.value)} placeholder="Breve descrição" />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Label do Vendedor</Label>
+                <Input value={tipoLabelVendedor} onChange={(e) => setTipoLabelVendedor(e.target.value)} placeholder="Ex: Cedente" />
+              </div>
+              <div>
+                <Label>Label do Comprador</Label>
+                <Input value={tipoLabelComprador} onChange={(e) => setTipoLabelComprador(e.target.value)} placeholder="Ex: Cessionário" />
+              </div>
+            </div>
+            <div>
+              <Label>Modelo Base (opcional)</Label>
+              <Textarea
+                value={tipoModeloBase}
+                onChange={(e) => setTipoModeloBase(e.target.value)}
+                className="min-h-[220px]"
+                placeholder="Cole aqui o texto do contrato base (sem peculiaridades)."
+              />
+            </div>
+            {editingTipo ? (
+              <div className="flex justify-between items-center">
+                <Button variant="destructive" onClick={() => deleteTipo(editingTipo.id)}>
+                  Excluir
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setTipoDialogOpen(false)}>Cancelar</Button>
+                  <Button onClick={saveTipo} disabled={savingTipo}>
+                    {savingTipo ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    Salvar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setTipoDialogOpen(false)}>Cancelar</Button>
+                <Button onClick={saveTipo} disabled={savingTipo}>
+                  {savingTipo ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Criar
+                </Button>
+              </DialogFooter>
             )}
           </div>
         </DialogContent>

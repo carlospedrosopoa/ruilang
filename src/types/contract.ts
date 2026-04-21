@@ -2,7 +2,8 @@ export type TipoContrato =
   | "promessa_compra_venda"
   | "promessa_compra_venda_permuta"
   | "cessao_direitos"
-  | "locacao";
+  | "locacao"
+  | (string & {});
 
 export interface TipoContratoInfo {
   id: TipoContrato;

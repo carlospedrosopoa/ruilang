@@ -29,15 +29,18 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-const labelByTipo: Record<TipoContrato, { vendedor: string; comprador: string }> = {
+const labelByTipo: Record<string, { vendedor: string; comprador: string }> = {
   promessa_compra_venda: { vendedor: "Vendedor", comprador: "Comprador" },
   promessa_compra_venda_permuta: { vendedor: "Vendedor", comprador: "Comprador" },
   cessao_direitos: { vendedor: "Cedente", comprador: "Cessionário" },
   locacao: { vendedor: "Locador", comprador: "Locatário" },
 };
 
-function getSteps(tipo: TipoContrato) {
-  const labels = labelByTipo[tipo];
+function getLabels(tipo: string) {
+  return labelByTipo[tipo] || { vendedor: "Vendedor", comprador: "Comprador" };
+}
+
+function getSteps(tipo: string, labels: { vendedor: string; comprador: string }) {
   const steps = [
     { number: 1, label: `${labels.vendedor}(es)` },
     { number: 2, label: `${labels.comprador}(es)` },
@@ -65,10 +68,13 @@ const ContractWizard = () => {
   const { tipo: tipoParam } = useParams<{ tipo: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const tipo = (tipoParam as TipoContrato) || "promessa_compra_venda";
-  const tipoInfo = tiposContrato.find((t) => t.id === tipo);
-  const labels = labelByTipo[tipo];
-  const steps = getSteps(tipo);
+  const tipo = (tipoParam as string) || "promessa_compra_venda";
+  const [customTipoInfo, setCustomTipoInfo] = useState<any | null>(null);
+  const tipoInfo = tiposContrato.find((t) => t.id === (tipo as any)) || customTipoInfo;
+  const labels = customTipoInfo
+    ? { vendedor: customTipoInfo.label_vendedor || "Vendedor", comprador: customTipoInfo.label_comprador || "Comprador" }
+    : getLabels(tipo);
+  const steps = getSteps(tipo, labels);
   const totalSteps = steps.length;
   const submissionId = searchParams.get("submissionId");
 
@@ -85,6 +91,23 @@ const ContractWizard = () => {
   const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadTipo = async () => {
+      const builtIn = tiposContrato.some((t) => t.id === (tipo as any));
+      if (builtIn) {
+        setCustomTipoInfo(null);
+        return;
+      }
+      const { data } = await supabase
+        .from("tipos_contrato")
+        .select("id, nome, descricao, label_vendedor, label_comprador")
+        .eq("id", tipo)
+        .maybeSingle();
+      setCustomTipoInfo(data || null);
+    };
+    loadTipo();
+  }, [tipo]);
 
   useEffect(() => {
     if (!submissionId) return;
@@ -132,6 +155,7 @@ const ContractWizard = () => {
     try {
       const contrato = {
         tipoContrato: tipo,
+        tipoContratoNome: tipoInfo?.nome || null,
         perfilContrato,
         peculiaridades: peculiaridades.trim() || undefined,
         vendedores,

@@ -600,7 +600,17 @@ serve(async (req: Request) => {
     if (!contrato) throw new Error("Missing 'contrato' in request body");
     const submissionId = typeof body?.submissionId === "string" ? body.submissionId : null;
 
-    const tipoLabel = tipoLabels[contrato.tipoContrato] || "Contrato Imobiliário";
+    let tipoLabel = tipoLabels[contrato.tipoContrato] || "Contrato Imobiliário";
+    if (typeof contrato?.tipoContratoNome === "string" && contrato.tipoContratoNome.trim()) {
+      tipoLabel = `Contrato - ${contrato.tipoContratoNome.trim()}`;
+    } else if (admin && !tipoLabels[contrato.tipoContrato]) {
+      const { data } = await admin
+        .from("tipos_contrato")
+        .select("nome")
+        .eq("id", contrato.tipoContrato)
+        .maybeSingle();
+      if (data?.nome) tipoLabel = `Contrato - ${String(data.nome).trim()}`;
+    }
     const clausulasTipo = getClausulasEspecificasTipo(contrato.tipoContrato);
     const perfilTexto = getPerfilInstrucoes(contrato.perfilContrato || "equilibrado", contrato.tipoContrato);
 
@@ -687,6 +697,20 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       }
       if (typeof existingTemplate?.instructions_ia === "string" && existingTemplate.instructions_ia.trim()) {
         templateInstructionsIa = existingTemplate.instructions_ia;
+      }
+    }
+
+    if (admin && !minutaBase) {
+      const { data } = await admin
+        .from("tipos_contrato")
+        .select("modelo_base, label_vendedor, label_comprador, nome")
+        .eq("id", contrato.tipoContrato)
+        .maybeSingle();
+      const modeloBase = typeof data?.modelo_base === "string" ? data.modelo_base.trim() : "";
+      if (modeloBase) {
+        minutaBase = modeloBase;
+        usedProvider = "openai";
+        usedModel = "manual";
       }
     }
 
