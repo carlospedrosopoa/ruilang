@@ -38,6 +38,7 @@ const ContratosGeradosPage = () => {
   const [imobiliarias, setImobiliarias] = useState<Imobiliaria[]>([]);
   const [rows, setRows] = useState<SubmissionRow[]>([]);
   const [filterImobiliaria, setFilterImobiliaria] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
 
   const [editorOpen, setEditorOpen] = useState(false);
@@ -48,20 +49,29 @@ const ContratosGeradosPage = () => {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [imobRes, subsRes] = await Promise.all([
-        supabase.from("imobiliarias").select("id, nome").order("nome"),
-        supabase
-          .from("submissions")
-          .select(
-            "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at, contract_texto, contract_texto_updated_at",
-          )
-          .not("contract_generated_at", "is", null)
-          .order("contract_generated_at", { ascending: false })
-          .limit(2000),
+      const imobPromise = supabase.from("imobiliarias").select("id, nome").order("nome");
+      const selectFull =
+        "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at, contract_texto, contract_texto_updated_at";
+      const selectFallback = "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at";
+
+      const [imobRes, firstTry] = await Promise.all([
+        imobPromise,
+        supabase.from("submissions").select(selectFull).order("created_at", { ascending: false }).limit(2000),
       ]);
 
+      let subsData = firstTry.data as any[] | null;
+      if (firstTry.error) {
+        const msg = String((firstTry.error as any)?.message || "");
+        if (msg.toLowerCase().includes("contract_texto")) {
+          const retry = await supabase.from("submissions").select(selectFallback).order("created_at", { ascending: false }).limit(2000);
+          subsData = retry.data as any[] | null;
+        } else {
+          toast.error(msg || "Erro ao carregar contratos.");
+        }
+      }
+
       setImobiliarias((imobRes.data as Imobiliaria[]) || []);
-      setRows((subsRes.data as SubmissionRow[]) || []);
+      setRows(((subsData as SubmissionRow[]) || []).map((r: any) => ({ contract_texto: null, contract_texto_updated_at: null, ...r })));
       setLoading(false);
     };
     load();
@@ -77,6 +87,7 @@ const ContratosGeradosPage = () => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (filterImobiliaria !== "all" && r.imobiliaria_id !== filterImobiliaria) return false;
+      if (filterStatus !== "all" && r.status !== filterStatus) return false;
       if (!q) return true;
       const hay = [
         r.id,
@@ -88,7 +99,7 @@ const ContratosGeradosPage = () => {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, filterImobiliaria, search, imobiliariaById]);
+  }, [rows, filterImobiliaria, filterStatus, search, imobiliariaById]);
 
   const openWizard = (r: SubmissionRow) => {
     navigate(`/contrato/${r.tipo_contrato}?submissionId=${r.id}`);
@@ -252,6 +263,21 @@ const ContratosGeradosPage = () => {
                 {imobiliarias.map((i) => (
                   <SelectItem key={i.id} value={i.id}>{i.nome}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label>Status</Label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="rascunho">Rascunho</SelectItem>
+                <SelectItem value="enviado">Enviado</SelectItem>
+                <SelectItem value="contrato_gerado">Contrato gerado</SelectItem>
               </SelectContent>
             </Select>
           </div>

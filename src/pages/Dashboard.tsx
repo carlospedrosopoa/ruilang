@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef, type ChangeEvent } from "react";
-import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2, Sparkles, ChevronRight, BarChart3, Users, Plus } from "lucide-react";
+import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2, Sparkles, ChevronRight, BarChart3, Users, Plus, FileCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { tiposContrato } from "@/types/contract";
 import { Button } from "@/components/ui/button";
@@ -96,8 +96,25 @@ const Dashboard = () => {
     ];
   }, [customTipos]);
 
-  const handleSelect = (tipo: string) => {
-    navigate(`/contrato/${tipo}`);
+  const handleSelect = async (tipo: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("submissions")
+        .insert({
+          tipo_contrato: tipo,
+          status: "rascunho",
+          imobiliaria_id: selectedImobiliaria || null,
+          dados: {},
+        } as any)
+        .select("id")
+        .single();
+
+      if (error) throw error;
+      navigate(`/contrato/${tipo}?submissionId=${data.id}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível criar o registro do contrato.");
+      navigate(`/contrato/${tipo}`);
+    }
   };
 
   const openCreateTipo = () => {
@@ -253,15 +270,26 @@ const Dashboard = () => {
                 <span className="hidden sm:inline">Clientes</span>
               </Button>
               {isPlatformAdmin ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate("/imobiliarias")}
-                  className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
-                >
-                  <Building2 className="w-4 h-4 mr-1.5" />
-                  <span className="hidden sm:inline">Imobiliárias</span>
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate("/contratos")}
+                    className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                  >
+                    <FileCheck className="w-4 h-4 mr-1.5" />
+                    <span className="hidden sm:inline">Contratos</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate("/imobiliarias")}
+                    className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
+                  >
+                    <Building2 className="w-4 h-4 mr-1.5" />
+                    <span className="hidden sm:inline">Imobiliárias</span>
+                  </Button>
+                </>
               ) : null}
               <Button
                 variant="ghost"
