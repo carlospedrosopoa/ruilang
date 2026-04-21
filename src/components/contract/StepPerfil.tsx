@@ -1,4 +1,4 @@
-import { ShieldCheck, ShieldAlert, Scale, MessageSquarePlus, Plus } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Scale, MessageSquarePlus, Plus, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { PerfilContrato, TipoContrato, perfisContrato } from "@/types/contract";
 import { Textarea } from "@/components/ui/textarea";
