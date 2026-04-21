@@ -25,6 +25,12 @@ function isFailoverEnabled() {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+function shouldAutoSaveTemplates() {
+  const raw = (Deno.env.get("AI_AUTOSAVE_TEMPLATES") || "").toLowerCase();
+  if (!raw) return false;
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 function normalizePerfil(perfil: unknown) {
   const p = typeof perfil === "string" ? perfil.trim() : "";
   return p || "equilibrado";
@@ -115,6 +121,46 @@ ${params.peculiaridades}
 ${extraInstructions}
 
 Gere somente as cláusulas adicionais.`;
+
+  if (params.provider === "openai") {
+    return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+  }
+  return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+}
+
+async function renderContractFromTemplate(params: {
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
+  tipoLabel: string;
+  templateText: string;
+  contrato: any;
+  instructionsIa?: string | null;
+}) {
+  const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
+
+TAREFA:
+Usar o MODELO BASE fornecido como referência de redação e estrutura para gerar a MINUTA FINAL do ${params.tipoLabel}.
+
+REGRAS OBRIGATÓRIAS:
+- O modelo base é apenas um MODELO. Se ele contiver nomes/CPF/endereço/valores/datas específicos, você DEVE substituir pelos dados fornecidos.
+- Não invente dados. Se um dado não foi fornecido, omita ou ajuste a redação de forma segura, sem placeholders.
+- Mantenha a redação e a estrutura do modelo base o máximo possível, alterando apenas o necessário para refletir os dados corretos.
+- Garanta coerência total entre todas as cláusulas (valores, prazos, identificação das partes e do imóvel).
+- NÃO use markdown. Gere apenas texto simples pronto para assinatura.`;
+
+  const extraInstructions = typeof params.instructionsIa === "string" && params.instructionsIa.trim()
+    ? `\n\nINSTRUÇÕES ADICIONAIS (OBRIGATÓRIAS):\n${params.instructionsIa.trim()}\n`
+    : "";
+
+  const userPrompt = `MODELO BASE (REFERÊNCIA) - SUBSTITUIR DADOS PELOS INFORMADOS:
+${params.templateText}
+
+DADOS DO CONTRATO (OFICIAIS):
+${JSON.stringify(params.contrato, null, 2)}
+${extraInstructions}
+
+Gere a minuta final completa usando a estrutura do modelo base, com todos os dados substituídos pelos oficiais.`;
 
   if (params.provider === "openai") {
     return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
@@ -702,6 +748,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     const tryOrder: AiProvider[] = provider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
     let lastError: unknown = null;
     let minutaBase = "";
+    let baseSource: "template" | "custom_modelo_base" | "ai" = "ai";
     let usedProvider: AiProvider = provider;
     let usedModel = "";
     let templateInstructionsIa: string | null = null;
@@ -710,6 +757,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       const existingTemplate = await getActiveTemplate(admin, contrato.tipoContrato, perfil);
       if (existingTemplate?.template_text) {
         minutaBase = existingTemplate.template_text;
+        baseSource = "template";
       }
       if (typeof existingTemplate?.instructions_ia === "string" && existingTemplate.instructions_ia.trim()) {
         templateInstructionsIa = existingTemplate.instructions_ia;
@@ -728,6 +776,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       const modeloBase = typeof data?.modelo_base === "string" ? data.modelo_base.trim() : "";
       if (modeloBase) {
         minutaBase = modeloBase;
+        baseSource = "custom_modelo_base";
         usedProvider = "openai";
         usedModel = "manual";
       }
@@ -749,6 +798,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                 minutaBase = await callOpenAiText({ apiKey: key, model, systemPrompt, userPrompt: userPromptBase });
                 usedProvider = "openai";
                 usedModel = model;
+                baseSource = "ai";
                 break;
               } catch (e) {
                 openAiError = e;
@@ -771,6 +821,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                 minutaBase = await callGeminiText({ apiKey: key, model, systemPrompt, userPrompt: userPromptBase });
                 usedProvider = "gemini";
                 usedModel = model;
+                baseSource = "ai";
                 break;
               } catch (e) {
                 geminiError = e;
@@ -798,9 +849,88 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     // Strip any remaining markdown formatting
     minutaBase = minutaBase.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
 
-    if (admin) {
+    let baseContrato = minutaBase;
+    if (baseSource !== "ai") {
+      const tryOrderRender: AiProvider[] = provider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+      let renderError: unknown = null;
+      let rendered: string | null = null;
+
+      for (const p of tryOrderRender) {
+        try {
+          if (p === "openai") {
+            const key = Deno.env.get("OPENAI_API_KEY");
+            if (!key) throw new Error("OPENAI_API_KEY is not configured");
+            const models = [
+              Deno.env.get("OPENAI_MODEL_CONTRACT_RENDER") || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+              Deno.env.get("OPENAI_MODEL_CONTRACT_RENDER_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+            ];
+            let openAiError: unknown = null;
+            for (const model of models) {
+              try {
+                rendered = await renderContractFromTemplate({
+                  provider: "openai",
+                  apiKey: key,
+                  model,
+                  tipoLabel,
+                  templateText: minutaBase,
+                  contrato: contratoSemPeculiaridades,
+                  instructionsIa: templateInstructionsIa,
+                });
+                break;
+              } catch (e) {
+                openAiError = e;
+                const status = (e as any)?.status;
+                if (status === 429) continue;
+                throw e;
+              }
+            }
+            if (rendered === null && openAiError) throw openAiError;
+          } else {
+            const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+            if (!key) throw new Error("GEMINI_API_KEY is not configured");
+            const models = [
+              Deno.env.get("GEMINI_MODEL_CONTRACT_RENDER") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_RENDER_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+            ];
+            let geminiError: unknown = null;
+            for (const model of models) {
+              try {
+                rendered = await renderContractFromTemplate({
+                  provider: "gemini",
+                  apiKey: key,
+                  model,
+                  tipoLabel,
+                  templateText: minutaBase,
+                  contrato: contratoSemPeculiaridades,
+                  instructionsIa: templateInstructionsIa,
+                });
+                break;
+              } catch (e) {
+                geminiError = e;
+                const status = (e as any)?.status;
+                if (status === 429 || status === 404) continue;
+                throw e;
+              }
+            }
+            if (rendered === null && geminiError) throw geminiError;
+          }
+          break;
+        } catch (e) {
+          renderError = e;
+          const status = (e as any)?.status;
+          const shouldForceFallback = status === 404;
+          if (!failover && !shouldForceFallback) break;
+        }
+      }
+
+      if (!rendered) {
+        throw renderError instanceof Error ? renderError : new Error("Erro ao aplicar modelo base ao contrato");
+      }
+
+      baseContrato = rendered.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+    } else if (shouldAutoSaveTemplates() && admin && usedModel) {
       const existingTemplate = await getActiveTemplate(admin, contrato.tipoContrato, perfil);
-      if (!existingTemplate?.template_text && usedModel) {
+      if (!existingTemplate?.template_text) {
         await saveTemplate(admin, {
           tipoContrato: contrato.tipoContrato,
           perfil,
@@ -811,7 +941,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       }
     }
 
-    let minutaFinal = minutaBase;
+    let minutaFinal = baseContrato;
     const peculiaridades = typeof contrato.peculiaridades === "string" ? contrato.peculiaridades.trim() : "";
     if (peculiaridades) {
       const providerForPec = usedModel ? usedProvider : provider;
@@ -837,7 +967,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   apiKey: key,
                   model,
                   tipoLabel,
-                  baseTemplate: minutaBase,
+                  baseTemplate: baseContrato,
                   contrato: contratoSemPeculiaridades,
                   peculiaridades,
                   instructionsIa: templateInstructionsIa,
@@ -866,7 +996,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   apiKey: key,
                   model,
                   tipoLabel,
-                  baseTemplate: minutaBase,
+                  baseTemplate: baseContrato,
                   contrato: contratoSemPeculiaridades,
                   peculiaridades,
                   instructionsIa: templateInstructionsIa,
@@ -893,7 +1023,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       if (extraText === null) {
         throw lastPecError instanceof Error ? lastPecError : new Error("Erro ao gerar peculiaridades");
       }
-      if (extraText && extraText.trim()) minutaFinal = insertBeforeLocalEData(minutaBase, extraText.trim());
+      if (extraText && extraText.trim()) minutaFinal = insertBeforeLocalEData(baseContrato, extraText.trim());
     }
 
     if (admin && submissionId) {
