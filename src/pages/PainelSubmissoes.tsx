@@ -362,10 +362,16 @@ const PainelSubmissoes = () => {
               <span className="hidden sm:inline">Corretores</span>
             </Button>
             {isPlatformAdmin ? (
-              <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
-                <Building2 className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">Imobiliárias</span>
-              </Button>
+              <>
+                <Button variant="ghost" size="sm" onClick={() => navigate("/contratos")}>
+                  <FileCheck className="w-4 h-4 mr-1.5" />
+                  <span className="hidden sm:inline">Contratos</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
+                  <Building2 className="w-4 h-4 mr-1.5" />
+                  <span className="hidden sm:inline">Imobiliárias</span>
+                </Button>
+              </>
             ) : null}
             <Button variant="ghost" size="sm" onClick={() => signOut()}>
               <ChevronRight className="w-4 h-4 mr-1.5 rotate-180" />

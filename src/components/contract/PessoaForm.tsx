@@ -3,11 +3,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Trash2, Upload, FileImage, Loader2, Sparkles, X, Camera, Heart, Link } from "lucide-react";
+import { Trash2, Upload, FileImage, Loader2, Sparkles, X, Camera, Heart, Link, FileText } from "lucide-react";
 import { Pessoa, estadosCivis, estadosBR } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { fileToVisionBase64Images } from "@/lib/imageUtils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 interface PessoaFormProps {
   pessoa: Pessoa;
@@ -51,6 +53,8 @@ function parseAddressParts(fullAddress: string) {
 const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil, onExtractFiles }: PessoaFormProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [textDialogOpen, setTextDialogOpen] = useState(false);
+  const [textToExtract, setTextToExtract] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -142,6 +146,62 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
     }
   };
 
+  const handleExtractFromText = async () => {
+    if (!textToExtract.trim()) {
+      toast.error("Cole um texto para extração.");
+      return;
+    }
+
+    setIsExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("extract-document", {
+        body: { text: textToExtract.trim(), ai: { provider: "openai" } },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const dados = data.dados;
+      if (!dados) throw new Error("Nenhum dado extraído");
+
+      const merged = { ...pessoa };
+      for (const [key, value] of Object.entries(dados)) {
+        if (value && typeof value === "string" && value.trim() !== "") {
+          const pessoaKey = key as keyof Pessoa;
+          if (pessoaKey in merged) (merged as any)[pessoaKey] = value.trim();
+        }
+      }
+
+      const explicitBairro = typeof dados.bairro === "string" && dados.bairro.trim() !== "";
+      const explicitCidade = typeof dados.cidade === "string" && dados.cidade.trim() !== "";
+      const explicitEstado = typeof dados.estado === "string" && dados.estado.trim() !== "";
+      const explicitCep = typeof dados.cep === "string" && dados.cep.trim() !== "";
+
+      const parsed = parseAddressParts(merged.endereco || "");
+      if (parsed.bairro && !explicitBairro) merged.bairro = parsed.bairro;
+      if (parsed.cidade && !explicitCidade) merged.cidade = parsed.cidade;
+      if (parsed.estado && !explicitEstado) merged.estado = parsed.estado;
+      if (parsed.cep && !explicitCep) merged.cep = parsed.cep;
+
+      onChange(merged);
+      toast.success("Dados extraídos com sucesso! Verifique e complete os campos.");
+      setTextDialogOpen(false);
+    } catch (err: any) {
+      console.error("Extract from text error:", err);
+      let message = err?.message;
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (body?.error) message = body.error;
+        } catch {}
+      }
+      toast.error(message || "Erro ao extrair dados do texto.");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   return (
     <div className={`border rounded-lg p-5 space-y-4 bg-card ${isConjuge ? 'border-primary/30 bg-primary/5' : 'border-border'}`}>
       <div className="flex items-center justify-between">
@@ -195,6 +255,10 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
             <Camera className="w-4 h-4 mr-1" />
             Tirar Foto
           </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setTextDialogOpen(true)}>
+            <FileText className="w-4 h-4 mr-1" />
+            Colar Texto
+          </Button>
           {files.length > 0 && (
             <Button type="button" size="sm" onClick={handleExtract} disabled={isExtracting} className="bg-primary text-primary-foreground">
               {isExtracting ? (
@@ -209,6 +273,33 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
         <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,.pdf" multiple onChange={handleFilesSelected} className="hidden" />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFilesSelected} className="hidden" />
       </div>
+
+      <Dialog open={textDialogOpen} onOpenChange={setTextDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Colar Texto para Extração</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="space-y-4 pt-2">
+              <div>
+                <Label>Texto</Label>
+                <Textarea
+                  value={textToExtract}
+                  onChange={(e) => setTextToExtract(e.target.value)}
+                  className="min-h-[260px]"
+                  placeholder="Cole aqui o texto digitado, OCR ou dados copiados. A IA tentará identificar nome, CPF, documento, filiação e endereço."
+                />
+              </div>
+            </div>
+          </div>
+          <div className="pt-4 flex justify-end gap-2 border-t border-border">
+            <Button variant="outline" onClick={() => setTextDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleExtractFromText} disabled={isExtracting || !textToExtract.trim()}>
+              {isExtracting ? "Extraindo..." : "Extrair"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="md:col-span-2">

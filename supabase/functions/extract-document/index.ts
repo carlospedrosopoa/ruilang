@@ -260,14 +260,18 @@ serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { images } = body ?? {};
-    if (!images || !Array.isArray(images) || images.length === 0) {
-      throw new Error("Envie ao menos uma imagem em base64");
+    const { images, text } = body ?? {};
+    const hasImages = Array.isArray(images) && images.length > 0;
+    const hasText = typeof text === "string" && text.trim().length > 0;
+    if (!hasImages && !hasText) {
+      throw new Error("Envie ao menos uma imagem em base64 ou um texto para extração.");
     }
 
-    for (const img of images) {
-      if (typeof img !== "string" || img.length < 100) {
-        throw new Error("Imagem inválida. Certifique-se de enviar fotos nítidas dos documentos.");
+    if (hasImages) {
+      for (const img of images) {
+        if (typeof img !== "string" || img.length < 100) {
+          throw new Error("Imagem inválida. Certifique-se de enviar fotos nítidas dos documentos.");
+        }
       }
     }
 
@@ -300,14 +304,23 @@ FORMATO DE RESPOSTA:
       { type: "text", text: "Extraia os dados pessoais destes documentos e preencha a ferramenta com o resultado." },
     ];
 
-    for (const img of images) {
-      const mediaType = img.startsWith("JVBERi0") ? "application/pdf" : "image/jpeg";
+    if (hasText) {
       content.push({
-        type: "image_url",
-        image_url: {
-          url: `data:${mediaType};base64,${img}`,
-        },
+        type: "text",
+        text: `TEXTO PARA EXTRAÇÃO (pode conter dados digitados/OCR):\n${text.trim()}`,
       });
+    }
+
+    if (hasImages) {
+      for (const img of images) {
+        const mediaType = img.startsWith("JVBERi0") ? "application/pdf" : "image/jpeg";
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: `data:${mediaType};base64,${img}`,
+          },
+        });
+      }
     }
 
     const requestedProvider = getProviderFromRequest(body);
@@ -331,8 +344,10 @@ FORMATO DE RESPOSTA:
         const extracted = await callGeminiExtractDocument({
           apiKey: key,
           systemPrompt,
-          userText: "Extraia os dados pessoais destes documentos e retorne apenas o JSON final.",
-          images,
+          userText: hasText
+            ? `Extraia os dados pessoais do texto abaixo e retorne apenas o JSON final.\n\n${text.trim()}`
+            : "Extraia os dados pessoais destes documentos e retorne apenas o JSON final.",
+          images: hasImages ? images : [],
         });
         return jsonResponse({ dados: extracted });
       } catch (e) {

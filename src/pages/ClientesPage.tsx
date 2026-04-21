@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, ChevronDown, ChevronRight, ChevronUp, FileText, Loader2, Users, BarChart3, ClipboardList, Pencil, Upload, Link2, Mail, Phone, UserCog } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, ChevronUp, FileCheck, FileText, Loader2, Users, BarChart3, ClipboardList, Pencil, Upload, Link2, Mail, Phone, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -225,10 +225,16 @@ export default function ClientesPage() {
               <span className="hidden sm:inline">Corretores</span>
             </Button>
             {isPlatformAdmin ? (
-              <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
-                <Building2 className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">Imobiliárias</span>
-              </Button>
+              <>
+                <Button variant="ghost" size="sm" onClick={() => navigate("/contratos")}>
+                  <FileCheck className="w-4 h-4 mr-1.5" />
+                  <span className="hidden sm:inline">Contratos</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
+                  <Building2 className="w-4 h-4 mr-1.5" />
+                  <span className="hidden sm:inline">Imobiliárias</span>
+                </Button>
+              </>
             ) : null}
             <Button variant="ghost" size="sm" onClick={() => signOut()}>
               <ChevronRight className="w-4 h-4 mr-1.5 rotate-180" />

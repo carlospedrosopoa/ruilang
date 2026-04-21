@@ -16,6 +16,7 @@ import RelatoriosPage from "./pages/RelatoriosPage.tsx";
 import ClientesPage from "./pages/ClientesPage.tsx";
 import CorretoresPage from "./pages/CorretoresPage.tsx";
 import DashboardFluxoPage from "./pages/DashboardFluxoPage.tsx";
+import ContratosGeradosPage from "./pages/ContratosGeradosPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -59,6 +60,14 @@ const App = () => (
               element={
                 <RequireAuth requirePlatformAdmin>
                   <ImobiliariasPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/contratos"
+              element={
+                <RequireAuth requirePlatformAdmin>
+                  <ContratosGeradosPage />
                 </RequireAuth>
               }
             />

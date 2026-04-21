@@ -1199,6 +1199,9 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
           status: "contrato_gerado",
           contract_generated_at: new Date().toISOString(),
           contract_generated_by: userId,
+          contract_texto: minutaFinal,
+          contract_texto_updated_at: new Date().toISOString(),
+          contract_texto_updated_by: userId,
         })
         .eq("id", submissionId);
     }
