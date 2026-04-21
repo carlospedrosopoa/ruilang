@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2, Sparkles, ChevronRight, BarChart3, Users } from "lucide-react";
+import { useMemo, useState, useEffect, useRef, type ChangeEvent } from "react";
+import { FileText, ArrowLeftRight, ScrollText, Home, ClipboardList, Send, Loader2, Building2, Sparkles, ChevronRight, BarChart3, Users, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { tiposContrato, TipoContrato } from "@/types/contract";
+import { tiposContrato } from "@/types/contract";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 
 const iconMap: Record<string, React.ElementType> = {
   FileText,
@@ -30,15 +31,34 @@ interface Imobiliaria {
   creci: string;
 }
 
+interface CustomTipoContrato {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  icone: string;
+  label_vendedor: string;
+  label_comprador: string;
+  modelo_base: string | null;
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { activeTenantId, isPlatformAdmin, signOut } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [novoTipo, setNovoTipo] = useState<TipoContrato>("promessa_compra_venda");
+  const [novoTipo, setNovoTipo] = useState<string>("promessa_compra_venda");
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [creating, setCreating] = useState(false);
   const [imobiliarias, setImobiliarias] = useState<Imobiliaria[]>([]);
   const [selectedImobiliaria, setSelectedImobiliaria] = useState<string>("");
+  const [customTipos, setCustomTipos] = useState<CustomTipoContrato[]>([]);
+  const [tipoDialogOpen, setTipoDialogOpen] = useState(false);
+  const [savingTipo, setSavingTipo] = useState(false);
+  const [tipoNome, setTipoNome] = useState("");
+  const [tipoDescricao, setTipoDescricao] = useState("");
+  const [tipoLabelVendedor, setTipoLabelVendedor] = useState("Vendedor");
+  const [tipoLabelComprador, setTipoLabelComprador] = useState("Comprador");
+  const [tipoModeloBase, setTipoModeloBase] = useState("");
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadImobiliarias = async () => {
@@ -52,8 +72,103 @@ const Dashboard = () => {
     if (activeTenantId && !selectedImobiliaria) setSelectedImobiliaria(activeTenantId);
   }, [activeTenantId, selectedImobiliaria]);
 
-  const handleSelect = (tipo: TipoContrato) => {
+  useEffect(() => {
+    const loadCustomTipos = async () => {
+      if (!selectedImobiliaria) {
+        setCustomTipos([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("tipos_contrato")
+        .select("id, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
+        .eq("imobiliaria_id", selectedImobiliaria)
+        .eq("ativo", true)
+        .order("created_at", { ascending: true });
+      setCustomTipos((data as CustomTipoContrato[]) || []);
+    };
+    loadCustomTipos();
+  }, [selectedImobiliaria]);
+
+  const allTipos = useMemo(() => {
+    return [
+      ...tiposContrato.map((t) => ({ id: t.id as string, nome: t.nome, descricao: t.descricao, icone: t.icone, subcategoria: t.subcategoria })),
+      ...customTipos.map((t) => ({ id: t.id, nome: t.nome, descricao: t.descricao || "", icone: t.icone, subcategoria: undefined })),
+    ];
+  }, [customTipos]);
+
+  const handleSelect = (tipo: string) => {
     navigate(`/contrato/${tipo}`);
+  };
+
+  const openCreateTipo = () => {
+    if (!selectedImobiliaria) {
+      toast.error("Selecione uma imobiliária para criar tipos personalizados.");
+      return;
+    }
+    setTipoNome("");
+    setTipoDescricao("");
+    setTipoLabelVendedor("Vendedor");
+    setTipoLabelComprador("Comprador");
+    setTipoModeloBase("");
+    setTipoDialogOpen(true);
+  };
+
+  const handleImportText = () => {
+    importInputRef.current?.click();
+  };
+
+  const onImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      if (ext !== "txt") {
+        toast.error("Por enquanto, a importação suporta apenas arquivos .txt");
+        return;
+      }
+      const text = await file.text();
+      setTipoModeloBase(text);
+      toast.success("Modelo importado.");
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
+  const saveTipo = async () => {
+    if (!selectedImobiliaria) {
+      toast.error("Selecione uma imobiliária.");
+      return;
+    }
+    if (!tipoNome.trim()) {
+      toast.error("Informe o nome do tipo de contrato.");
+      return;
+    }
+    setSavingTipo(true);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id || null;
+      const { data, error } = await supabase
+        .from("tipos_contrato")
+        .insert({
+          imobiliaria_id: selectedImobiliaria,
+          nome: tipoNome.trim(),
+          descricao: tipoDescricao.trim() || null,
+          label_vendedor: tipoLabelVendedor.trim() || "Vendedor",
+          label_comprador: tipoLabelComprador.trim() || "Comprador",
+          modelo_base: tipoModeloBase.trim() || null,
+          created_by: userId,
+        } as any)
+        .select("id, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
+        .single();
+      if (error) throw error;
+      setCustomTipos((prev) => [...prev, data as any]);
+      toast.success("Tipo de contrato criado!");
+      setTipoDialogOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao criar tipo de contrato.");
+    } finally {
+      setSavingTipo(false);
+    }
   };
 
   const handleSendWhatsApp = async () => {
@@ -75,7 +190,7 @@ const Dashboard = () => {
       if (error) throw error;
 
       const link = `${window.location.origin}/coleta/${data.token}`;
-      const tipoInfo = tiposContrato.find((t) => t.id === novoTipo);
+      const tipoInfo = allTipos.find((t) => t.id === novoTipo);
       const imob = imobiliarias.find((i) => i.id === selectedImobiliaria);
       const message = encodeURIComponent(
         `Olá${imob ? ` ${imob.nome}` : ""}! Segue o link para preenchimento dos dados do contrato (${tipoInfo?.nome}):\n\n${link}\n\nPreencha todos os campos e clique em "Enviar Dados" ao final.`
@@ -218,12 +333,12 @@ const Dashboard = () => {
                   </div>
                   <div>
                     <Label className="text-sm font-medium">Tipo de Contrato</Label>
-                    <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v as TipoContrato)}>
+                    <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v)}>
                       <SelectTrigger className="mt-1.5">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {tiposContrato.map((t) => (
+                        {allTipos.map((t) => (
                           <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
                         ))}
                       </SelectContent>
@@ -256,7 +371,7 @@ const Dashboard = () => {
 
         {/* Contract Type Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-          {tiposContrato.map((tipo, i) => {
+          {allTipos.map((tipo, i) => {
             const Icon = iconMap[tipo.icone] || FileText;
             return (
               <button
@@ -293,6 +408,21 @@ const Dashboard = () => {
             );
           })}
         </div>
+
+        <div className="mt-6 flex justify-center">
+          <Button variant="outline" onClick={openCreateTipo} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Criar Novo Tipo de Contrato
+          </Button>
+        </div>
+
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".txt"
+          onChange={onImportFile}
+          className="hidden"
+        />
       </main>
 
       {/* Footer */}
@@ -303,6 +433,69 @@ const Dashboard = () => {
           </p>
         </div>
       </footer>
+
+      <Dialog open={tipoDialogOpen} onOpenChange={setTipoDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Novo Tipo de Contrato</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            {isPlatformAdmin ? (
+              <div>
+                <Label className="text-sm font-medium">Imobiliária</Label>
+                <Select value={selectedImobiliaria} onValueChange={setSelectedImobiliaria}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Selecione a imobiliária" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {imobiliarias.map((imob) => (
+                      <SelectItem key={imob.id} value={imob.id}>
+                        {imob.nome} (CRECI {imob.creci})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            <div>
+              <Label>Nome do Tipo</Label>
+              <Input value={tipoNome} onChange={(e) => setTipoNome(e.target.value)} placeholder="Ex: Contrato de Comodato, Distrato..." />
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Input value={tipoDescricao} onChange={(e) => setTipoDescricao(e.target.value)} placeholder="Breve descrição do tipo de contrato" />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Label da Parte 1</Label>
+                <Input value={tipoLabelVendedor} onChange={(e) => setTipoLabelVendedor(e.target.value)} placeholder="Vendedor" />
+              </div>
+              <div>
+                <Label>Label da Parte 2</Label>
+                <Input value={tipoLabelComprador} onChange={(e) => setTipoLabelComprador(e.target.value)} placeholder="Comprador" />
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label>Modelo de Contrato Base (opcional)</Label>
+              <Button variant="outline" size="sm" onClick={handleImportText}>Importar .txt</Button>
+            </div>
+            <Textarea
+              value={tipoModeloBase}
+              onChange={(e) => setTipoModeloBase(e.target.value)}
+              className="min-h-[220px]"
+              placeholder="Cole aqui o modelo de contrato base (opcional)..."
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setTipoDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={saveTipo} disabled={savingTipo || !tipoNome.trim()}>
+                {savingTipo ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Criar Tipo
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
