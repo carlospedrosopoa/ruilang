@@ -137,6 +137,7 @@ async function renderContractFromTemplate(params: {
   contrato: any;
   instructionsIa?: string | null;
 }) {
+  const paymentSpec = buildPaymentSpec(params.contrato);
   const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
 
 TAREFA:
@@ -144,6 +145,7 @@ Usar o MODELO BASE fornecido como referência de redação e estrutura para gera
 
 REGRAS OBRIGATÓRIAS:
 - O modelo base é apenas um MODELO. Se ele contiver nomes/CPF/endereço/valores/datas específicos, você DEVE substituir pelos dados fornecidos.
+- Em especial, as cláusulas de PREÇO/VALOR e FORMA DE PAGAMENTO devem seguir EXATAMENTE os dados oficiais fornecidos, ignorando quaisquer valores do modelo base.
 - Não invente dados. Se um dado não foi fornecido, omita ou ajuste a redação de forma segura, sem placeholders.
 - Mantenha a redação e a estrutura do modelo base o máximo possível, alterando apenas o necessário para refletir os dados corretos.
 - Garanta coerência total entre todas as cláusulas (valores, prazos, identificação das partes e do imóvel).
@@ -158,9 +160,85 @@ ${params.templateText}
 
 DADOS DO CONTRATO (OFICIAIS):
 ${JSON.stringify(params.contrato, null, 2)}
+
+DADOS OFICIAIS DE VALOR/PAGAMENTO (OBRIGATÓRIO):
+${paymentSpec}
 ${extraInstructions}
 
 Gere a minuta final completa usando a estrutura do modelo base, com todos os dados substituídos pelos oficiais.`;
+
+  if (params.provider === "openai") {
+    return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+  }
+  return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+}
+
+function buildPaymentSpec(contrato: any) {
+  if (!contrato || typeof contrato !== "object") return "";
+  if (contrato.tipoContrato === "locacao") {
+    const l = contrato.locacao || {};
+    const parts: string[] = [];
+    parts.push(`TIPO: LOCAÇÃO (${String(l.finalidade || "").toUpperCase() || "N/A"})`);
+    if (l.valorAluguel) parts.push(`ALUGUEL: R$ ${String(l.valorAluguel)}`);
+    if (l.diaVencimento) parts.push(`DIA DE VENCIMENTO: ${String(l.diaVencimento)}`);
+    if (l.prazoMeses) parts.push(`PRAZO: ${String(l.prazoMeses)} meses`);
+    if (l.indiceReajuste) parts.push(`ÍNDICE DE REAJUSTE: ${String(l.indiceReajuste)}`);
+    if (l.caucao) parts.push(`GARANTIA/CAUÇÃO: ${String(l.caucao)}`);
+    if (l.valorCaucao) parts.push(`VALOR DA CAUÇÃO: R$ ${String(l.valorCaucao)}`);
+    if (l.multaRescisao) parts.push(`MULTA POR RESCISÃO: ${String(l.multaRescisao)}`);
+    return parts.join("\n");
+  }
+
+  const p = contrato.pagamento || {};
+  const parts: string[] = [];
+  parts.push("TIPO: COMPRA E VENDA / CESSÃO (PAGAMENTO)");
+  if (p.valorTotal) parts.push(`VALOR TOTAL: R$ ${String(p.valorTotal)}`);
+  const parcelas = Array.isArray(p.parcelas) ? p.parcelas : [];
+  if (parcelas.length) {
+    parts.push("PARCELAS/ENTRADAS/ARRAS:");
+    for (const item of parcelas) {
+      const tipo = String(item?.tipo || "").toUpperCase();
+      const qtd = typeof item?.quantidade === "number" ? item.quantidade : 1;
+      const valor = item?.valor ? `R$ ${String(item.valor)}` : "";
+      const venc = item?.dataVencimento ? `Vencimento: ${String(item.dataVencimento)}` : "";
+      const desc = item?.descricao ? String(item.descricao) : "";
+      parts.push(`- ${tipo || "PARCELA"} | Qtde: ${qtd} | Valor: ${valor || "N/A"} | ${venc}${desc ? ` | ${desc}` : ""}`.trim());
+    }
+  }
+  if (p.multaMoratoria) parts.push(`MULTA MORATÓRIA (ATRASO): ${String(p.multaMoratoria)}`);
+  if (p.jurosMora) parts.push(`JUROS DE MORA: ${String(p.jurosMora)}`);
+  if (p.multaContratual) parts.push(`MULTA CONTRATUAL (INADIMPLEMENTO/RESCISÃO): ${String(p.multaContratual)}`);
+  parts.push("REGRA: As parcelas devem ter valores FIXOS e NOMINAIS. Não incluir correção monetária/reajuste de parcelas.");
+  return parts.join("\n");
+}
+
+async function fixPaymentInContract(params: {
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
+  tipoLabel: string;
+  contratoText: string;
+  contrato: any;
+}) {
+  const paymentSpec = buildPaymentSpec(params.contrato);
+  const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
+
+TAREFA:
+Ajustar SOMENTE as cláusulas relacionadas a VALOR/PREÇO e FORMA DE PAGAMENTO do contrato abaixo, para que fiquem 100% coerentes com os dados oficiais.
+
+REGRAS:
+- Não alterar outras cláusulas além das relacionadas a pagamento/valor.
+- Se o texto atual tiver valores diferentes do oficial, reescreva integralmente as cláusulas de pagamento para corrigir.
+- Não inventar dados.
+- Não usar markdown. Retornar o contrato completo (texto final).`;
+
+  const userPrompt = `CONTRATO ATUAL:
+${params.contratoText}
+
+DADOS OFICIAIS DE VALOR/PAGAMENTO (OBRIGATÓRIO):
+${paymentSpec}
+
+Retorne o contrato completo com as cláusulas de pagamento corrigidas conforme os dados oficiais.`;
 
   if (params.provider === "openai") {
     return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
@@ -854,6 +932,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       const tryOrderRender: AiProvider[] = provider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
       let renderError: unknown = null;
       let rendered: string | null = null;
+      let renderProvider: AiProvider | null = null;
+      let renderModel = "";
 
       for (const p of tryOrderRender) {
         try {
@@ -876,6 +956,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   contrato: contratoSemPeculiaridades,
                   instructionsIa: templateInstructionsIa,
                 });
+                renderProvider = "openai";
+                renderModel = model;
                 break;
               } catch (e) {
                 openAiError = e;
@@ -904,6 +986,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   contrato: contratoSemPeculiaridades,
                   instructionsIa: templateInstructionsIa,
                 });
+                renderProvider = "gemini";
+                renderModel = model;
                 break;
               } catch (e) {
                 geminiError = e;
@@ -928,6 +1012,83 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       }
 
       baseContrato = rendered.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+
+      const paymentSpec = buildPaymentSpec(contratoSemPeculiaridades);
+      if (paymentSpec.trim() && renderProvider) {
+        const tryOrderFix: AiProvider[] = renderProvider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+        let fixed: string | null = null;
+        let lastFixErr: unknown = null;
+        for (const p of tryOrderFix) {
+          try {
+            if (p === "openai") {
+              const key = Deno.env.get("OPENAI_API_KEY");
+              if (!key) throw new Error("OPENAI_API_KEY is not configured");
+              const models = [
+                Deno.env.get("OPENAI_MODEL_CONTRACT_PAYMENT_FIX") || renderModel || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+                Deno.env.get("OPENAI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+              ];
+              let openAiError: unknown = null;
+              for (const model of models) {
+                try {
+                  fixed = await fixPaymentInContract({
+                    provider: "openai",
+                    apiKey: key,
+                    model,
+                    tipoLabel,
+                    contratoText: baseContrato,
+                    contrato: contratoSemPeculiaridades,
+                  });
+                  break;
+                } catch (e) {
+                  openAiError = e;
+                  const status = (e as any)?.status;
+                  if (status === 429) continue;
+                  throw e;
+                }
+              }
+              if (fixed === null && openAiError) throw openAiError;
+            } else {
+              const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+              if (!key) throw new Error("GEMINI_API_KEY is not configured");
+              const models = [
+                Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+              ];
+              let geminiError: unknown = null;
+              for (const model of models) {
+                try {
+                  fixed = await fixPaymentInContract({
+                    provider: "gemini",
+                    apiKey: key,
+                    model,
+                    tipoLabel,
+                    contratoText: baseContrato,
+                    contrato: contratoSemPeculiaridades,
+                  });
+                  break;
+                } catch (e) {
+                  geminiError = e;
+                  const status = (e as any)?.status;
+                  if (status === 429 || status === 404) continue;
+                  throw e;
+                }
+              }
+              if (fixed === null && geminiError) throw geminiError;
+            }
+            break;
+          } catch (e) {
+            lastFixErr = e;
+            const status = (e as any)?.status;
+            const shouldForceFallback = status === 404;
+            if (!failover && !shouldForceFallback) break;
+          }
+        }
+        if (fixed && fixed.trim()) {
+          baseContrato = fixed.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+        } else if (lastFixErr) {
+          throw lastFixErr instanceof Error ? lastFixErr : new Error("Erro ao ajustar pagamento do contrato");
+        }
+      }
     } else if (shouldAutoSaveTemplates() && admin && usedModel) {
       const existingTemplate = await getActiveTemplate(admin, contrato.tipoContrato, perfil);
       if (!existingTemplate?.template_text) {

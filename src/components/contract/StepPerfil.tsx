@@ -393,92 +393,96 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
       </div>
 
       <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden">
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Configurar Modelo Base — {templatePerfilLabel}</DialogTitle>
           </DialogHeader>
-          {loadingTemplate ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Carregando...</div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid gap-4">
-                <div>
-                  <Label>Texto do Modelo Base</Label>
-                  <Textarea
-                    value={templateText}
-                    onChange={(e) => setTemplateText(e.target.value)}
-                    className="min-h-[260px]"
-                    placeholder="Cole aqui o texto do contrato base (sem peculiaridades)."
-                  />
+          <div className="flex-1 overflow-y-auto pr-1">
+            {loadingTemplate ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">Carregando...</div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-4">
+                  <div>
+                    <Label>Texto do Modelo Base</Label>
+                    <Textarea
+                      value={templateText}
+                      onChange={(e) => setTemplateText(e.target.value)}
+                      className="min-h-[260px]"
+                      placeholder="Cole aqui o texto do contrato base (sem peculiaridades)."
+                    />
+                  </div>
+                  <div>
+                    <Label>Instruções adicionais para IA (opcional)</Label>
+                    <Textarea
+                      value={instructionsIa}
+                      onChange={(e) => setInstructionsIa(e.target.value)}
+                      className="min-h-[120px]"
+                      placeholder="Ex.: Não alterar valores fixos; manter redação do modelo; inserir peculiaridades como cláusulas adicionais."
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label>Instruções adicionais para IA (opcional)</Label>
-                  <Textarea
-                    value={instructionsIa}
-                    onChange={(e) => setInstructionsIa(e.target.value)}
-                    className="min-h-[120px]"
-                    placeholder="Ex.: Não alterar valores fixos; manter redação do modelo; inserir peculiaridades como cláusulas adicionais."
-                  />
-                </div>
+                {!isPlatformAdmin ? (
+                  <p className="text-xs text-muted-foreground">
+                    Apenas o administrador da plataforma pode salvar alterações do modelo base.
+                  </p>
+                ) : null}
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setTemplateOpen(false)}>Cancelar</Button>
-                <Button onClick={save} disabled={savingTemplate}>
-                  {savingTemplate ? "Salvando..." : "Salvar"}
-                </Button>
-              </div>
-              {!isPlatformAdmin ? (
-                <p className="text-xs text-muted-foreground">
-                  Apenas o administrador da plataforma pode salvar alterações do modelo base.
-                </p>
-              ) : null}
-            </div>
-          )}
+            )}
+          </div>
+          <div className="pt-4 flex justify-end gap-2 border-t border-border">
+            <Button variant="outline" onClick={() => setTemplateOpen(false)}>Cancelar</Button>
+            <Button onClick={save} disabled={savingTemplate || loadingTemplate}>
+              {savingTemplate ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={perfilDialogOpen} onOpenChange={setPerfilDialogOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Novo Perfil</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <Label>Nome</Label>
-                <Input value={perfilNome} onChange={(e) => setPerfilNome(e.target.value)} placeholder="Ex: Blindagem Máxima" />
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="space-y-4 pt-2">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <Label>Nome</Label>
+                  <Input value={perfilNome} onChange={(e) => setPerfilNome(e.target.value)} placeholder="Ex: Blindagem Máxima" />
+                </div>
+                <div>
+                  <Label>Ícone</Label>
+                  <Select value={perfilIcone} onValueChange={setPerfilIcone}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ShieldCheck">ShieldCheck</SelectItem>
+                      <SelectItem value="ShieldAlert">ShieldAlert</SelectItem>
+                      <SelectItem value="Scale">Scale</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div>
-                <Label>Ícone</Label>
-                <Select value={perfilIcone} onValueChange={setPerfilIcone}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ShieldCheck">ShieldCheck</SelectItem>
-                    <SelectItem value="ShieldAlert">ShieldAlert</SelectItem>
-                    <SelectItem value="Scale">Scale</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Descrição</Label>
+                <Input value={perfilDescricao} onChange={(e) => setPerfilDescricao(e.target.value)} placeholder="Breve descrição do perfil" />
+              </div>
+              <div>
+                <Label>Instruções para IA (opcional)</Label>
+                <Textarea
+                  value={perfilInstructions}
+                  onChange={(e) => setPerfilInstructions(e.target.value)}
+                  className="min-h-[160px]"
+                  placeholder="Ex.: Priorizar cláusulas favoráveis ao vendedor; impor condições mais rígidas em caso de inadimplemento..."
+                />
               </div>
             </div>
-            <div>
-              <Label>Descrição</Label>
-              <Input value={perfilDescricao} onChange={(e) => setPerfilDescricao(e.target.value)} placeholder="Breve descrição do perfil" />
-            </div>
-            <div>
-              <Label>Instruções para IA (opcional)</Label>
-              <Textarea
-                value={perfilInstructions}
-                onChange={(e) => setPerfilInstructions(e.target.value)}
-                className="min-h-[160px]"
-                placeholder="Ex.: Priorizar cláusulas favoráveis ao vendedor; impor condições mais rígidas em caso de inadimplemento..."
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPerfilDialogOpen(false)}>Cancelar</Button>
-              <Button onClick={savePerfil} disabled={savingPerfil || !perfilNome.trim()}>
-                {savingPerfil ? "Salvando..." : "Criar Perfil"}
-              </Button>
-            </div>
+          </div>
+          <div className="pt-4 flex justify-end gap-2 border-t border-border">
+            <Button variant="outline" onClick={() => setPerfilDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={savePerfil} disabled={savingPerfil || !perfilNome.trim()}>
+              {savingPerfil ? "Salvando..." : "Criar Perfil"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
