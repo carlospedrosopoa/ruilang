@@ -563,6 +563,53 @@ export type Database = {
           },
         ]
       }
+      perfis_contrato: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          created_by: string | null
+          descricao: string | null
+          icone: string
+          id: string
+          imobiliaria_id: string
+          instructions_ia: string | null
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          icone?: string
+          id?: string
+          imobiliaria_id: string
+          instructions_ia?: string | null
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          created_by?: string | null
+          descricao?: string | null
+          icone?: string
+          id?: string
+          imobiliaria_id?: string
+          instructions_ia?: string | null
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "perfis_contrato_imobiliaria_id_fkey"
+            columns: ["imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

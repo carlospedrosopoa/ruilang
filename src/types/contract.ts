@@ -159,7 +159,7 @@ export interface Locacao {
   multaRescisao: string;
 }
 
-export type PerfilContrato = "blindagem_vendedor" | "blindagem_comprador" | "equilibrado";
+export type PerfilContrato = "blindagem_vendedor" | "blindagem_comprador" | "equilibrado" | (string & {});
 
 export interface PerfilContratoInfo {
   id: PerfilContrato;

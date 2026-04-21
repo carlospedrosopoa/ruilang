@@ -88,6 +88,8 @@ const ContractWizard = () => {
   const [pagamento, setPagamento] = useState<Pagamento>(criarPagamentoVazio());
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
   const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
+  const [imobiliariaId, setImobiliariaId] = useState<string | null>(null);
+  const [customPerfis, setCustomPerfis] = useState<Array<{ id: string; nome: string }>>([]);
   const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
@@ -114,7 +116,7 @@ const ContractWizard = () => {
     const loadSubmission = async () => {
       const { data } = await supabase
         .from("submissions")
-        .select("dados")
+        .select("dados, imobiliaria_id")
         .eq("id", submissionId)
         .single();
 
@@ -130,9 +132,27 @@ const ContractWizard = () => {
         const perfilStep = steps.findIndex(s => s.label === "Perfil");
         if (perfilStep >= 0) setCurrentStep(perfilStep + 1);
       }
+      if (data?.imobiliaria_id) setImobiliariaId(data.imobiliaria_id as any);
     };
     loadSubmission();
   }, [submissionId]);
+
+  useEffect(() => {
+    const loadPerfis = async () => {
+      if (!imobiliariaId) {
+        setCustomPerfis([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("perfis_contrato")
+        .select("id, nome")
+        .eq("imobiliaria_id", imobiliariaId)
+        .eq("ativo", true)
+        .order("created_at", { ascending: true });
+      setCustomPerfis(((data as any[]) || []).map((p) => ({ id: p.id, nome: p.nome })));
+    };
+    loadPerfis();
+  }, [imobiliariaId]);
 
   const next = () => {
     if (currentStep < totalSteps) {
@@ -280,7 +300,7 @@ const ContractWizard = () => {
       return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
     }
     if (currentStepObj.label === "Perfil") {
-      return <StepPerfil tipoContrato={tipoContrato} perfilContrato={perfilContrato} onChange={setPerfilContrato} peculiaridades={peculiaridades} onPeculiaridadesChange={setPeculiaridades} />;
+      return <StepPerfil tipoContrato={tipoContrato} perfilContrato={perfilContrato} onChange={setPerfilContrato} peculiaridades={peculiaridades} onPeculiaridadesChange={setPeculiaridades} imobiliariaId={imobiliariaId} />;
     }
     if (currentStepObj.label === "Gerar") {
       if (minuta) {
@@ -337,7 +357,9 @@ const ContractWizard = () => {
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Perfil</span>
-                <span className="text-foreground font-medium">{perfisContrato.find(p => p.id === perfilContrato)?.nome}</span>
+                <span className="text-foreground font-medium">
+                  {perfisContrato.find(p => p.id === perfilContrato)?.nome || customPerfis.find((p) => p.id === perfilContrato)?.nome || String(perfilContrato)}
+                </span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{labels.vendedor}(es)</span>

@@ -1,4 +1,4 @@
-import { ShieldCheck, ShieldAlert, Scale, MessageSquarePlus, Check } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Scale, MessageSquarePlus, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { PerfilContrato, TipoContrato, perfisContrato } from "@/types/contract";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface StepPerfilProps {
   tipoContrato: TipoContrato;
@@ -16,15 +18,31 @@ interface StepPerfilProps {
   onChange: (perfil: PerfilContrato) => void;
   peculiaridades?: string;
   onPeculiaridadesChange?: (value: string) => void;
+  imobiliariaId?: string | null;
 }
 
-const perfilIcons: Record<PerfilContrato, React.ReactNode> = {
+type PerfilItem = {
+  id: string;
+  nome: string;
+  descricao: string;
+  icone: string;
+  instructions_ia?: string | null;
+  origem: "builtin" | "custom";
+};
+
+const perfilIcons: Record<string, React.ReactNode> = {
   blindagem_vendedor: <ShieldCheck className="w-7 h-7" />,
   blindagem_comprador: <ShieldAlert className="w-7 h-7" />,
   equilibrado: <Scale className="w-7 h-7" />,
 };
 
-const perfilColors: Record<PerfilContrato, { bg: string; border: string; icon: string; activeBg: string }> = {
+const iconByName: Record<string, React.ReactNode> = {
+  ShieldCheck: <ShieldCheck className="w-7 h-7" />,
+  ShieldAlert: <ShieldAlert className="w-7 h-7" />,
+  Scale: <Scale className="w-7 h-7" />,
+};
+
+const perfilColors: Record<string, { bg: string; border: string; icon: string; activeBg: string }> = {
   blindagem_vendedor: {
     bg: "bg-orange-50",
     border: "border-orange-200",
@@ -45,7 +63,7 @@ const perfilColors: Record<PerfilContrato, { bg: string; border: string; icon: s
   },
 };
 
-const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "", onPeculiaridadesChange }: StepPerfilProps) => {
+const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "", onPeculiaridadesChange, imobiliariaId }: StepPerfilProps) => {
   const { isPlatformAdmin } = useAuth();
   const [templateOpen, setTemplateOpen] = useState(false);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
@@ -53,10 +71,57 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
   const [templateText, setTemplateText] = useState("");
   const [instructionsIa, setInstructionsIa] = useState("");
   const [hasActiveTemplate, setHasActiveTemplate] = useState(false);
+  const [customPerfis, setCustomPerfis] = useState<PerfilItem[]>([]);
+  const [perfilDialogOpen, setPerfilDialogOpen] = useState(false);
+  const [savingPerfil, setSavingPerfil] = useState(false);
+  const [perfilNome, setPerfilNome] = useState("");
+  const [perfilDescricao, setPerfilDescricao] = useState("");
+  const [perfilIcone, setPerfilIcone] = useState("Scale");
+  const [perfilInstructions, setPerfilInstructions] = useState("");
 
   const selectedPerfilLabel = useMemo(() => {
-    return perfisContrato.find((p) => p.id === perfilContrato)?.nome || "Perfil";
+    const builtin = perfisContrato.find((p) => p.id === perfilContrato);
+    if (builtin) return builtin.nome;
+    const custom = customPerfis.find((p) => p.id === perfilContrato);
+    return custom?.nome || "Perfil";
   }, [perfilContrato]);
+
+  const allPerfis = useMemo<PerfilItem[]>(() => {
+    const base = perfisContrato.map((p) => ({
+      id: p.id as string,
+      nome: p.nome,
+      descricao: p.descricao,
+      icone: p.icone,
+      origem: "builtin" as const,
+    }));
+    return [...base, ...customPerfis];
+  }, [customPerfis]);
+
+  useEffect(() => {
+    const loadCustom = async () => {
+      if (!imobiliariaId) {
+        setCustomPerfis([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("perfis_contrato")
+        .select("id, nome, descricao, icone, instructions_ia")
+        .eq("imobiliaria_id", imobiliariaId)
+        .eq("ativo", true)
+        .order("created_at", { ascending: true });
+
+      const list = ((data as any[]) || []).map((r) => ({
+        id: r.id,
+        nome: r.nome,
+        descricao: r.descricao || "",
+        icone: r.icone || "Scale",
+        instructions_ia: r.instructions_ia || null,
+        origem: "custom" as const,
+      }));
+      setCustomPerfis(list);
+    };
+    loadCustom();
+  }, [imobiliariaId]);
 
   const loadTemplate = async () => {
     setLoadingTemplate(true);
@@ -157,6 +222,64 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
     }
   };
 
+  const openCreatePerfil = () => {
+    if (!imobiliariaId) {
+      toast.error("Selecione uma imobiliária para criar perfis.");
+      return;
+    }
+    setPerfilNome("");
+    setPerfilDescricao("");
+    setPerfilIcone("Scale");
+    setPerfilInstructions("");
+    setPerfilDialogOpen(true);
+  };
+
+  const savePerfil = async () => {
+    if (!imobiliariaId) {
+      toast.error("Selecione uma imobiliária.");
+      return;
+    }
+    if (!perfilNome.trim()) {
+      toast.error("Informe o nome do perfil.");
+      return;
+    }
+    setSavingPerfil(true);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id || null;
+      const { data, error } = await supabase
+        .from("perfis_contrato")
+        .insert({
+          imobiliaria_id: imobiliariaId,
+          nome: perfilNome.trim(),
+          descricao: perfilDescricao.trim() || null,
+          icone: perfilIcone,
+          instructions_ia: perfilInstructions.trim() || null,
+          created_by: userId,
+        } as any)
+        .select("id, nome, descricao, icone, instructions_ia")
+        .single();
+      if (error) throw error;
+
+      const created = {
+        id: data.id,
+        nome: data.nome,
+        descricao: data.descricao || "",
+        icone: data.icone || "Scale",
+        instructions_ia: data.instructions_ia || null,
+        origem: "custom" as const,
+      };
+      setCustomPerfis((prev) => [...prev, created]);
+      onChange(created.id as any);
+      toast.success("Perfil criado!");
+      setPerfilDialogOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao criar perfil.");
+    } finally {
+      setSavingPerfil(false);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
@@ -169,14 +292,14 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {perfisContrato.map((perfil, i) => {
-          const isSelected = perfilContrato === perfil.id;
-          const colors = perfilColors[perfil.id];
+        {allPerfis.map((perfil, i) => {
+          const isSelected = perfilContrato === (perfil.id as any);
+          const colors = perfilColors[perfil.id] || perfilColors.equilibrado;
           
           return (
             <button
               key={perfil.id}
-              onClick={() => onChange(perfil.id)}
+              onClick={() => onChange(perfil.id as any)}
               className={cn(
                 "relative flex flex-col items-center gap-4 p-6 rounded-xl border-2 transition-all duration-300 text-center group animate-fade-in-up",
                 isSelected ? colors.activeBg : `border-border bg-card hover:${colors.border} hover:shadow-card`
@@ -194,7 +317,7 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
                 "w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300",
                 isSelected ? colors.icon : "bg-muted text-muted-foreground group-hover:bg-muted/80"
               )}>
-                {perfilIcons[perfil.id]}
+                {perfilIcons[perfil.id] || iconByName[perfil.icone] || <Scale className="w-7 h-7" />}
               </div>
               
               <div>
@@ -204,6 +327,13 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
             </button>
           );
         })}
+      </div>
+
+      <div className="flex justify-center">
+        <Button variant="outline" size="sm" onClick={openCreatePerfil}>
+          <Plus className="w-4 h-4 mr-2" />
+          Criar Novo Perfil
+        </Button>
       </div>
 
       {/* Peculiaridades */}
@@ -293,6 +423,52 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
               ) : null}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={perfilDialogOpen} onOpenChange={setPerfilDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Novo Perfil</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Nome</Label>
+                <Input value={perfilNome} onChange={(e) => setPerfilNome(e.target.value)} placeholder="Ex: Blindagem Máxima" />
+              </div>
+              <div>
+                <Label>Ícone</Label>
+                <Select value={perfilIcone} onValueChange={setPerfilIcone}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ShieldCheck">ShieldCheck</SelectItem>
+                    <SelectItem value="ShieldAlert">ShieldAlert</SelectItem>
+                    <SelectItem value="Scale">Scale</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Input value={perfilDescricao} onChange={(e) => setPerfilDescricao(e.target.value)} placeholder="Breve descrição do perfil" />
+            </div>
+            <div>
+              <Label>Instruções para IA (opcional)</Label>
+              <Textarea
+                value={perfilInstructions}
+                onChange={(e) => setPerfilInstructions(e.target.value)}
+                className="min-h-[160px]"
+                placeholder="Ex.: Priorizar cláusulas favoráveis ao vendedor; impor condições mais rígidas em caso de inadimplemento..."
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPerfilDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={savePerfil} disabled={savingPerfil || !perfilNome.trim()}>
+                {savingPerfil ? "Salvando..." : "Criar Perfil"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

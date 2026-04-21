@@ -612,7 +612,23 @@ serve(async (req: Request) => {
       if (data?.nome) tipoLabel = `Contrato - ${String(data.nome).trim()}`;
     }
     const clausulasTipo = getClausulasEspecificasTipo(contrato.tipoContrato);
-    const perfilTexto = getPerfilInstrucoes(contrato.perfilContrato || "equilibrado", contrato.tipoContrato);
+    const perfilSelecionado = contrato.perfilContrato || "equilibrado";
+    let perfilTexto = getPerfilInstrucoes(perfilSelecionado, contrato.tipoContrato);
+    let perfilInstructionsIa: string | null = null;
+    if (!perfilTexto && admin && typeof perfilSelecionado === "string" && perfilSelecionado.length >= 32) {
+      const { data } = await admin
+        .from("perfis_contrato")
+        .select("nome, instructions_ia")
+        .eq("id", perfilSelecionado)
+        .maybeSingle();
+      if (data?.nome) {
+        const instr = typeof data.instructions_ia === "string" ? data.instructions_ia.trim() : "";
+        perfilInstructionsIa = instr || null;
+        perfilTexto = `PERFIL: ${String(data.nome).toUpperCase()}
+
+${instr ? `DIRETRIZES IMPERATIVAS:\n${instr}` : "DIRETRIZES: aplicar o perfil selecionado com coerência em todo o contrato."}`;
+      }
+    }
 
     const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro, com mais de 20 anos de experiência na elaboração de minutas contratuais para escritórios de advocacia de alto padrão. Sua tarefa é gerar minutas contratuais COMPLETAS, PROFISSIONAIS e JURIDICAMENTE BLINDADAS.
 
@@ -698,6 +714,9 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       if (typeof existingTemplate?.instructions_ia === "string" && existingTemplate.instructions_ia.trim()) {
         templateInstructionsIa = existingTemplate.instructions_ia;
       }
+    }
+    if (perfilInstructionsIa) {
+      templateInstructionsIa = templateInstructionsIa ? `${templateInstructionsIa}\n\n${perfilInstructionsIa}` : perfilInstructionsIa;
     }
 
     if (admin && !minutaBase) {
