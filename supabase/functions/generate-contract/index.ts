@@ -815,37 +815,85 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     const peculiaridades = typeof contrato.peculiaridades === "string" ? contrato.peculiaridades.trim() : "";
     if (peculiaridades) {
       const providerForPec = usedModel ? usedProvider : provider;
-      if (providerForPec === "openai") {
-        const key = Deno.env.get("OPENAI_API_KEY");
-        if (!key) throw new Error("OPENAI_API_KEY is not configured");
-        const model = Deno.env.get("OPENAI_MODEL_CONTRACT_PEC") || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini";
-        const extra = await generatePeculiaridadesText({
-          provider: "openai",
-          apiKey: key,
-          model,
-          tipoLabel,
-          baseTemplate: minutaBase,
-          contrato: contratoSemPeculiaridades,
-          peculiaridades,
-          instructionsIa: templateInstructionsIa,
-        });
-        if (extra && extra.trim()) minutaFinal = insertBeforeLocalEData(minutaBase, extra.trim());
-      } else {
-        const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
-        if (!key) throw new Error("GEMINI_API_KEY is not configured");
-        const model = Deno.env.get("GEMINI_MODEL_CONTRACT_PEC") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash";
-        const extra = await generatePeculiaridadesText({
-          provider: "gemini",
-          apiKey: key,
-          model,
-          tipoLabel,
-          baseTemplate: minutaBase,
-          contrato: contratoSemPeculiaridades,
-          peculiaridades,
-          instructionsIa: templateInstructionsIa,
-        });
-        if (extra && extra.trim()) minutaFinal = insertBeforeLocalEData(minutaBase, extra.trim());
+      const failover = isFailoverEnabled();
+      const tryOrder: AiProvider[] = providerForPec === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+      let extraText: string | null = null;
+      let lastPecError: unknown = null;
+
+      for (const p of tryOrder) {
+        try {
+          if (p === "openai") {
+            const key = Deno.env.get("OPENAI_API_KEY");
+            if (!key) throw new Error("OPENAI_API_KEY is not configured");
+            const models = [
+              Deno.env.get("OPENAI_MODEL_CONTRACT_PEC") || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+              Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+            ];
+            let openAiError: unknown = null;
+            for (const model of models) {
+              try {
+                extraText = await generatePeculiaridadesText({
+                  provider: "openai",
+                  apiKey: key,
+                  model,
+                  tipoLabel,
+                  baseTemplate: minutaBase,
+                  contrato: contratoSemPeculiaridades,
+                  peculiaridades,
+                  instructionsIa: templateInstructionsIa,
+                });
+                break;
+              } catch (e) {
+                openAiError = e;
+                const status = (e as any)?.status;
+                if (status === 429) continue;
+                throw e;
+              }
+            }
+            if (extraText === null && openAiError) throw openAiError;
+          } else {
+            const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+            if (!key) throw new Error("GEMINI_API_KEY is not configured");
+            const models = [
+              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
+            ];
+            let geminiError: unknown = null;
+            for (const model of models) {
+              try {
+                extraText = await generatePeculiaridadesText({
+                  provider: "gemini",
+                  apiKey: key,
+                  model,
+                  tipoLabel,
+                  baseTemplate: minutaBase,
+                  contrato: contratoSemPeculiaridades,
+                  peculiaridades,
+                  instructionsIa: templateInstructionsIa,
+                });
+                break;
+              } catch (e) {
+                geminiError = e;
+                const status = (e as any)?.status;
+                if (status === 429 || status === 404) continue;
+                throw e;
+              }
+            }
+            if (extraText === null && geminiError) throw geminiError;
+          }
+          break;
+        } catch (e) {
+          lastPecError = e;
+          const status = (e as any)?.status;
+          const shouldForceFallback = status === 404;
+          if (!failover && !shouldForceFallback) break;
+        }
       }
+
+      if (extraText === null) {
+        throw lastPecError instanceof Error ? lastPecError : new Error("Erro ao gerar peculiaridades");
+      }
+      if (extraText && extraText.trim()) minutaFinal = insertBeforeLocalEData(minutaBase, extraText.trim());
     }
 
     if (admin && submissionId) {
