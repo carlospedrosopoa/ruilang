@@ -27,6 +27,8 @@ type SubmissionRow = {
   contract_generated_at: string | null;
   contract_texto: string | null;
   contract_texto_updated_at: string | null;
+  vendedor_nome: string | null;
+  comprador_nome: string | null;
 };
 
 const ContratosGeradosPage = () => {
@@ -51,8 +53,8 @@ const ContratosGeradosPage = () => {
       setLoading(true);
       const imobPromise = supabase.from("imobiliarias").select("id, nome").order("nome");
       const selectFull =
-        "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at, contract_texto, contract_texto_updated_at";
-      const selectFallback = "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at";
+        "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at, contract_texto, contract_texto_updated_at, dados";
+      const selectFallback = "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at, dados";
 
       const [imobRes, firstTry] = await Promise.all([
         imobPromise,
@@ -71,7 +73,20 @@ const ContratosGeradosPage = () => {
       }
 
       setImobiliarias((imobRes.data as Imobiliaria[]) || []);
-      setRows(((subsData as SubmissionRow[]) || []).map((r: any) => ({ contract_texto: null, contract_texto_updated_at: null, ...r })));
+      setRows(
+        ((subsData as any[]) || []).map((r: any) => {
+          const d = r?.dados;
+          const vendedorNome = typeof d?.vendedores?.[0]?.nome === "string" ? d.vendedores[0].nome : null;
+          const compradorNome = typeof d?.compradores?.[0]?.nome === "string" ? d.compradores[0].nome : null;
+          return {
+            contract_texto: null,
+            contract_texto_updated_at: null,
+            vendedor_nome: vendedorNome ? String(vendedorNome).trim() : null,
+            comprador_nome: compradorNome ? String(compradorNome).trim() : null,
+            ...r,
+          } as SubmissionRow;
+        }),
+      );
       setLoading(false);
     };
     load();
@@ -93,6 +108,8 @@ const ContratosGeradosPage = () => {
         r.id,
         r.tipo_contrato,
         r.corretor_nome || "",
+        r.vendedor_nome || "",
+        r.comprador_nome || "",
         r.imobiliaria_id ? imobiliariaById.get(r.imobiliaria_id) || "" : "",
       ]
         .join(" ")
@@ -260,7 +277,7 @@ const ContratosGeradosPage = () => {
             <Label>Buscar</Label>
             <div className="relative">
               <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" placeholder="ID, corretor, tipo, imobiliária..." />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" placeholder="ID, partes, corretor, tipo, imobiliária..." />
             </div>
           </div>
           <div>
@@ -305,6 +322,8 @@ const ContratosGeradosPage = () => {
                     <TableHead>ID</TableHead>
                     <TableHead>Imobiliária</TableHead>
                     <TableHead>Tipo</TableHead>
+                    <TableHead>Criado em</TableHead>
+                    <TableHead>Partes</TableHead>
                     <TableHead>Corretor</TableHead>
                     <TableHead>Gerado em</TableHead>
                     <TableHead>Status</TableHead>
@@ -314,7 +333,7 @@ const ContratosGeradosPage = () => {
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-10 text-sm text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-10 text-sm text-muted-foreground">
                         Nenhum contrato encontrado.
                       </TableCell>
                     </TableRow>
@@ -324,6 +343,19 @@ const ContratosGeradosPage = () => {
                         <TableCell className="font-mono text-xs">{r.id.slice(0, 8)}</TableCell>
                         <TableCell className="text-sm">{r.imobiliaria_id ? (imobiliariaById.get(r.imobiliaria_id) || "-") : "-"}</TableCell>
                         <TableCell className="text-sm">{r.tipo_contrato}</TableCell>
+                        <TableCell className="text-sm">
+                          {r.created_at ? format(parseISO(r.created_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "-"}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <div className="space-y-1">
+                            <div className="truncate max-w-[220px]">
+                              <span className="text-muted-foreground">1ª parte:</span> {r.vendedor_nome || "-"}
+                            </div>
+                            <div className="truncate max-w-[220px]">
+                              <span className="text-muted-foreground">2ª parte:</span> {r.comprador_nome || "-"}
+                            </div>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-sm">{r.corretor_nome || "-"}</TableCell>
                         <TableCell className="text-sm">
                           {r.contract_generated_at ? format(parseISO(r.contract_generated_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "-"}
