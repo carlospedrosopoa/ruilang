@@ -311,7 +311,15 @@ const PainelSubmissoes = () => {
       toast.success("Proposta gerada e salva na coleta.");
       await loadData();
     } catch (e: any) {
-      toast.error(e?.message || "Erro ao gerar proposta.");
+      let message = e?.message;
+      const ctx = e?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (body?.error) message = body.error;
+        } catch {}
+      }
+      toast.error(message || "Erro ao gerar proposta.");
     } finally {
       setProposalLoading(false);
     }

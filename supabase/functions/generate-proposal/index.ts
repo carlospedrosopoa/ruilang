@@ -5,103 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-type AiProvider = "openai" | "gemini";
-
-function getProviderFromRequest(body: any): AiProvider | null {
-  const p = body?.ai?.provider;
-  if (p === "openai" || p === "gemini") return p;
-  return null;
-}
-
-function getDefaultProvider(): AiProvider {
-  const raw = (Deno.env.get("AI_PROVIDER_DEFAULT") || "").toLowerCase();
-  return raw === "gemini" ? "gemini" : "openai";
-}
-
-function isFailoverEnabled() {
-  const raw = (Deno.env.get("AI_FAILOVER_ENABLED") || "").toLowerCase();
-  if (!raw) return true;
-  return raw === "1" || raw === "true" || raw === "yes";
-}
-
-async function callOpenAiText(params: { apiKey: string; model: string; systemPrompt: string; userPrompt: string }) {
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: params.model,
-      messages: [
-        { role: "system", content: params.systemPrompt },
-        { role: "user", content: params.userPrompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      const e: any = new Error("Credenciais inválidas. Verifique OPENAI_API_KEY.");
-      e.status = 401;
-      throw e;
-    }
-    if (response.status === 429) {
-      const e: any = new Error(`OpenAI (${params.model}) com limite de requisições/tokens excedido. Tente novamente em alguns minutos.`);
-      e.status = 429;
-      throw e;
-    }
-    const t = await response.text();
-    console.error("AI error:", response.status, t);
-    const e: any = new Error(`Erro do provedor OpenAI (${response.status})`);
-    e.status = response.status;
-    throw e;
-  }
-
-  const data = await response.json();
-  return (data?.choices?.[0]?.message?.content || "").trim();
-}
-
-async function callGeminiText(params: { apiKey: string; model: string; systemPrompt: string; userPrompt: string }) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(params.model)}:generateContent?key=${encodeURIComponent(params.apiKey)}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: params.systemPrompt }] },
-      contents: [{ role: "user", parts: [{ text: params.userPrompt }] }],
-      generationConfig: { temperature: 0.2 },
-    }),
-  });
-
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      const e: any = new Error("Credenciais inválidas. Verifique GEMINI_API_KEY.");
-      e.status = response.status;
-      throw e;
-    }
-    if (response.status === 429) {
-      const e: any = new Error(`Gemini (${params.model}) com limite de requisições/tokens excedido. Tente novamente em alguns minutos.`);
-      e.status = 429;
-      throw e;
-    }
-    if (response.status === 404) {
-      const e: any = new Error(`Gemini (${params.model}) não encontrado/disponível neste projeto (404).`);
-      e.status = 404;
-      throw e;
-    }
-    const t = await response.text();
-    console.error("Gemini error:", response.status, t);
-    const e: any = new Error(`Erro do provedor Gemini (${response.status})`);
-    e.status = response.status;
-    throw e;
-  }
-
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join("\n") || "";
-  return text.trim();
-}
-
 const tipoLabels: Record<string, string> = {
   promessa_compra_venda: "COMPRA DE IMÓVEL",
   promessa_compra_venda_permuta: "COMPRA DE IMÓVEL COM PERMUTA",
@@ -116,12 +19,14 @@ const tipoLabelsLower: Record<string, string> = {
   locacao: "locação do imóvel",
 };
 
-serve(async (req: Request) => {
+serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const body = await req.json();
-    const { dados, tipoContrato, imobiliaria } = body ?? {};
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    const { dados, tipoContrato, imobiliaria } = await req.json();
     if (!dados) throw new Error("Missing 'dados' in request body");
 
     const tipoLabel = tipoLabels[tipoContrato] || "NEGÓCIO IMOBILIÁRIO";
@@ -137,106 +42,72 @@ serve(async (req: Request) => {
 - Telefone: ${imobiliaria.telefone || "não informado"}`
       : "";
 
-    const systemPrompt = `Você é um advogado especialista em direito imobiliário brasileiro. Sua tarefa é gerar uma PROPOSTA DE NEGÓCIO IMOBILIÁRIO profissional, seguindo EXATAMENTE o modelo e estrutura abaixo.
+    const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
 
-MODELO OBRIGATÓRIO A SEGUIR:
+Sua tarefa é gerar uma PROPOSTA DE ${tipoLabel} profissional, usando EXATAMENTE o modelo base abaixo como estrutura, mas substituindo todos os dados e exemplos pelos dados oficiais fornecidos.
 
-O documento deve ter DUAS PARTES:
-1. A PROPOSTA (página 1)
-2. O ACEITE DA PROPOSTA (página 2)
+REGRAS GERAIS (OBRIGATÓRIAS):
+- Retorne APENAS o texto final da proposta (sem markdown, sem comentários).
+- Não deixe placeholders entre colchetes (ex.: [NOME], [CPF], etc). Tudo deve ser preenchido.
+- Se algum dado estiver ausente, use "________" (linha) no lugar, sem inventar.
+- Use linguagem jurídica formal.
+- Use valores monetários com "R$" e escreva o valor por extenso entre parênteses.
+- Adapte os termos conforme o tipo de contrato: locação usa "Locador/Locatário"; cessão usa "Cedente/Cessionário"; permuta menciona imóvel em permuta e torna.
+- Na seção "Local e Data", use a cidade/UF mais adequada (preferencialmente do imóvel) e a data do dia (dia/mês por extenso/ano).
 
-ESTRUTURA EXATA:
+MODELO BASE (ESTRUTURA OBRIGATÓRIA):
 
----
+PROPOSTA DE COMPRA DE IMÓVEL
+Pelo presente instrumento, o(a) proponente [NOME DO COMPRADOR], inscrito(a) no CPF sob nº [CPF], residente e domiciliado(a) na cidade de [Cidade/UF], por intermédio da [IMOBILIARIA_NOME], inscrita no CRECI-J nº [IMOBILIARIA_CRECI], localizada na [IMOBILIARIA_ENDERECO], resolve, por livre e espontânea vontade, apresentar a seguinte PROPOSTA DE COMPRA do imóvel abaixo descrito:
 
-P R O P O S T A   D E   ${tipoLabel}
+Objeto: [DESCRIÇÃO COMPLETA DO IMÓVEL, com localização, quadra, lote, balneário/bairro, município/UF e matrícula/RI quando houver].
 
-Pelo presente [NOME DO CORRETOR], inscrito no CPF sob nº [CPF DO CORRETOR], residente e domiciliado na cidade de [CIDADE/ESTADO DO CORRETOR], através da [NOME DA IMOBILIÁRIA se houver], localizada na [ENDEREÇO DA IMOBILIÁRIA se houver].
+CLÁUSULA 1ª – PREÇO E CONDIÇÕES DE PAGAMENTO
+1.1. O preço total pela aquisição do imóvel é de R$ [VALOR_TOTAL] ([VALOR_TOTAL_POR_EXTENSO]), a ser pago conforme as condições abaixo:
+[DESCREVER FORMA DE PAGAMENTO COMPLETA: arras/sinal (se houver), parcelas (se houver), datas de vencimento, financiamento (se houver), permuta (se houver), torna, etc.]
+1.2. O valor referente à comissão pela intermediação imobiliária, no percentual de 6% sobre o valor da venda, será de responsabilidade exclusiva do comprador/proponente, a ser pago no ato da assinatura do contrato preliminar/compromisso de compra e venda.
 
-Por este instrumento particular, a pessoa qualificada na Cláusula 1ª resolve, por livre e espontânea vontade, propor ao corretor de imóveis a ${tipoLabelLower} descrito,
+CLÁUSULA 2ª – PRAZO DE VIGÊNCIA
+2.1. A presente proposta é irrevogável, vincula herdeiros e sucessores, e tem validade de 07 (sete) dias para o aceite do(s) proprietário(s)/vendedor(es), contados a partir da data de sua assinatura.
 
-[DESCRIÇÃO COMPLETA DO IMÓVEL com tipo, localização, quadra, lote, balneário/bairro, município, dados de registro/matrícula e confrontações se disponíveis]
+CLÁUSULA 3ª – DISPOSIÇÕES GERAIS
+3.1. Esta proposta é parte integrante do contrato de intermediação imobiliária firmado entre a imobiliária e o(s) proprietário(s).
+3.2. Após o aceite, a proposta converter-se-á em contrato preliminar (arts. 462 a 466 do Código Civil), obrigando as partes à formalização do negócio definitivo no prazo máximo de 07 (sete) dias após o aceite.
+3.3. A parte que der causa ao arrependimento ou à inexecução injustificada do contrato preliminar, além das perdas e danos devidas à parte inocente, arcará com o pagamento imediato dos honorários profissionais do corretor de imóveis, conforme art. 725 do Código Civil.
 
-Cláusula 1ª – Preço e condições de pagamento:
+CLÁUSULA 4ª – DO TRATAMENTO E PROTEÇÃO DE DADOS (LGPD)
+4.1. O(s) Proponente(s) e o(s) Vendedor(es) autorizam a Imobiliária, na qualidade de Controladora, a realizar o tratamento de seus dados pessoais (nome, CPF, endereço, contato, etc.) para as finalidades de execução deste negócio jurídico, cumprimento de obrigações legais (fiscais e imobiliárias) e prevenção à lavagem de dinheiro.
+4.2. Os dados serão armazenados durante a vigência desta relação contratual e pelo período necessário para atender aos prazos prescricionais e obrigações legais de guarda documental.
+4.3. A Imobiliária compromete-se a manter medidas de segurança técnica e administrativa para proteção dos dados, garantindo aos titulares o exercício dos direitos previstos no art. 18 da LGPD, mediante solicitação formal.
 
-1) Pelo imóvel acima descrito o proponente propõe o pagamento do preço de R$ [VALOR TOTAL] ([VALOR POR EXTENSO]) e será pago da seguinte forma:
+CLÁUSULA 5ª – FORO E SOLUÇÃO DE CONFLITOS
+5.1. As partes elegem o foro da Comarca de [FORO_CIDADE_UF] para dirimir quaisquer questões oriundas deste instrumento. As controvérsias poderão ser submetidas à conciliação ou arbitragem, conforme Lei nº 9.307/96, mediante anuência expressa das partes.
 
-[LISTAR CADA FORMA DE PAGAMENTO: sinal, parcelas, financiamento, permuta, etc.]
+ACEITE DA PROPOSTA
+Local e Data: [CIDADE_UF], [DIA] de [MÊS] de [ANO].
 
-[SE HOUVER COMISSÃO: O valor referente à comissão pela intermediação imobiliária, será de responsabilidade exclusiva do comprador, no valor de [X]%.]
+Assinatura do Proponente
 
-Cláusula 2ª – Prazo de vigência:
+Assinatura do Corretor de Imóveis (CRECI)
 
-1) A presente proposta é assinada em caráter irrevogável, vincula herdeiros e sucessores do proponente e tem vigência de 7 (sete) dias até o aceite do(s) proprietário(s)/vendedor(es), contados da data de sua assinatura.
+Testemunhas:
 
-Cláusula 3ª – Disposições gerais
+Nome/CPF: __________
 
-1) A presente proposta é parte integrante do contrato de intermediação do imóvel, firmado entre o corretor de imóveis e o(s) proprietário(s)/vendedor(es).
+Nome/CPF: __________
 
-2) Após aceita pelo(s) proprietário(s)/vendedor(es) a proposta tornar-se-á um contrato preliminar, nos moldes estabelecidos no art. 462 a 466 do Código Civil, sendo que as partes se obrigam a cumpri-la no prazo máximo de 07 (sete) dias contados do aceite.
+CLÁUSULA 6ª – ACEITE DO(S) VENDEDOR(ES)
+6.1. O(s) Vendedor(es) aceita(m) a proposta nos termos supra e autoriza(m) o corretor de imóveis a receber sinal de negócio, caso aplicável, emitindo o respectivo recibo.
 
-3) A parte que der causa ao arrependimento ou a inexecução do contrato preliminar suportará, além das perdas e danos devidas à parte inocente, o pagamento imediato dos honorários profissionais do corretor de imóveis, no mesmo percentual estabelecido no contrato de intermediação, nos moldes estabelecidos no art. 725 do Código Civil.
+Local e Data: [CIDADE_UF], [DIA] de [MÊS] de [ANO].
 
-Cláusula 4ª – Eleição do foro:
+Assinatura do Vendedor
 
-1) Todas as questões eventualmente oriundas do presente contrato, serão resolvidas, de forma definitiva via conciliatória ou arbitral, na Comarca do Foro de [CIDADE-ESTADO], consoante os preceitos ditados pela Lei nº 9.307 de 23/09/1996.
+Assinatura do Cônjuge
 
----
-
-A C E I T E   D A   P R O P O S T A
-
-Cláusula 5ª – Local e assinatura do proponente e do corretor de imóveis:
-
-1) Local e data:
-
-CIDADE – ESTADO: _______________
-DATA: ____/____/________
-
-2) Assinatura das partes:
-
-PROPONENTE: _______________________________
-
-CORRETOR DE IMÓVEIS: _______________________________
-
-3) Assinatura das testemunhas:
-
-Nome: _______________________________    Nome: _______________________________
-CPF: ________________________________    CPF: ________________________________
-
-Cláusula 6ª – Aceite do(s) proprietário(s)/vendedor(es):
-
-1) O(s) proprietário(s)/vendedor(es) aceita(m) a proposta conforme formulada e aguarda(m) o proponente para assinatura do contrato ou escritura definitiva do imóvel.
-
-2) O(s) proprietário(s)/vendedor(es) autorizam o corretor de imóveis a receber o sinal do negócio e a emitir recibo em seu(s) nome(s).
-
-3) Local e data:
-
-CIDADE – ESTADO: _______________
-DATA: ____/____/________
-
-4) Assinatura das partes:
-
-PROPRIETÁRIO(S)/VENDEDOR(ES): _______________________________
-
-CÔNJUGE DO(S) PROPRIETÁRIO(S)/VENDEDOR(ES): _______________________________
-
-5) Assinatura das testemunhas:
-
-Nome: _______________________________    Nome: _______________________________
-CPF: ________________________________    CPF: ________________________________
-
----
-
-REGRAS DE REDAÇÃO:
-- NÃO use formatação markdown (asteriscos, hashtags, etc). Texto PURO.
-- Adapte os termos conforme o tipo de contrato (locação usa "locador/locatário", cessão usa "cedente/cessionário")
-- Para LOCAÇÃO: adapte a Cláusula 1ª para valor do aluguel mensal, prazo, garantia, etc.
-- Para PERMUTA: inclua descrição do imóvel dado em permuta e a torna (diferença de valores)
-- Qualifique o corretor com os dados fornecidos
-- Descreva o imóvel com TODOS os dados disponíveis
-- Escreva os valores por extenso entre parênteses
-- O documento deve estar PRONTO PARA IMPRESSÃO E ASSINATURA
-- Gere APENAS o texto da proposta, sem comentários extras`;
+INSTRUÇÕES DE PREENCHIMENTO:
+- [IMOBILIARIA_NOME], [IMOBILIARIA_CRECI] e [IMOBILIARIA_ENDERECO] devem ser preenchidos com os dados enviados (se não houver, deixe "________").
+- O proponente é, via de regra, o COMPRADOR/LOCATÁRIO/CESSIONÁRIO (conforme o tipo).`;
 
     const userPrompt = `Gere a Proposta de ${tipoLabel} com os seguintes dados:
 
@@ -248,70 +119,41 @@ ${imobInfo}
 
 Gere a proposta completa conforme o modelo nas instruções, com TODAS as cláusulas e espaços para assinatura.`;
 
-    const requestedProvider = getProviderFromRequest(body);
-    const provider = requestedProvider ?? getDefaultProvider();
-    const failover = isFailoverEnabled();
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
 
-    const tryOrder: AiProvider[] = provider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
-    let lastError: unknown = null;
-    let proposta = "";
-
-    for (const p of tryOrder) {
-      try {
-        if (p === "openai") {
-          const key = Deno.env.get("OPENAI_API_KEY");
-          if (!key) throw new Error("OPENAI_API_KEY is not configured");
-          const models = [
-            Deno.env.get("OPENAI_MODEL_PROPOSAL") || "gpt-4o-mini",
-            Deno.env.get("OPENAI_MODEL_PROPOSAL_FALLBACK") || "gpt-4o",
-          ];
-          let openAiError: unknown = null;
-          for (const model of models) {
-            try {
-              proposta = await callOpenAiText({ apiKey: key, model, systemPrompt, userPrompt });
-              break;
-            } catch (e) {
-              openAiError = e;
-              const status = (e as any)?.status;
-              if (status === 429) continue;
-              throw e;
-            }
-          }
-          if (!proposta && openAiError) throw openAiError;
-        } else {
-          const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
-          if (!key) throw new Error("GEMINI_API_KEY is not configured");
-          const models = [
-            Deno.env.get("GEMINI_MODEL_PROPOSAL") || "gemini-1.5-flash",
-            Deno.env.get("GEMINI_MODEL_PROPOSAL_FALLBACK") || "gemini-1.5-pro",
-          ];
-          let geminiError: unknown = null;
-          for (const model of models) {
-            try {
-              proposta = await callGeminiText({ apiKey: key, model, systemPrompt, userPrompt });
-              break;
-            } catch (e) {
-              geminiError = e;
-              const status = (e as any)?.status;
-              if (status === 429) continue;
-              throw e;
-            }
-          }
-          if (!proposta && geminiError) throw geminiError;
-        }
-        break;
-      } catch (e) {
-        lastError = e;
-        const status = (e as any)?.status;
-        const shouldForceFallback = status === 404;
-        if (!failover && !shouldForceFallback) break;
+    if (!response.ok) {
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns minutos." }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: "Créditos insuficientes. Adicione créditos em Configurações." }), {
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const t = await response.text();
+      console.error("AI gateway error:", response.status, t);
+      return new Response(JSON.stringify({ error: "Erro ao gerar proposta" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    if (!proposta) {
-      throw lastError instanceof Error ? lastError : new Error("Erro ao gerar proposta");
-    }
-
+    const data = await response.json();
+    let proposta = data.choices?.[0]?.message?.content || "";
     proposta = proposta.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
 
     return new Response(JSON.stringify({ proposta }), {
@@ -319,10 +161,9 @@ Gere a proposta completa conforme o modelo nas instruções, com TODAS as cláus
     });
   } catch (e) {
     console.error("generate-proposal error:", e);
-    const status = typeof (e as any)?.status === "number" ? (e as any).status : 500;
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }),
-      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

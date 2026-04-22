@@ -60,6 +60,39 @@ function getSteps(tipo: TipoContrato) {
   return steps;
 }
 
+function parseCurrencyBRL(input: string): number | null {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+  const cleaned = raw.replace(/[^\d.,-]/g, "");
+  if (!cleaned) return null;
+
+  const hasComma = cleaned.includes(",");
+  const hasDot = cleaned.includes(".");
+  const normalized = hasComma
+    ? cleaned.replace(/\./g, "").replace(",", ".")
+    : cleaned.replace(/\./g, "");
+
+  const n = Number.parseFloat(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatCurrencyBRL(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function formatCurrencyFromInput(input: string): string | null {
+  const n = parseCurrencyBRL(input);
+  if (n === null) return null;
+  return formatCurrencyBRL(n);
+}
+
+function formatDateBR(iso: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("pt-BR");
+}
+
 const ColetaPage = () => {
   const { token } = useParams<{ token: string }>();
   const [loading, setLoading] = useState(true);
@@ -209,7 +242,15 @@ const ColetaPage = () => {
       toast.success("Proposta gerada com sucesso!");
     } catch (err: any) {
       console.error("Error generating proposal:", err);
-      toast.error(err.message || "Erro ao gerar proposta. Tente novamente.");
+      let message = err?.message;
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (body?.error) message = body.error;
+        } catch {}
+      }
+      toast.error(message || "Erro ao gerar proposta.");
     } finally {
       setIsGeneratingProposal(false);
     }
@@ -448,10 +489,40 @@ const ColetaPage = () => {
                 <span className="text-muted-foreground">{imovel.localizacao || "—"}, {imovel.municipio || "—"}/{imovel.estadoImovel || "—"}</span>
               </div>
               {tipo !== "locacao" && (
-                <div>
-                  <span className="font-semibold text-foreground">Valor Total:</span>{" "}
-                  <span className="text-muted-foreground">R$ {pagamento.valorTotal || "—"}</span>
-                </div>
+                <>
+                  <div>
+                    <span className="font-semibold text-foreground">Valor Total:</span>{" "}
+                    <span className="text-muted-foreground">{formatCurrencyFromInput(pagamento.valorTotal) || (pagamento.valorTotal ? `R$ ${pagamento.valorTotal}` : "—")}</span>
+                  </div>
+                  {(() => {
+                    const arras = (Array.isArray(pagamento.parcelas) ? pagamento.parcelas : []).filter(
+                      (p) => p?.tipo === "arras" && String(p?.valor || "").trim(),
+                    );
+                    if (!arras.length) return null;
+                    return (
+                      <div className="space-y-1">
+                        <span className="font-semibold text-foreground">Sinal/Arras:</span>{" "}
+                        <div className="text-muted-foreground">
+                          {arras.map((a, idx) => {
+                            const qtd = typeof a?.quantidade === "number" && a.quantidade > 0 ? a.quantidade : 1;
+                            const valorUnit = formatCurrencyFromInput(String(a?.valor || ""));
+                            const valorNum = parseCurrencyBRL(String(a?.valor || ""));
+                            const total = valorNum !== null ? formatCurrencyBRL(valorNum * qtd) : null;
+                            const venc = formatDateBR(String(a?.dataVencimento || ""));
+                            const desc = String(a?.descricao || "").trim();
+                            const label = desc || `Sinal ${idx + 1}`;
+                            const valorText = total ? (qtd > 1 ? `${total} (${qtd}x)` : total) : valorUnit ? valorUnit : a?.valor ? `R$ ${String(a.valor)}` : "—";
+                            return (
+                              <div key={(a as any)?.id || idx}>
+                                {label}: {valorText}{venc ? ` • venc.: ${venc}` : ""}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
               )}
               {tipo === "locacao" && (
                 <div>

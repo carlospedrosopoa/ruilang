@@ -44,6 +44,74 @@ function insertBeforeLocalEData(base: string, addition: string) {
   return `${base.slice(0, idx).trimEnd()}\n\n${addition}\n\n${base.slice(idx).trimStart()}`;
 }
 
+function insertBeforeSignatureBlock(base: string, addition: string) {
+  const markers: RegExp[] = [
+    /^\s*ASSINATURAS\b.*$/im,
+    /^\s*ASSINAM\b.*$/im,
+    /^\s*ASSINATURA\b.*$/im,
+    /^\s*TESTEMUNHAS\b.*$/im,
+    /^\s*E\s*,?\s*POR\s+ESTAREM\b.*$/im,
+    /^\s*E\s+POR\s+ESTAREM\b.*$/im,
+    /^\s*_+\s*$/m,
+    /^\s*LOCAL\s+E\s+DATA\b.*$/im,
+  ];
+
+  let bestIdx: number | null = null;
+  for (const re of markers) {
+    const match = re.exec(base);
+    if (!match || match.index < 0) continue;
+    if (bestIdx === null || match.index < bestIdx) bestIdx = match.index;
+  }
+
+  if (bestIdx === null) return `${base}\n\n${addition}\n`;
+  return `${base.slice(0, bestIdx).trimEnd()}\n\n${addition}\n\n${base.slice(bestIdx).trimStart()}`;
+}
+
+function getContractCityUF(contrato: any) {
+  const imovel = contrato?.imovel;
+  const cidade = typeof imovel?.municipio === "string" ? imovel.municipio.trim() : "";
+  const uf = typeof imovel?.estadoImovel === "string" ? imovel.estadoImovel.trim() : "";
+  return { cidade, uf };
+}
+
+function formatLongDatePtBR(date: Date) {
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).formatToParts(date);
+  const day = parts.find((p) => p.type === "day")?.value || "";
+  const month = parts.find((p) => p.type === "month")?.value || "";
+  const year = parts.find((p) => p.type === "year")?.value || "";
+  return `${day} de ${month} de ${year}`.trim();
+}
+
+function fixLocalEDataInContractText(text: string, contrato: any) {
+  const { cidade, uf } = getContractCityUF(contrato);
+  if (!cidade) return text;
+  const local = uf ? `${cidade}/${uf}` : cidade;
+  const dateText = formatLongDatePtBR(new Date());
+  const line = `${local}, ${dateText}.`;
+
+  const markerLineRe = /(^\s*LOCAL\s+E\s+DATA\b[^\n]*\n)([^\n]*)(\n?)/im;
+  if (markerLineRe.test(text)) {
+    return text.replace(markerLineRe, (_m, p1, _p2, p3) => `${p1}${line}${p3 || "\n"}`);
+  }
+
+  const cityDateLongRe = /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.'-]+(?:\/[A-Z]{2})?,\s*\d{1,2}\s+de\s+[A-Za-zÀ-ÿ]+\s+de\s+\d{4}\b.*$/im;
+  if (cityDateLongRe.test(text)) {
+    return text.replace(cityDateLongRe, line);
+  }
+
+  const cityDateShortRe = /^[A-Za-zÀ-ÿ][^,\n]{2,80},\s*\d{1,2}\/\d{1,2}\/\d{4}\b.*$/im;
+  if (cityDateShortRe.test(text)) {
+    return text.replace(cityDateShortRe, line);
+  }
+
+  return text;
+}
+
 async function getActiveTemplate(admin: any, tipoContrato: string, perfil: string) {
   const { data, error } = await admin
     .from("contract_templates")
@@ -121,6 +189,52 @@ ${params.peculiaridades}
 ${extraInstructions}
 
 Gere somente as cláusulas adicionais.`;
+
+  if (params.provider === "openai") {
+    return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+  }
+  return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+}
+
+async function integratePeculiaridadesInContract(params: {
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
+  tipoLabel: string;
+  contratoText: string;
+  contrato: any;
+  peculiaridades: string;
+  instructionsIa?: string | null;
+}) {
+  const extraInstructions = typeof params.instructionsIa === "string" && params.instructionsIa.trim()
+    ? `\n\nINSTRUÇÕES ADICIONAIS (OBRIGATÓRIAS):\n${params.instructionsIa.trim()}\n`
+    : "";
+
+  const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro, com 20 anos de experiência em estruturação de negócios complexos (compra e venda, incorporação e locação), meticuloso e com profundo conhecimento do Código Civil, da Lei de Registros Públicos e da jurisprudência do STJ.
+
+TAREFA:
+Integrar PECULIARIDADES no CONTRATO abaixo, inserindo-as no LOCAL CORRETO do corpo do contrato (conforme o contexto), sem colocar nada após as assinaturas.
+
+REGRAS:
+- Retorne o CONTRATO COMPLETO já com as inserções.
+- NÃO use markdown.
+- NÃO invente dados.
+- NÃO altere nomes/CPFs/endereço das partes, descrição do imóvel, valores ou forma de pagamento já definidos no contrato (apenas adicione regras/obrigações relacionadas às peculiaridades).
+- Para cada peculiaridade, escolha a seção/cláusula adequada (ex.: objeto/obrigações/vistoria/posse/encargos/benfeitorias/condomínio/limpeza/devolução etc.).
+- Priorize inserir como subcláusula/item dentro de uma cláusula existente (ex.: itens 1.1, 1.2; ou parágrafos), mantendo a numeração consistente, para evitar renumerar todo o contrato.
+- Se for inevitável criar uma nova cláusula, insira no ponto correto e ajuste a numeração subsequente de forma consistente com o estilo do documento.
+- As inserções devem ter redação jurídica e se harmonizar com o texto existente.${extraInstructions}`;
+
+  const userPrompt = `CONTRATO (${params.tipoLabel}):
+${params.contratoText}
+
+DADOS DO CONTRATO (para contexto; não inventar nada além disso):
+${JSON.stringify(params.contrato, null, 2)}
+
+PECULIARIDADES (OBRIGATÓRIO integrar no lugar correto):
+${params.peculiaridades}
+
+Retorne o contrato completo com as peculiaridades integradas no corpo do texto (não no final após assinaturas).`;
 
   if (params.provider === "openai") {
     return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
@@ -1315,7 +1429,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       const providerForPec = usedModel ? usedProvider : provider;
       const failover = isFailoverEnabled();
       const tryOrder: AiProvider[] = providerForPec === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
-      let extraText: string | null = null;
+      let integratedText: string | null = null;
       let lastPecError: unknown = null;
 
       for (const p of tryOrder) {
@@ -1324,18 +1438,18 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
             const key = Deno.env.get("OPENAI_API_KEY");
             if (!key) throw new Error("OPENAI_API_KEY is not configured");
             const models = [
-              Deno.env.get("OPENAI_MODEL_CONTRACT_PEC") || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
-              Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+              Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_INTEGRATE") || Deno.env.get("OPENAI_MODEL_CONTRACT_PEC") || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+              Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_INTEGRATE_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
             ];
             let openAiError: unknown = null;
             for (const model of models) {
               try {
-                extraText = await generatePeculiaridadesText({
+                integratedText = await integratePeculiaridadesInContract({
                   provider: "openai",
                   apiKey: key,
                   model,
                   tipoLabel,
-                  baseTemplate: baseContrato,
+                  contratoText: baseContrato,
                   contrato: contratoSemPeculiaridades,
                   peculiaridades,
                   instructionsIa: templateInstructionsIa,
@@ -1348,23 +1462,23 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                 throw e;
               }
             }
-            if (extraText === null && openAiError) throw openAiError;
+            if (integratedText === null && openAiError) throw openAiError;
           } else {
             const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
             if (!key) throw new Error("GEMINI_API_KEY is not configured");
             const models = [
-              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
-              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_INTEGRATE") || Deno.env.get("GEMINI_MODEL_CONTRACT_PEC") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_INTEGRATE_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
             ];
             let geminiError: unknown = null;
             for (const model of models) {
               try {
-                extraText = await generatePeculiaridadesText({
+                integratedText = await integratePeculiaridadesInContract({
                   provider: "gemini",
                   apiKey: key,
                   model,
                   tipoLabel,
-                  baseTemplate: baseContrato,
+                  contratoText: baseContrato,
                   contrato: contratoSemPeculiaridades,
                   peculiaridades,
                   instructionsIa: templateInstructionsIa,
@@ -1377,7 +1491,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                 throw e;
               }
             }
-            if (extraText === null && geminiError) throw geminiError;
+            if (integratedText === null && geminiError) throw geminiError;
           }
           break;
         } catch (e) {
@@ -1388,10 +1502,16 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
         }
       }
 
-      if (extraText === null) {
+      if (integratedText === null) {
         throw lastPecError instanceof Error ? lastPecError : new Error("Erro ao gerar peculiaridades");
       }
-      if (extraText && extraText.trim()) minutaFinal = insertBeforeLocalEData(baseContrato, extraText.trim());
+      const cleanedIntegrated = (integratedText || "").replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+      const integratedOk = cleanedIntegrated.trim() && cleanedIntegrated.trim() !== baseContrato.trim();
+      if (integratedOk) {
+        minutaFinal = cleanedIntegrated;
+      } else {
+        throw new Error("Não foi possível integrar as peculiaridades no corpo do contrato. Ajuste as peculiaridades ou tente novamente.");
+      }
     }
 
     if (baseSource !== "ai") {
@@ -1495,6 +1615,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
         }
       }
     }
+
+    minutaFinal = fixLocalEDataInContractText(minutaFinal, contratoSemPeculiaridades);
 
     if (admin && submissionId) {
       let userId: string | null = null;
