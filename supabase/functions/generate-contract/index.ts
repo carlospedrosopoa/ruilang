@@ -212,6 +212,171 @@ function buildPaymentSpec(contrato: any) {
   return parts.join("\n");
 }
 
+function buildPartiesSpec(contrato: any) {
+  if (!contrato || typeof contrato !== "object") return "";
+
+  const tipo = String(contrato.tipoContrato || "");
+  const labels =
+    tipo === "locacao"
+      ? { a: "LOCADOR(ES)", b: "LOCATÁRIO(S)" }
+      : tipo === "cessao_direitos"
+        ? { a: "CEDENTE(S)", b: "CESSIONÁRIO(S)" }
+        : { a: "VENDEDOR(ES)", b: "COMPRADOR(ES)" };
+
+  const fmtPessoa = (p: any) => {
+    if (!p || typeof p !== "object") return "";
+    const lines: string[] = [];
+    const nome = String(p.nome || "").trim();
+    const cpf = String(p.cpf || "").trim();
+    const docTipo = String(p.documentoTipo || "").toUpperCase();
+    const docNum = String(p.documentoNumero || "").trim();
+    const docOrg = String(p.documentoOrgao || "").trim();
+    const prof = String(p.profissao || "").trim();
+    const nac = String(p.nacionalidade || "").trim();
+    const ec = String(p.estadoCivil || "").trim();
+    const reg = String(p.regimeBens || "").trim();
+    const end = String(p.endereco || "").trim();
+    const bairro = String(p.bairro || "").trim();
+    const cidade = String(p.cidade || "").trim();
+    const uf = String(p.estado || "").trim();
+    const cep = String(p.cep || "").trim();
+
+    if (nome) lines.push(`NOME: ${nome}`);
+    if (cpf) lines.push(`CPF: ${cpf}`);
+    if (docTipo || docNum || docOrg) lines.push(`DOCUMENTO: ${[docTipo, docNum, docOrg].filter(Boolean).join(" ")}`.trim());
+    if (nac) lines.push(`NACIONALIDADE: ${nac}`);
+    if (prof) lines.push(`PROFISSÃO: ${prof}`);
+    if (ec) lines.push(`ESTADO CIVIL: ${ec}${reg ? ` (${reg})` : ""}`);
+    if (end || bairro || cidade || uf || cep) {
+      lines.push(`ENDEREÇO: ${[end, bairro, cidade, uf, cep].filter(Boolean).join(" - ")}`.trim());
+    }
+
+    const c = p.conjuge;
+    if (c && typeof c === "object") {
+      const cn = String(c.nome || "").trim();
+      const ccpf = String(c.cpf || "").trim();
+      const cdocTipo = String(c.documentoTipo || "").toUpperCase();
+      const cdocNum = String(c.documentoNumero || "").trim();
+      const cdocOrg = String(c.documentoOrgao || "").trim();
+      const cprof = String(c.profissao || "").trim();
+      const cnac = String(c.nacionalidade || "").trim();
+      const cLines: string[] = [];
+      if (cn) cLines.push(`NOME: ${cn}`);
+      if (ccpf) cLines.push(`CPF: ${ccpf}`);
+      if (cdocTipo || cdocNum || cdocOrg) cLines.push(`DOCUMENTO: ${[cdocTipo, cdocNum, cdocOrg].filter(Boolean).join(" ")}`.trim());
+      if (cnac) cLines.push(`NACIONALIDADE: ${cnac}`);
+      if (cprof) cLines.push(`PROFISSÃO: ${cprof}`);
+      if (cLines.length) lines.push(`CÔNJUGE/COMPANHEIRO(A): ${cLines.join(" | ")}`);
+    }
+
+    return lines.join(" | ");
+  };
+
+  const vendedores = Array.isArray(contrato.vendedores) ? contrato.vendedores : [];
+  const compradores = Array.isArray(contrato.compradores) ? contrato.compradores : [];
+  const out: string[] = [];
+  out.push(labels.a + ":");
+  out.push(vendedores.length ? vendedores.map((p: any, idx: number) => `${idx + 1}. ${fmtPessoa(p) || "N/A"}`).join("\n") : "1. N/A");
+  out.push("");
+  out.push(labels.b + ":");
+  out.push(compradores.length ? compradores.map((p: any, idx: number) => `${idx + 1}. ${fmtPessoa(p) || "N/A"}`).join("\n") : "1. N/A");
+  return out.join("\n").trim();
+}
+
+function buildPropertySpec(contrato: any) {
+  if (!contrato || typeof contrato !== "object") return "";
+
+  const fmtImovel = (i: any) => {
+    if (!i || typeof i !== "object") return "N/A";
+    const parts: string[] = [];
+    const loc = String(i.localizacao || "").trim();
+    const mun = String(i.municipio || "").trim();
+    const uf = String(i.estadoImovel || "").trim();
+    const tipo = String(i.tipo || "").trim();
+    const desc = String(i.descricao || "").trim();
+    const area = String(i.areaTotal || "").trim();
+    const mat = String(i.matricula || "").trim();
+    const reg = String(i.registroImoveis || "").trim();
+    const lote = String(i.lote || "").trim();
+    const quadra = String(i.quadra || "").trim();
+    const car = String(i.caracteristicas || "").trim();
+
+    if (tipo) parts.push(`TIPO: ${tipo}`);
+    if (desc) parts.push(`DESCRIÇÃO: ${desc}`);
+    if (loc) parts.push(`LOCALIZAÇÃO: ${loc}`);
+    if (mun || uf) parts.push(`MUNICÍPIO/UF: ${[mun, uf].filter(Boolean).join("/")}`);
+    if (lote) parts.push(`LOTE: ${lote}`);
+    if (quadra) parts.push(`QUADRA: ${quadra}`);
+    if (area) parts.push(`ÁREA TOTAL: ${area}`);
+    if (mat) parts.push(`MATRÍCULA: ${mat}`);
+    if (reg) parts.push(`REGISTRO DE IMÓVEIS: ${reg}`);
+    if (car) parts.push(`CARACTERÍSTICAS: ${car}`);
+    return parts.join("\n");
+  };
+
+  const out: string[] = [];
+  out.push("IMÓVEL (OBJETO PRINCIPAL):");
+  out.push(fmtImovel(contrato.imovel));
+
+  if (contrato.tipoContrato === "promessa_compra_venda_permuta") {
+    out.push("");
+    out.push("IMÓVEL DE PERMUTA (SE APLICÁVEL):");
+    out.push(fmtImovel(contrato.imovelPermuta));
+  }
+
+  return out.join("\n").trim();
+}
+
+async function fixCoreDataInContract(params: {
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
+  tipoLabel: string;
+  contratoText: string;
+  contrato: any;
+  instructionsIa?: string | null;
+}) {
+  const partiesSpec = buildPartiesSpec(params.contrato);
+  const propertySpec = buildPropertySpec(params.contrato);
+  const paymentSpec = buildPaymentSpec(params.contrato);
+  const extraInstructions =
+    typeof params.instructionsIa === "string" && params.instructionsIa.trim()
+      ? `\n\nINSTRUÇÕES ADICIONAIS (OBRIGATÓRIAS):\n${params.instructionsIa.trim()}\n`
+      : "";
+
+  const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
+
+TAREFA:
+Ajustar SOMENTE (1) a qualificação das PARTES, (2) a descrição/identificação do(s) IMÓVEL(IS) objeto do contrato e (3) as cláusulas de VALOR/PREÇO e FORMA DE PAGAMENTO/LOCAÇÃO, para que fiquem 100% coerentes com os dados oficiais.
+
+REGRAS:
+- O texto base pode conter dados de exemplo do modelo. IGNORE quaisquer nomes/CPF/endereço/valores/datas do modelo.
+- Considere como verdade absoluta somente os DADOS OFICIAIS fornecidos.
+- NÃO inventar dados.
+- NÃO alterar o restante do contrato (cláusulas que não sejam de partes/imóvel/pagamento).
+- Não usar markdown. Retornar o contrato completo (texto final).`;
+
+  const userPrompt = `CONTRATO ATUAL:
+${params.contratoText}
+
+DADOS OFICIAIS DAS PARTES (OBRIGATÓRIO):
+${partiesSpec}
+
+DADOS OFICIAIS DO(S) IMÓVEL(IS) (OBRIGATÓRIO):
+${propertySpec}
+
+DADOS OFICIAIS DE VALOR/PAGAMENTO/LOCAÇÃO (OBRIGATÓRIO):
+${paymentSpec}
+${extraInstructions}
+
+Retorne o contrato completo com as seções/cláusulas de partes, imóvel e pagamento ajustadas conforme os dados oficiais.`;
+
+  if (params.provider === "openai") {
+    return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+  }
+  return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+}
+
 async function fixPaymentInContract(params: {
   provider: AiProvider;
   apiKey: string;
@@ -1013,8 +1178,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
 
       baseContrato = rendered.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
 
-      const paymentSpec = buildPaymentSpec(contratoSemPeculiaridades);
-      if (paymentSpec.trim() && renderProvider) {
+      if (renderProvider) {
         const tryOrderFix: AiProvider[] = renderProvider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
         let fixed: string | null = null;
         let lastFixErr: unknown = null;
@@ -1024,19 +1188,20 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
               const key = Deno.env.get("OPENAI_API_KEY");
               if (!key) throw new Error("OPENAI_API_KEY is not configured");
               const models = [
-                Deno.env.get("OPENAI_MODEL_CONTRACT_PAYMENT_FIX") || renderModel || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
-                Deno.env.get("OPENAI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+                Deno.env.get("OPENAI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("OPENAI_MODEL_CONTRACT_PAYMENT_FIX") || renderModel || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+                Deno.env.get("OPENAI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
               ];
               let openAiError: unknown = null;
               for (const model of models) {
                 try {
-                  fixed = await fixPaymentInContract({
+                  fixed = await fixCoreDataInContract({
                     provider: "openai",
                     apiKey: key,
                     model,
                     tipoLabel,
                     contratoText: baseContrato,
                     contrato: contratoSemPeculiaridades,
+                    instructionsIa: templateInstructionsIa,
                   });
                   break;
                 } catch (e) {
@@ -1051,19 +1216,20 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
               const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
               if (!key) throw new Error("GEMINI_API_KEY is not configured");
               const models = [
-                Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
-                Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
               ];
               let geminiError: unknown = null;
               for (const model of models) {
                 try {
-                  fixed = await fixPaymentInContract({
+                  fixed = await fixCoreDataInContract({
                     provider: "gemini",
                     apiKey: key,
                     model,
                     tipoLabel,
                     contratoText: baseContrato,
                     contrato: contratoSemPeculiaridades,
+                    instructionsIa: templateInstructionsIa,
                   });
                   break;
                 } catch (e) {
@@ -1086,7 +1252,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
         if (fixed && fixed.trim()) {
           baseContrato = fixed.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
         } else if (lastFixErr) {
-          throw lastFixErr instanceof Error ? lastFixErr : new Error("Erro ao ajustar pagamento do contrato");
+          throw lastFixErr instanceof Error ? lastFixErr : new Error("Erro ao ajustar dados principais do contrato");
         }
       }
     } else if (shouldAutoSaveTemplates() && admin && usedModel) {
