@@ -160,14 +160,47 @@ const ContractWizard = () => {
   useEffect(() => {
     if (!submissionId) return;
     const loadSubmission = async () => {
-      const { data } = await supabase
-        .from("submissions")
-        .select("dados, imobiliaria_id, contract_texto")
-        .eq("id", submissionId)
-        .single();
+      const selectFull = "dados, imobiliaria_id, contract_texto";
+      const selectFallback = "dados, imobiliaria_id";
+
+      let data: any = null;
+      let error: any = null;
+
+      {
+        const res = await supabase.from("submissions").select(selectFull).eq("id", submissionId).single();
+        data = res.data;
+        error = res.error;
+      }
+
+      if (error) {
+        const msg = String(error?.message || "");
+        if (msg.toLowerCase().includes("contract_texto")) {
+          const retry = await supabase.from("submissions").select(selectFallback).eq("id", submissionId).single();
+          data = retry.data;
+          error = retry.error;
+        }
+      }
+
+      if (error) {
+        toast.error(error.message || "Não foi possível carregar os dados do contrato.");
+        didLoadSubmissionRef.current = true;
+        return;
+      }
 
       if (data?.dados) {
-        const d = data.dados as any;
+        let d: any = data.dados as any;
+        if (typeof d === "string") {
+          try {
+            d = JSON.parse(d);
+          } catch {
+            d = null;
+          }
+        }
+        if (!d || typeof d !== "object") {
+          didLoadSubmissionRef.current = true;
+          return;
+        }
+
         const normalizePessoa = (p: any): Pessoa => {
           const base = criarPessoaVazia();
           if (!p || typeof p !== "object") return base;

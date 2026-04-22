@@ -377,6 +377,47 @@ Retorne o contrato completo com as seções/cláusulas de partes, imóvel e paga
   return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
 }
 
+function normalizeForMatch(input: string) {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function extractDigits(input: string) {
+  return input.replace(/\D+/g, "");
+}
+
+function getFirstPartyNeedles(contrato: any) {
+  const vendedor = Array.isArray(contrato?.vendedores) ? contrato.vendedores[0] : null;
+  const comprador = Array.isArray(contrato?.compradores) ? contrato.compradores[0] : null;
+  const vendedorNome = typeof vendedor?.nome === "string" ? vendedor.nome.trim() : "";
+  const compradorNome = typeof comprador?.nome === "string" ? comprador.nome.trim() : "";
+  const vendedorCpf = typeof vendedor?.cpf === "string" ? extractDigits(vendedor.cpf) : "";
+  const compradorCpf = typeof comprador?.cpf === "string" ? extractDigits(comprador.cpf) : "";
+  return {
+    vendedorNome,
+    compradorNome,
+    vendedorCpf,
+    compradorCpf,
+  };
+}
+
+function hasCriticalDataFromForm(text: string, contrato: any) {
+  const needles = getFirstPartyNeedles(contrato);
+  const norm = normalizeForMatch(text);
+  const digitText = extractDigits(text);
+
+  const mustHave: Array<{ ok: boolean; label: string }> = [];
+  if (needles.vendedorNome) mustHave.push({ ok: norm.includes(normalizeForMatch(needles.vendedorNome)), label: "vendedorNome" });
+  if (needles.compradorNome) mustHave.push({ ok: norm.includes(normalizeForMatch(needles.compradorNome)), label: "compradorNome" });
+  if (needles.vendedorCpf) mustHave.push({ ok: digitText.includes(needles.vendedorCpf), label: "vendedorCpf" });
+  if (needles.compradorCpf) mustHave.push({ ok: digitText.includes(needles.compradorCpf), label: "compradorCpf" });
+  const missing = mustHave.filter((x) => !x.ok).map((x) => x.label);
+  return { ok: missing.length === 0, missing, needles };
+}
+
 async function fixPaymentInContract(params: {
   provider: AiProvider;
   apiKey: string;
@@ -1351,6 +1392,108 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
         throw lastPecError instanceof Error ? lastPecError : new Error("Erro ao gerar peculiaridades");
       }
       if (extraText && extraText.trim()) minutaFinal = insertBeforeLocalEData(baseContrato, extraText.trim());
+    }
+
+    if (baseSource !== "ai") {
+      const check = hasCriticalDataFromForm(minutaFinal, contratoSemPeculiaridades);
+      if (!check.ok) {
+        const tryOrderFix: AiProvider[] = provider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+        const strictInstructions = [
+          "REPARO CRÍTICO (OBRIGATÓRIO): o contrato ainda contém dados do MODELO BASE. Corrija agora.",
+          "Você DEVE substituir integralmente quaisquer nomes/CPF/endereço/valores/datas do modelo pelos dados oficiais.",
+          "O texto final DEVE conter (em qualquer lugar):",
+          check.needles.vendedorNome ? `- VENDEDOR: ${check.needles.vendedorNome}` : null,
+          check.needles.compradorNome ? `- COMPRADOR: ${check.needles.compradorNome}` : null,
+          check.needles.vendedorCpf ? `- CPF VENDEDOR: ${check.needles.vendedorCpf}` : null,
+          check.needles.compradorCpf ? `- CPF COMPRADOR: ${check.needles.compradorCpf}` : null,
+          "Não altere cláusulas que não sejam de partes, imóvel e pagamento/locação.",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        let repaired: string | null = null;
+        let lastFixErr: unknown = null;
+        for (const p of tryOrderFix) {
+          try {
+            if (p === "openai") {
+              const key = Deno.env.get("OPENAI_API_KEY");
+              if (!key) throw new Error("OPENAI_API_KEY is not configured");
+              const models = [
+                Deno.env.get("OPENAI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+                Deno.env.get("OPENAI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+              ];
+              let openAiError: unknown = null;
+              for (const model of models) {
+                try {
+                  repaired = await fixCoreDataInContract({
+                    provider: "openai",
+                    apiKey: key,
+                    model,
+                    tipoLabel,
+                    contratoText: minutaFinal,
+                    contrato: contratoSemPeculiaridades,
+                    instructionsIa: templateInstructionsIa ? `${templateInstructionsIa}\n\n${strictInstructions}` : strictInstructions,
+                  });
+                  break;
+                } catch (e) {
+                  openAiError = e;
+                  const status = (e as any)?.status;
+                  if (status === 429) continue;
+                  throw e;
+                }
+              }
+              if (repaired === null && openAiError) throw openAiError;
+            } else {
+              const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+              if (!key) throw new Error("GEMINI_API_KEY is not configured");
+              const models = [
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+              ];
+              let geminiError: unknown = null;
+              for (const model of models) {
+                try {
+                  repaired = await fixCoreDataInContract({
+                    provider: "gemini",
+                    apiKey: key,
+                    model,
+                    tipoLabel,
+                    contratoText: minutaFinal,
+                    contrato: contratoSemPeculiaridades,
+                    instructionsIa: templateInstructionsIa ? `${templateInstructionsIa}\n\n${strictInstructions}` : strictInstructions,
+                  });
+                  break;
+                } catch (e) {
+                  geminiError = e;
+                  const status = (e as any)?.status;
+                  if (status === 429 || status === 404) continue;
+                  throw e;
+                }
+              }
+              if (repaired === null && geminiError) throw geminiError;
+            }
+            break;
+          } catch (e) {
+            lastFixErr = e;
+            const status = (e as any)?.status;
+            const shouldForceFallback = status === 404;
+            if (!failover && !shouldForceFallback) break;
+          }
+        }
+
+        if (repaired && repaired.trim()) {
+          const cleaned = repaired.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+          const verify = hasCriticalDataFromForm(cleaned, contratoSemPeculiaridades);
+          if (!verify.ok) {
+            throw new Error("O modelo base contém dados de exemplo e não foi possível substituir automaticamente pelos dados do formulário.");
+          }
+          minutaFinal = cleaned;
+        } else if (lastFixErr) {
+          throw lastFixErr instanceof Error ? lastFixErr : new Error("Erro ao ajustar dados principais do contrato");
+        } else {
+          throw new Error("O modelo base contém dados de exemplo e não foi possível substituir automaticamente pelos dados do formulário.");
+        }
+      }
     }
 
     if (admin && submissionId) {
