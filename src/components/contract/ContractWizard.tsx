@@ -75,9 +75,14 @@ function hasMeaningfulDraftData(dados: any) {
     }
     return false;
   };
+  const toList = (v: any) => {
+    if (!v) return [];
+    if (Array.isArray(v)) return v;
+    if (typeof v === "object") return Object.values(v);
+    return [];
+  };
   const hasPessoa = (list: any[]) =>
-    Array.isArray(list) &&
-    list.some((p) => {
+    toList(list).some((p) => {
       if (!p || typeof p !== "object") return false;
       if (hasAnyText(p, ["id", "conjugeDeId"])) return true;
       if (p.conjuge && hasAnyText(p.conjuge, [])) return true;
@@ -163,12 +168,26 @@ const ContractWizard = () => {
 
       if (data?.dados) {
         const d = data.dados as any;
-        if (d.vendedores?.length) setVendedores(d.vendedores);
-        if (d.compradores?.length) setCompradores(d.compradores);
-        if (d.imovel) setImovel(d.imovel);
-        if (d.imovelPermuta) setImovelPermuta(d.imovelPermuta);
-        if (d.pagamento) setPagamento(d.pagamento);
-        if (d.locacao) setLocacao(d.locacao);
+        const normalizePessoa = (p: any): Pessoa => {
+          const base = criarPessoaVazia();
+          if (!p || typeof p !== "object") return base;
+          const id = typeof p.id === "string" && p.id.trim() ? p.id : crypto.randomUUID();
+          return { ...base, ...p, id } as Pessoa;
+        };
+        const normalizePessoaList = (list: any): Pessoa[] => {
+          if (!list) return [];
+          const arr = Array.isArray(list) ? list : typeof list === "object" ? Object.values(list) : [];
+          return arr.map(normalizePessoa);
+        };
+
+        const vend = normalizePessoaList(d.vendedores);
+        const comp = normalizePessoaList(d.compradores);
+        if (vend.length) setVendedores(vend);
+        if (comp.length) setCompradores(comp);
+        if (d.imovel && typeof d.imovel === "object") setImovel({ ...criarImovelVazio(), ...d.imovel } as any);
+        if (d.imovelPermuta && typeof d.imovelPermuta === "object") setImovelPermuta({ ...criarImovelPermutaVazio(), ...d.imovelPermuta } as any);
+        if (d.pagamento && typeof d.pagamento === "object") setPagamento({ ...criarPagamentoVazio(), ...d.pagamento } as any);
+        if (d.locacao && typeof d.locacao === "object") setLocacao({ ...criarLocacaoVazia(), ...d.locacao } as any);
         if (typeof d.perfilContrato === "string" && d.perfilContrato.trim()) setPerfilContrato(d.perfilContrato as any);
         if (typeof d.peculiaridades === "string") setPeculiaridades(d.peculiaridades);
 
