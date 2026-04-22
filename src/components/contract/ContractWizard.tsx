@@ -67,21 +67,28 @@ function getSteps(tipo: string, labels: { vendedor: string; comprador: string })
 function hasMeaningfulDraftData(dados: any) {
   if (!dados || typeof dados !== "object") return false;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const hasAnyText = (obj: any, ignoreKeys: string[] = []) => {
+    if (!obj || typeof obj !== "object") return false;
+    for (const [k, v] of Object.entries(obj)) {
+      if (ignoreKeys.includes(k)) continue;
+      if (typeof v === "string" && v.trim()) return true;
+    }
+    return false;
+  };
   const hasPessoa = (list: any[]) =>
     Array.isArray(list) &&
     list.some((p) => {
       if (!p || typeof p !== "object") return false;
-      return Boolean(String(p.nome || "").trim() || String(p.cpf || "").trim() || String(p.documentoNumero || "").trim());
+      if (hasAnyText(p, ["id", "conjugeDeId"])) return true;
+      if (p.conjuge && hasAnyText(p.conjuge, [])) return true;
+      return false;
     });
-  const hasImovel = (i: any) =>
-    i &&
-    typeof i === "object" &&
-    Boolean(String(i.localizacao || "").trim() || String(i.municipio || "").trim() || String(i.matricula || "").trim());
+  const hasImovel = (i: any) => i && typeof i === "object" && hasAnyText(i, ["adCorpus"]);
   const hasPagamento = (p: any) =>
     p &&
     typeof p === "object" &&
-    (Boolean(String(p.valorTotal || "").trim()) || (Array.isArray(p.parcelas) && p.parcelas.length > 0));
-  const hasLocacao = (l: any) => l && typeof l === "object" && Boolean(String(l.valorAluguel || "").trim());
+    (hasAnyText(p, []) || (Array.isArray(p.parcelas) && p.parcelas.some((x: any) => hasAnyText(x, ["id"]))));
+  const hasLocacao = (l: any) => l && typeof l === "object" && hasAnyText(l, []);
   const perfil = typeof dados.perfilContrato === "string" ? dados.perfilContrato.trim() : "";
   const hasPerfil = Boolean(perfil && (perfil !== "equilibrado" || uuidRegex.test(perfil)));
   return (
@@ -493,6 +500,20 @@ const ContractWizard = () => {
             <div>
               <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">Sielichow</h1>
               <p className="text-[10px] text-primary-foreground/50 font-medium uppercase tracking-wider">{tipoInfo?.nome || "Contrato"}</p>
+              {submissionId ? (
+                <button
+                  type="button"
+                  className="mt-0.5 text-[10px] text-primary-foreground/70 font-medium tracking-wide hover:text-primary-foreground/90 transition-colors"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(submissionId);
+                    toast.success("ID do contrato copiado.");
+                  }}
+                >
+                  ID: {submissionId.slice(0, 8)}
+                </button>
+              ) : null}
             </div>
           </button>
         </div>

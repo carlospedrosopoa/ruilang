@@ -122,13 +122,12 @@ const ContratosGeradosPage = () => {
     navigate(`/contrato/${r.tipo_contrato}?submissionId=${r.id}`);
   };
 
-  const handleEditClick = (r: SubmissionRow) => {
+  const handleEditMinutaClick = (r: SubmissionRow) => {
     if (r.contract_texto && r.contract_texto.trim()) {
       openEditor(r);
       return;
     }
-    toast.error("Este contrato ainda não tem minuta salva. Clique em “Gerar minuta” para gerar e salvar antes de editar.");
-    openWizard(r);
+    toast.error("Este contrato ainda não tem minuta salva. Clique em “Abrir formulário” e gere a minuta primeiro.");
   };
 
   const openEditor = (r: SubmissionRow) => {
@@ -377,11 +376,11 @@ const ContratosGeradosPage = () => {
                           <div className="flex justify-end gap-2 flex-wrap">
                             <Button size="sm" variant="outline" onClick={() => openWizard(r)}>
                               <FileText className="w-4 h-4 mr-1.5" />
-                              Gerar minuta
+                              Abrir formulário
                             </Button>
-                            <Button size="sm" onClick={() => handleEditClick(r)}>
+                            <Button size="sm" onClick={() => handleEditMinutaClick(r)} disabled={!r.contract_texto?.trim()}>
                               <Pencil className="w-4 h-4 mr-1.5" />
-                              Editar
+                              Editar minuta
                             </Button>
                           </div>
                         </TableCell>
