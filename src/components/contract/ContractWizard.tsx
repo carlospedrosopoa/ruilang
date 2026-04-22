@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2, Check } from "lucide-react";
@@ -64,6 +64,34 @@ function getSteps(tipo: string, labels: { vendedor: string; comprador: string })
   return steps;
 }
 
+function hasMeaningfulDraftData(dados: any) {
+  if (!dados || typeof dados !== "object") return false;
+  const hasPessoa = (list: any[]) =>
+    Array.isArray(list) &&
+    list.some((p) => {
+      if (!p || typeof p !== "object") return false;
+      return Boolean(String(p.nome || "").trim() || String(p.cpf || "").trim() || String(p.documentoNumero || "").trim());
+    });
+  const hasImovel = (i: any) =>
+    i &&
+    typeof i === "object" &&
+    Boolean(String(i.localizacao || "").trim() || String(i.municipio || "").trim() || String(i.matricula || "").trim());
+  const hasPagamento = (p: any) =>
+    p &&
+    typeof p === "object" &&
+    (Boolean(String(p.valorTotal || "").trim()) || (Array.isArray(p.parcelas) && p.parcelas.length > 0));
+  const hasLocacao = (l: any) => l && typeof l === "object" && Boolean(String(l.valorAluguel || "").trim());
+  return (
+    hasPessoa(dados.vendedores) ||
+    hasPessoa(dados.compradores) ||
+    hasImovel(dados.imovel) ||
+    hasPagamento(dados.pagamento) ||
+    hasLocacao(dados.locacao) ||
+    Boolean(String(dados.perfilContrato || "").trim()) ||
+    Boolean(String(dados.peculiaridades || "").trim())
+  );
+}
+
 const ContractWizard = () => {
   const { tipo: tipoParam } = useParams<{ tipo: string }>();
   const [searchParams] = useSearchParams();
@@ -93,6 +121,8 @@ const ContractWizard = () => {
   const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
+  const didLoadSubmissionRef = useRef(false);
+  const saveTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     const loadTipo = async () => {
@@ -116,7 +146,7 @@ const ContractWizard = () => {
     const loadSubmission = async () => {
       const { data } = await supabase
         .from("submissions")
-        .select("dados, imobiliaria_id")
+        .select("dados, imobiliaria_id, contract_texto")
         .eq("id", submissionId)
         .single();
 
@@ -128,14 +158,55 @@ const ContractWizard = () => {
         if (d.imovelPermuta) setImovelPermuta(d.imovelPermuta);
         if (d.pagamento) setPagamento(d.pagamento);
         if (d.locacao) setLocacao(d.locacao);
+        if (typeof d.perfilContrato === "string" && d.perfilContrato.trim()) setPerfilContrato(d.perfilContrato as any);
+        if (typeof d.peculiaridades === "string") setPeculiaridades(d.peculiaridades);
 
-        const perfilStep = steps.findIndex(s => s.label === "Perfil");
-        if (perfilStep >= 0) setCurrentStep(perfilStep + 1);
+        const hasData = hasMeaningfulDraftData(d);
+        if (typeof data.contract_texto === "string" && data.contract_texto.trim()) {
+          setMinuta(data.contract_texto);
+          const gerarStep = steps.findIndex((s) => s.label === "Gerar");
+          if (gerarStep >= 0) setCurrentStep(gerarStep + 1);
+        } else if (hasData) {
+          const perfilStep = steps.findIndex((s) => s.label === "Perfil");
+          if (perfilStep >= 0) setCurrentStep(perfilStep + 1);
+        } else {
+          setCurrentStep(1);
+        }
       }
       if (data?.imobiliaria_id) setImobiliariaId(data.imobiliaria_id as any);
+      didLoadSubmissionRef.current = true;
     };
     loadSubmission();
-  }, [submissionId]);
+  }, [submissionId, steps]);
+
+  useEffect(() => {
+    if (!submissionId) return;
+    if (!didLoadSubmissionRef.current) return;
+
+    if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = window.setTimeout(async () => {
+      const dados: any = {
+        vendedores,
+        compradores,
+        imovel,
+        perfilContrato,
+        peculiaridades,
+      };
+      if (tipo === "promessa_compra_venda_permuta") dados.imovelPermuta = imovelPermuta;
+      if (tipo === "locacao") dados.locacao = locacao;
+      else dados.pagamento = pagamento;
+
+      await supabase
+        .from("submissions")
+        .update({ dados } as any)
+        .eq("id", submissionId);
+    }, 650);
+
+    return () => {
+      if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    };
+  }, [submissionId, tipo, vendedores, compradores, imovel, imovelPermuta, pagamento, locacao, perfilContrato, peculiaridades]);
 
   useEffect(() => {
     const loadPerfis = async () => {

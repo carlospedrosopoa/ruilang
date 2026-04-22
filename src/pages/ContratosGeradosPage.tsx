@@ -105,6 +105,15 @@ const ContratosGeradosPage = () => {
     navigate(`/contrato/${r.tipo_contrato}?submissionId=${r.id}`);
   };
 
+  const handleEditClick = (r: SubmissionRow) => {
+    if (r.contract_texto && r.contract_texto.trim()) {
+      openEditor(r);
+      return;
+    }
+    toast.error("Este contrato ainda não tem minuta salva. Clique em “Gerar minuta” para gerar e salvar antes de editar.");
+    openWizard(r);
+  };
+
   const openEditor = (r: SubmissionRow) => {
     setEditing(r);
     setMinutaText(r.contract_texto || "");
@@ -338,7 +347,7 @@ const ContratosGeradosPage = () => {
                               <FileText className="w-4 h-4 mr-1.5" />
                               Gerar minuta
                             </Button>
-                            <Button size="sm" onClick={() => openEditor(r)}>
+                            <Button size="sm" onClick={() => handleEditClick(r)}>
                               <Pencil className="w-4 h-4 mr-1.5" />
                               Editar
                             </Button>
