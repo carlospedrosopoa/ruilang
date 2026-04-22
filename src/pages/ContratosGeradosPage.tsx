@@ -42,6 +42,8 @@ const ContratosGeradosPage = () => {
   const [filterImobiliaria, setFilterImobiliaria] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
+  const [pageSize, setPageSize] = useState("50");
+  const [page, setPage] = useState(1);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<SubmissionRow | null>(null);
@@ -117,6 +119,32 @@ const ContratosGeradosPage = () => {
       return hay.includes(q);
     });
   }, [rows, filterImobiliaria, filterStatus, search, imobiliariaById]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterImobiliaria, filterStatus, search, pageSize]);
+
+  const pageSizeNumber = useMemo(() => {
+    const n = Number(pageSize);
+    return Number.isFinite(n) && n > 0 ? n : 50;
+  }, [pageSize]);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filtered.length / pageSizeNumber));
+  }, [filtered.length, pageSizeNumber]);
+
+  const safePage = Math.min(page, totalPages);
+  const paginated = useMemo(() => {
+    const start = (safePage - 1) * pageSizeNumber;
+    return filtered.slice(start, start + pageSizeNumber);
+  }, [filtered, pageSizeNumber, safePage]);
+
+  const pageRangeLabel = useMemo(() => {
+    if (!filtered.length) return "0–0";
+    const start = (safePage - 1) * pageSizeNumber + 1;
+    const end = Math.min(filtered.length, safePage * pageSizeNumber);
+    return `${start}–${end}`;
+  }, [filtered.length, pageSizeNumber, safePage]);
 
   const openWizard = (r: SubmissionRow) => {
     navigate(`/contrato/${r.tipo_contrato}?submissionId=${r.id}`);
@@ -306,10 +334,22 @@ const ContratosGeradosPage = () => {
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <Label>Itens por página</Label>
+            <Select value={pageSize} onValueChange={setPageSize}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+                <SelectItem value="200">200</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="border border-border rounded-xl bg-card shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="max-h-[65vh] overflow-auto">
             {loading ? (
               <div className="flex justify-center py-16">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -318,6 +358,7 @@ const ContratosGeradosPage = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="sticky left-0 z-20 bg-card">Ações</TableHead>
                     <TableHead>ID</TableHead>
                     <TableHead>Imobiliária</TableHead>
                     <TableHead>Tipo</TableHead>
@@ -326,19 +367,30 @@ const ContratosGeradosPage = () => {
                     <TableHead>Corretor</TableHead>
                     <TableHead>Gerado em</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.length === 0 ? (
+                  {paginated.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-10 text-sm text-muted-foreground">
                         Nenhum contrato encontrado.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filtered.map((r) => (
+                    paginated.map((r) => (
                       <TableRow key={r.id}>
+                        <TableCell className="sticky left-0 z-10 bg-card">
+                          <div className="flex gap-2 flex-wrap">
+                            <Button size="sm" variant="outline" onClick={() => openWizard(r)}>
+                              <FileText className="w-4 h-4 mr-1.5" />
+                              Abrir
+                            </Button>
+                            <Button size="sm" onClick={() => handleEditMinutaClick(r)} disabled={!r.contract_texto?.trim()}>
+                              <Pencil className="w-4 h-4 mr-1.5" />
+                              Minuta
+                            </Button>
+                          </div>
+                        </TableCell>
                         <TableCell className="font-mono text-xs">{r.id.slice(0, 8)}</TableCell>
                         <TableCell className="text-sm">{r.imobiliaria_id ? (imobiliariaById.get(r.imobiliaria_id) || "-") : "-"}</TableCell>
                         <TableCell className="text-sm">{r.tipo_contrato}</TableCell>
@@ -372,24 +424,34 @@ const ContratosGeradosPage = () => {
                             ) : null}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2 flex-wrap">
-                            <Button size="sm" variant="outline" onClick={() => openWizard(r)}>
-                              <FileText className="w-4 h-4 mr-1.5" />
-                              Abrir formulário
-                            </Button>
-                            <Button size="sm" onClick={() => handleEditMinutaClick(r)} disabled={!r.contract_texto?.trim()}>
-                              <Pencil className="w-4 h-4 mr-1.5" />
-                              Editar minuta
-                            </Button>
-                          </div>
-                        </TableCell>
                       </TableRow>
                     ))
                   )}
                 </TableBody>
               </Table>
             )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-sm text-muted-foreground">
+            Mostrando {pageRangeLabel} de {filtered.length}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1}>
+              Anterior
+            </Button>
+            <Badge variant="secondary">
+              Página {safePage} / {totalPages}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+            >
+              Próximo
+            </Button>
           </div>
         </div>
 
