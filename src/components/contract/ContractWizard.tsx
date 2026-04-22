@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2, Check } from "lucide-react";
@@ -66,6 +66,7 @@ function getSteps(tipo: string, labels: { vendedor: string; comprador: string })
 
 function hasMeaningfulDraftData(dados: any) {
   if (!dados || typeof dados !== "object") return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const hasPessoa = (list: any[]) =>
     Array.isArray(list) &&
     list.some((p) => {
@@ -81,13 +82,15 @@ function hasMeaningfulDraftData(dados: any) {
     typeof p === "object" &&
     (Boolean(String(p.valorTotal || "").trim()) || (Array.isArray(p.parcelas) && p.parcelas.length > 0));
   const hasLocacao = (l: any) => l && typeof l === "object" && Boolean(String(l.valorAluguel || "").trim());
+  const perfil = typeof dados.perfilContrato === "string" ? dados.perfilContrato.trim() : "";
+  const hasPerfil = Boolean(perfil && (perfil !== "equilibrado" || uuidRegex.test(perfil)));
   return (
     hasPessoa(dados.vendedores) ||
     hasPessoa(dados.compradores) ||
     hasImovel(dados.imovel) ||
     hasPagamento(dados.pagamento) ||
     hasLocacao(dados.locacao) ||
-    Boolean(String(dados.perfilContrato || "").trim()) ||
+    hasPerfil ||
     Boolean(String(dados.peculiaridades || "").trim())
   );
 }
@@ -97,12 +100,13 @@ const ContractWizard = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const tipo = (tipoParam as string) || "promessa_compra_venda";
+  const forceStartAtFirst = searchParams.get("new") === "1";
   const [customTipoInfo, setCustomTipoInfo] = useState<any | null>(null);
   const tipoInfo = tiposContrato.find((t) => t.id === (tipo as any)) || customTipoInfo;
   const labels = customTipoInfo
     ? { vendedor: customTipoInfo.label_vendedor || "Vendedor", comprador: customTipoInfo.label_comprador || "Comprador" }
     : getLabels(tipo);
-  const steps = getSteps(tipo, labels);
+  const steps = useMemo(() => getSteps(tipo, labels), [tipo, labels.vendedor, labels.comprador]);
   const totalSteps = steps.length;
   const submissionId = searchParams.get("submissionId");
 
@@ -162,7 +166,9 @@ const ContractWizard = () => {
         if (typeof d.peculiaridades === "string") setPeculiaridades(d.peculiaridades);
 
         const hasData = hasMeaningfulDraftData(d);
-        if (typeof data.contract_texto === "string" && data.contract_texto.trim()) {
+        if (forceStartAtFirst) {
+          setCurrentStep(1);
+        } else if (typeof data.contract_texto === "string" && data.contract_texto.trim()) {
           setMinuta(data.contract_texto);
           const gerarStep = steps.findIndex((s) => s.label === "Gerar");
           if (gerarStep >= 0) setCurrentStep(gerarStep + 1);
@@ -177,7 +183,7 @@ const ContractWizard = () => {
       didLoadSubmissionRef.current = true;
     };
     loadSubmission();
-  }, [submissionId, steps]);
+  }, [submissionId, steps, forceStartAtFirst]);
 
   useEffect(() => {
     if (!submissionId) return;
@@ -195,6 +201,8 @@ const ContractWizard = () => {
       if (tipo === "promessa_compra_venda_permuta") dados.imovelPermuta = imovelPermuta;
       if (tipo === "locacao") dados.locacao = locacao;
       else dados.pagamento = pagamento;
+
+      if (!hasMeaningfulDraftData(dados)) return;
 
       await supabase
         .from("submissions")

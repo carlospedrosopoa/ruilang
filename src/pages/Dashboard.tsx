@@ -110,7 +110,7 @@ const Dashboard = () => {
         .single();
 
       if (error) throw error;
-      navigate(`/contrato/${tipo}?submissionId=${data.id}`);
+      navigate(`/contrato/${tipo}?submissionId=${data.id}&new=1`);
     } catch (e: any) {
       toast.error(e?.message || "Não foi possível criar o registro do contrato.");
       navigate(`/contrato/${tipo}`);
