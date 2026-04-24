@@ -530,19 +530,39 @@ const PainelSubmissoes = () => {
     URL.revokeObjectURL(url);
   };
 
-  const downloadProposalPdf = () => {
+  const downloadProposalPdf = async () => {
     if (!proposalText) return;
 
-    const imob = proposalImobiliaria || null;
-    const nome = typeof imob?.nome === "string" ? imob.nome.trim() : "";
-    const creci = typeof imob?.creci === "string" ? imob.creci.trim() : "";
-    const logoUrl = typeof imob?.logo_url === "string" ? imob.logo_url.trim() : "";
-    const site = typeof imob?.site_url === "string" ? imob.site_url.trim() : "";
-    const whatsapp = typeof imob?.whatsapp_atendimento === "string" ? imob.whatsapp_atendimento.trim() : "";
-    const endereco = [imob?.endereco, imob?.numero ? `nº ${imob.numero}` : "", imob?.bairro, imob?.cidade && imob?.estado ? `${imob.cidade}/${imob.estado}` : ""]
+    let imob = proposalImobiliaria || null;
+    let nome = typeof imob?.nome === "string" ? imob.nome.trim() : "";
+    let creci = typeof imob?.creci === "string" ? imob.creci.trim() : "";
+    let logoUrl = typeof imob?.logo_url === "string" ? imob.logo_url.trim() : "";
+    let site = typeof imob?.site_url === "string" ? imob.site_url.trim() : "";
+    let whatsapp = typeof imob?.whatsapp_atendimento === "string" ? imob.whatsapp_atendimento.trim() : "";
+    let endereco = [imob?.endereco, imob?.numero ? `nº ${imob.numero}` : "", imob?.bairro, imob?.cidade && imob?.estado ? `${imob.cidade}/${imob.estado}` : ""]
       .filter((x: any) => typeof x === "string" && x.trim())
       .map((x: string) => x.trim())
       .join(" • ");
+
+    if (!logoUrl && activeTenantId) {
+      const { data, error } = await supabase
+        .from("imobiliarias")
+        .select("nome, creci, endereco, numero, bairro, cidade, estado, logo_url, site_url, whatsapp_atendimento")
+        .eq("id", activeTenantId)
+        .maybeSingle();
+      if (!error && data) {
+        imob = data as any;
+        nome = typeof imob?.nome === "string" ? imob.nome.trim() : nome;
+        creci = typeof imob?.creci === "string" ? imob.creci.trim() : creci;
+        logoUrl = typeof imob?.logo_url === "string" ? imob.logo_url.trim() : logoUrl;
+        site = typeof imob?.site_url === "string" ? imob.site_url.trim() : site;
+        whatsapp = typeof imob?.whatsapp_atendimento === "string" ? imob.whatsapp_atendimento.trim() : whatsapp;
+        endereco = [imob?.endereco, imob?.numero ? `nº ${imob.numero}` : "", imob?.bairro, imob?.cidade && imob?.estado ? `${imob.cidade}/${imob.estado}` : ""]
+          .filter((x: any) => typeof x === "string" && x.trim())
+          .map((x: string) => x.trim())
+          .join(" • ");
+      }
+    }
 
     const escapeHtml = (s: string) =>
       s

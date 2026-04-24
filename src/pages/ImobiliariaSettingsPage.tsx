@@ -167,8 +167,14 @@ export default function ImobiliariaSettingsPage() {
         logo_url: form.logo_url.trim() || null,
         logo_storage_path: form.logo_storage_path.trim() || null,
       };
-      const { error } = await supabase.from("imobiliarias").update(payload).eq("id", activeTenantId);
+      const { data: updatedRow, error } = await supabase
+        .from("imobiliarias")
+        .update(payload)
+        .eq("id", activeTenantId)
+        .select("id")
+        .maybeSingle();
       if (error) throw error;
+      if (!updatedRow?.id) throw new Error("Sem permissão para salvar as configurações desta imobiliária.");
       toast.success("Configurações salvas.");
       await load();
     } catch (e: any) {
@@ -201,11 +207,14 @@ export default function ImobiliariaSettingsPage() {
       update("logo_url", url);
       update("logo_storage_path", storagePath);
 
-      const { error: updErr } = await supabase
+      const { data: logoUpdRow, error: updErr } = await supabase
         .from("imobiliarias")
         .update({ logo_url: url, logo_storage_path: storagePath } as any)
-        .eq("id", activeTenantId);
+        .eq("id", activeTenantId)
+        .select("id")
+        .maybeSingle();
       if (updErr) throw updErr;
+      if (!logoUpdRow?.id) throw new Error("Sem permissão para atualizar a logo desta imobiliária.");
 
       if (previous && previous !== storagePath) {
         await supabase.storage.from("proposta-docs").remove([previous]);
@@ -349,4 +358,3 @@ export default function ImobiliariaSettingsPage() {
     </div>
   );
 }
-
