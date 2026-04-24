@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,7 @@ import {
 } from "recharts";
 import {
   CalendarIcon, FileText, Briefcase, TrendingUp, DollarSign,
-  Users, Building2, Trophy, ArrowLeft, Loader2, Filter, BarChart3,
+  Users, Building2, Trophy, Loader2, Filter, BarChart3,
 } from "lucide-react";
 
 interface Proposta {
@@ -78,7 +77,6 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
 const RelatoriosPage = () => {
-  const navigate = useNavigate();
   const { activeTenantId, isPlatformAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [propostas, setPropostas] = useState<Proposta[]>([]);
@@ -284,37 +282,18 @@ const RelatoriosPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="gradient-primary border-b border-primary/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10">
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-9 w-auto" />
-              <div>
-                <h1 className="font-display text-xl font-bold text-primary-foreground tracking-tight">Relatórios</h1>
-                <p className="text-xs text-primary-foreground/60 font-medium tracking-wide uppercase">Análise de Desempenho</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/painel")} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10">
-                <Briefcase className="w-4 h-4 mr-1.5" />
-                <span className="hidden sm:inline">Painel</span>
-              </Button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-foreground">Relatórios</h1>
+          <p className="text-muted-foreground">Análise de desempenho do fluxo.</p>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-        ) : (
-          <>
-            {/* Filters */}
+      {loading ? (
+        <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+      ) : (
+        <>
             <div className="border border-border rounded-xl bg-card p-5 shadow-sm space-y-4">
               <div className="flex items-center gap-2 mb-1">
                 <Filter className="w-4 h-4 text-muted-foreground" />
@@ -603,7 +582,6 @@ const RelatoriosPage = () => {
             </Tabs>
           </>
         )}
-      </main>
     </div>
   );
 };

@@ -116,6 +116,7 @@ const ColetaPage = () => {
   // Proposal state
   const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
   const [proposta, setProposta] = useState<string | null>(null);
+  const [autoProposalFixAttempted, setAutoProposalFixAttempted] = useState(false);
 
   // Imobiliaria data
   const [imobiliaria, setImobiliaria] = useState<any>(null);
@@ -169,6 +170,31 @@ const ColetaPage = () => {
     loadSubmission();
   }, [token]);
 
+  useEffect(() => {
+    if (loading) return;
+    if (autoProposalFixAttempted) return;
+    if (!proposta) {
+      setAutoProposalFixAttempted(true);
+      return;
+    }
+
+    const first = Array.isArray(compradores) ? compradores[0] : null;
+    const nome = typeof (first as any)?.nome === "string" ? (first as any).nome.trim() : "";
+    const cpf = typeof (first as any)?.cpf === "string" ? (first as any).cpf.trim() : "";
+    const needsFill =
+      /\bproponente\b\s+_{2,}/i.test(proposta) ||
+      /\bCPF\b[\s\S]{0,30}\b_{2,}/i.test(proposta) ||
+      /\[[A-Z0-9 _/-]{2,}\]/.test(proposta);
+
+    if (needsFill && nome && cpf) {
+      setAutoProposalFixAttempted(true);
+      handleGenerateProposal();
+      return;
+    }
+
+    setAutoProposalFixAttempted(true);
+  }, [autoProposalFixAttempted, compradores, loading, proposta]);
+
   const getDados = () => ({
     vendedores,
     compradores,
@@ -201,6 +227,7 @@ const ColetaPage = () => {
     if (!submissionId || !token) return;
     setIsSaving(true);
     try {
+      const nextStatus = status === "rascunho" ? "enviado" : status;
       const { error } = await supabase.functions.invoke("public-submission", {
         body: {
           token,
@@ -208,14 +235,15 @@ const ColetaPage = () => {
             corretor_nome: corretorNome,
             corretor_telefone: corretorTelefone,
             dados: getDados() as any,
-            status: "enviado",
+            status: nextStatus,
           },
         },
       });
 
       if (error) throw error;
       setSubmitted(true);
-      toast.success("Dados enviados com sucesso!");
+      setStatus(nextStatus);
+      toast.success(status === "rascunho" ? "Dados enviados com sucesso!" : "Alterações salvas.");
     } catch (err: any) {
       toast.error("Erro ao enviar. Tente novamente.");
     } finally {
@@ -227,7 +255,7 @@ const ColetaPage = () => {
     setIsGeneratingProposal(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-proposal", {
-        body: { dados: getDados(), tipoContrato: tipo, imobiliaria },
+        body: { dados: getDados(), tipoContrato: tipo, imobiliaria, imobiliariaId: imobiliaria?.id || null },
       });
 
       if (error) throw error;
@@ -308,91 +336,6 @@ const ColetaPage = () => {
           <h2 className="font-display text-2xl font-bold text-foreground">Link inválido</h2>
           <p className="text-muted-foreground">Este link de coleta não foi encontrado ou expirou.</p>
         </div>
-      </div>
-    );
-  }
-
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b border-border bg-card">
-          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
-            <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-9 w-auto" />
-            <div>
-              <h1 className="font-display text-xl font-bold text-foreground">Coleta de Dados</h1>
-              <p className="text-xs text-muted-foreground">{tipoInfo?.nome || "Contrato"}</p>
-            </div>
-          </div>
-        </header>
-
-        <main className="max-w-4xl mx-auto px-4 py-8">
-          <div className="text-center space-y-4 mb-8">
-            <CheckCircle className="w-16 h-16 text-success mx-auto" />
-            <h2 className="font-display text-2xl font-bold text-foreground">Dados Enviados</h2>
-            <p className="text-muted-foreground">
-              Os dados foram enviados com sucesso. O responsável pela elaboração do contrato será notificado.
-            </p>
-          </div>
-
-          <div className="border border-border rounded-lg p-6 bg-card space-y-6">
-            <div>
-              <h3 className="font-display text-lg font-bold text-foreground mb-2">
-                <Sparkles className="w-5 h-5 inline mr-2 text-primary" />
-                Proposta de Negócio
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Gere uma proposta de negócio para as partes assinarem previamente, formalizando a intenção de firmar o contrato definitivo.
-              </p>
-            </div>
-
-            {!proposta ? (
-              <Button
-                onClick={handleGenerateProposal}
-                disabled={isGeneratingProposal}
-                className="w-full bg-primary hover:bg-primary/90"
-              >
-                {isGeneratingProposal ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Gerando Proposta...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Gerar Proposta de Negócio
-                  </>
-                )}
-              </Button>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex gap-2 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={handleCopyProposal}>
-                    <Copy className="w-4 h-4 mr-1" /> Copiar
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleDownloadProposal}>
-                    <Download className="w-4 h-4 mr-1" /> Baixar .txt
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setProposta(null); handleGenerateProposal(); }}
-                    disabled={isGeneratingProposal}
-                  >
-                    <Sparkles className="w-4 h-4 mr-1" /> Regerar
-                  </Button>
-                </div>
-
-                <div className="border border-border rounded-lg p-6 bg-background">
-                  <pre className="whitespace-pre-wrap text-sm text-foreground font-body leading-relaxed">{proposta}</pre>
-                </div>
-
-                <p className="text-xs text-muted-foreground italic">
-                  ⚠️ Esta proposta foi gerada por inteligência artificial. Ela NÃO substitui o contrato definitivo, que será elaborado por advogado.
-                </p>
-              </div>
-            )}
-          </div>
-        </main>
       </div>
     );
   }
@@ -532,6 +475,66 @@ const ColetaPage = () => {
               )}
             </div>
           </div>
+
+          {submitted || proposta ? (
+            <div className="border border-border rounded-lg p-6 bg-card space-y-6">
+              <div>
+                <h4 className="font-display text-lg font-bold text-foreground mb-2 inline-flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  Proposta de Negócio
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Ajuste os dados da coleta e gere uma proposta atualizada quando necessário.
+                </p>
+              </div>
+
+              {!proposta ? (
+                <Button onClick={handleGenerateProposal} disabled={isGeneratingProposal} className="w-full">
+                  {isGeneratingProposal ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Gerando Proposta...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Gerar Proposta de Negócio
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex gap-2 flex-wrap">
+                    <Button variant="outline" size="sm" onClick={handleCopyProposal}>
+                      <Copy className="w-4 h-4 mr-1" /> Copiar
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleDownloadProposal}>
+                      <Download className="w-4 h-4 mr-1" /> Baixar .txt
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setProposta(null);
+                        handleGenerateProposal();
+                      }}
+                      disabled={isGeneratingProposal}
+                    >
+                      <Sparkles className="w-4 h-4 mr-1" /> Regerar
+                    </Button>
+                  </div>
+
+                  <div className="border border-border rounded-lg p-6 bg-background">
+                    <pre className="whitespace-pre-wrap text-sm text-foreground font-body leading-relaxed">{proposta}</pre>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground italic">
+                    ⚠️ Esta proposta foi gerada por inteligência artificial. Ela NÃO substitui o contrato definitivo, que será elaborado por advogado.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       );
     }
@@ -559,7 +562,40 @@ const ColetaPage = () => {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        <StepIndicator steps={steps} currentStep={currentStep} />
+        {submitted ? (
+          <div className="mb-6 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-primary" />
+                  Coleta já enviada
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Você pode ajustar os dados e gerar uma proposta atualizada.
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setCurrentStep(totalSteps);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
+                Ir para Enviar
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        <StepIndicator
+          steps={steps}
+          currentStep={currentStep}
+          onStepChange={(step) => {
+            setCurrentStep(step);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
 
         <div className="min-h-[400px]">{renderStep()}</div>
 
@@ -577,7 +613,7 @@ const ColetaPage = () => {
           ) : (
             <Button onClick={handleSubmit} disabled={isSaving} className="bg-success hover:bg-success/90 text-success-foreground">
               <Send className="w-4 h-4 mr-2" />
-              {isSaving ? "Enviando..." : "Enviar Dados"}
+              {isSaving ? "Salvando..." : submitted ? "Salvar alterações" : "Enviar Dados"}
             </Button>
           )}
         </div>

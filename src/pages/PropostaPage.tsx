@@ -53,6 +53,7 @@ const PropostaPage = () => {
   const [corretorNome, setCorretorNome] = useState("");
   const [corretorCreci, setCorretorCreci] = useState("");
   const [imobiliariaNome, setImobiliariaNome] = useState("");
+  const [imobiliariaId, setImobiliariaId] = useState<string | null>(null);
   const [corretorLocked, setCorretorLocked] = useState(false);
 
   // Dados
@@ -117,6 +118,7 @@ const PropostaPage = () => {
       setCorretorNome(propostaRow.corretor_nome || "");
       setCorretorCreci(propostaRow.corretor_creci || "");
       setImobiliariaNome(propostaRow.imobiliaria_nome || propostaRow.imobiliarias?.nome || "");
+      setImobiliariaId(propostaRow.imobiliaria_id || propostaRow.imobiliarias?.id || null);
       setCorretorLocked(Boolean(propostaRow.corretor_id));
 
       const dados = propostaRow.dados as any;
@@ -232,6 +234,7 @@ const PropostaPage = () => {
           dados: getDados(),
           tipoContrato: "promessa_compra_venda",
           imobiliaria: imobiliariaNome ? { nome: imobiliariaNome, creci: corretorCreci } : null,
+          imobiliariaId,
         },
       });
       if (error) throw error;

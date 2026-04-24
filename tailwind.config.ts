@@ -14,6 +14,8 @@ export default {
     },
     extend: {
       colors: {
+        "pacta-bg": "#041126",
+        "pacta-primary": "#00F2B5",
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

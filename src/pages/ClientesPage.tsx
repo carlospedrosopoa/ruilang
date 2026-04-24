@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Building2, ChevronDown, ChevronRight, ChevronUp, FileCheck, FileText, Loader2, Users, BarChart3, ClipboardList, Pencil, Upload, Link2, Mail, Phone, UserCog } from "lucide-react";
+import { ChevronDown, ChevronUp, FileText, Loader2, Pencil, Upload, Link2, Mail, Phone, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,8 +52,7 @@ type ClientePropostaRow = {
 };
 
 export default function ClientesPage() {
-  const navigate = useNavigate();
-  const { isPlatformAdmin, signOut } = useAuth();
+  const { activeTenantId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [clientes, setClientes] = useState<ClienteRow[]>([]);
@@ -70,7 +68,9 @@ export default function ClientesPage() {
   const load = async () => {
     setLoading(true);
     const [clientesRes, docsRes, relRes] = await Promise.all([
-      supabase.from("clientes").select("*").order("created_at", { ascending: false }).limit(1000),
+      activeTenantId
+        ? supabase.from("clientes").select("*").eq("imobiliaria_id", activeTenantId).order("created_at", { ascending: false }).limit(1000)
+        : supabase.from("clientes").select("*").order("created_at", { ascending: false }).limit(1000),
       supabase.from("cliente_documentos").select("id, cliente_id, nome, url").limit(6000),
       supabase
         .from("cliente_propostas")
@@ -85,7 +85,7 @@ export default function ClientesPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [activeTenantId]);
 
   const docsByCliente = useMemo(() => {
     const map = new Map<string, ClienteDocumentoRow[]>();
@@ -201,62 +201,22 @@ export default function ClientesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <button onClick={() => navigate("/painel")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <img src="/images/logo-sielichow.png" alt="Sielichow Advocacia Empresarial" className="h-9 w-auto" />
-            <div>
-              <h1 className="font-display text-xl font-bold text-foreground">Sielichow</h1>
-              <p className="text-xs text-muted-foreground">Cadastro de Clientes</p>
-            </div>
-          </button>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/painel")}>
-              <ClipboardList className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Coletas</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-              <BarChart3 className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Dashboard</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/corretores")}>
-              <UserCog className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Corretores</span>
-            </Button>
-            {isPlatformAdmin ? (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => navigate("/contratos")}>
-                  <FileCheck className="w-4 h-4 mr-1.5" />
-                  <span className="hidden sm:inline">Contratos</span>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
-                  <Building2 className="w-4 h-4 mr-1.5" />
-                  <span className="hidden sm:inline">Imobiliárias</span>
-                </Button>
-              </>
-            ) : null}
-            <Button variant="ghost" size="sm" onClick={() => signOut()}>
-              <ChevronRight className="w-4 h-4 mr-1.5 rotate-180" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Users className="w-5 h-5 text-primary" />
+          <div>
+            <h1 className="font-display text-2xl font-bold text-foreground">Clientes</h1>
+            <p className="text-muted-foreground">Cadastro de clientes originados de propostas e coletas.</p>
           </div>
         </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-primary" />
-            <h2 className="font-display text-2xl font-bold text-foreground">Clientes</h2>
-          </div>
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome, CPF, e-mail ou telefone"
-            className="w-full sm:w-96"
-          />
-        </div>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nome, CPF, e-mail ou telefone"
+          className="w-full sm:w-96"
+        />
+      </div>
         <input
           ref={uploadInputRef}
           type="file"
@@ -271,14 +231,14 @@ export default function ClientesPage() {
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="border border-border rounded-xl p-10 text-center bg-card">
+          <div className="border border-white/10 rounded-xl p-10 text-center bg-white/5 backdrop-blur-md shadow-card">
             <p className="text-muted-foreground">Nenhum cliente encontrado.</p>
           </div>
         ) : (
-          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+          <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md overflow-hidden shadow-card">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableRow className="bg-white/5 hover:bg-white/5">
                   <TableHead className="w-[34%]">Cliente</TableHead>
                   <TableHead>Papel</TableHead>
                   <TableHead>Contato</TableHead>
@@ -348,10 +308,10 @@ export default function ClientesPage() {
                   </TableRow>
 
                   {isExpanded ? (
-                    <TableRow className="bg-muted/20 hover:bg-muted/20">
+                    <TableRow className="bg-white/5 hover:bg-white/5">
                       <TableCell colSpan={7}>
                         <div className="grid lg:grid-cols-2 gap-4">
-                          <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+                          <div className="rounded-lg border border-white/10 bg-white/5 backdrop-blur-md p-4 space-y-3">
                             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Detalhes do Cliente
                             </p>
@@ -366,7 +326,7 @@ export default function ClientesPage() {
                             </div>
                           </div>
 
-                          <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+                          <div className="rounded-lg border border-white/10 bg-white/5 backdrop-blur-md p-4 space-y-3">
                             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Propostas Vinculadas ({rels.length})
                             </p>
@@ -383,7 +343,7 @@ export default function ClientesPage() {
                                       href={`/proposta/${prop.token}`}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="flex items-center justify-between text-sm px-2.5 py-2 rounded-md border border-border hover:bg-muted/40"
+                                      className="flex items-center justify-between text-sm px-2.5 py-2 rounded-md border border-white/10 hover:bg-white/5"
                                     >
                                       <span className="inline-flex items-center gap-1.5">
                                         <Link2 className="w-3.5 h-3.5" />
@@ -397,7 +357,7 @@ export default function ClientesPage() {
                             )}
                           </div>
 
-                          <div className="rounded-lg border border-border bg-background p-4 space-y-3 lg:col-span-2">
+                          <div className="rounded-lg border border-white/10 bg-white/5 backdrop-blur-md p-4 space-y-3 lg:col-span-2">
                             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Documentos Anexados ({clienteDocs.length})
                             </p>
@@ -411,7 +371,7 @@ export default function ClientesPage() {
                                     href={d.url}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-sm px-2.5 py-2 rounded-md border border-border hover:bg-muted/40"
+                                    className="inline-flex items-center gap-1.5 text-sm px-2.5 py-2 rounded-md border border-white/10 hover:bg-white/5"
                                   >
                                     <FileText className="w-3.5 h-3.5" />
                                     <span className="truncate">{d.nome}</span>
@@ -431,7 +391,6 @@ export default function ClientesPage() {
             </Table>
           </div>
         )}
-      </main>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-xl">

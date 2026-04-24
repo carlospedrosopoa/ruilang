@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const iconMap: Record<string, React.ElementType> = {
   FileText,
@@ -41,6 +42,15 @@ interface CustomTipoContrato {
   modelo_base: string | null;
 }
 
+interface TipoProposta {
+  id: string;
+  codigo: string;
+  nome: string;
+  descricao: string | null;
+  modelo_base: string;
+  ativo: boolean;
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { activeTenantId, isPlatformAdmin, signOut } = useAuth();
@@ -59,6 +69,14 @@ const Dashboard = () => {
   const [tipoLabelComprador, setTipoLabelComprador] = useState("Comprador");
   const [tipoModeloBase, setTipoModeloBase] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [tiposProposta, setTiposProposta] = useState<TipoProposta[]>([]);
+  const [tipoPropostaDialogOpen, setTipoPropostaDialogOpen] = useState(false);
+  const [editingTipoPropostaId, setEditingTipoPropostaId] = useState<string | null>(null);
+  const [tipoPropostaCodigo, setTipoPropostaCodigo] = useState("");
+  const [tipoPropostaNome, setTipoPropostaNome] = useState("");
+  const [tipoPropostaDescricao, setTipoPropostaDescricao] = useState("");
+  const [tipoPropostaModeloBase, setTipoPropostaModeloBase] = useState("");
+  const [savingTipoProposta, setSavingTipoProposta] = useState(false);
 
   useEffect(() => {
     const loadImobiliarias = async () => {
@@ -87,6 +105,26 @@ const Dashboard = () => {
       setCustomTipos((data as CustomTipoContrato[]) || []);
     };
     loadCustomTipos();
+  }, [selectedImobiliaria]);
+
+  useEffect(() => {
+    const loadTiposProposta = async () => {
+      if (!selectedImobiliaria) {
+        setTiposProposta([]);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("tipos_proposta")
+        .select("id, codigo, nome, descricao, modelo_base, ativo")
+        .eq("imobiliaria_id", selectedImobiliaria)
+        .order("codigo", { ascending: true });
+      if (error) {
+        setTiposProposta([]);
+        return;
+      }
+      setTiposProposta((data as TipoProposta[]) || []);
+    };
+    loadTiposProposta();
   }, [selectedImobiliaria]);
 
   const allTipos = useMemo(() => {
@@ -128,6 +166,93 @@ const Dashboard = () => {
     setTipoLabelComprador("Comprador");
     setTipoModeloBase("");
     setTipoDialogOpen(true);
+  };
+
+  const openCreateTipoProposta = () => {
+    if (!selectedImobiliaria) {
+      toast.error("Selecione uma imobiliária para cadastrar tipos de proposta.");
+      return;
+    }
+    setEditingTipoPropostaId(null);
+    setTipoPropostaCodigo("");
+    setTipoPropostaNome("");
+    setTipoPropostaDescricao("");
+    setTipoPropostaModeloBase("");
+    setTipoPropostaDialogOpen(true);
+  };
+
+  const openEditTipoProposta = (tipo: TipoProposta) => {
+    setEditingTipoPropostaId(tipo.id);
+    setTipoPropostaCodigo(tipo.codigo || "");
+    setTipoPropostaNome(tipo.nome || "");
+    setTipoPropostaDescricao(tipo.descricao || "");
+    setTipoPropostaModeloBase(tipo.modelo_base || "");
+    setTipoPropostaDialogOpen(true);
+  };
+
+  const saveTipoProposta = async () => {
+    if (!selectedImobiliaria) {
+      toast.error("Selecione uma imobiliária.");
+      return;
+    }
+    const codigo = tipoPropostaCodigo.trim();
+    const nome = tipoPropostaNome.trim();
+    const modeloBase = tipoPropostaModeloBase.trim();
+    if (!codigo) {
+      toast.error("Informe o código do tipo de proposta.");
+      return;
+    }
+    if (!nome) {
+      toast.error("Informe o nome do tipo de proposta.");
+      return;
+    }
+    if (!modeloBase) {
+      toast.error("Informe o modelo base do tipo de proposta.");
+      return;
+    }
+
+    setSavingTipoProposta(true);
+    try {
+      if (editingTipoPropostaId) {
+        const { data, error } = await supabase
+          .from("tipos_proposta")
+          .update({
+            codigo,
+            nome,
+            descricao: tipoPropostaDescricao.trim() || null,
+            modelo_base: modeloBase,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq("id", editingTipoPropostaId)
+          .select("id, codigo, nome, descricao, modelo_base, ativo")
+          .single();
+        if (error) throw error;
+        setTiposProposta((prev) => prev.map((t) => (t.id === editingTipoPropostaId ? (data as any) : t)));
+      } else {
+        const { data, error } = await supabase
+          .from("tipos_proposta")
+          .insert({
+            imobiliaria_id: selectedImobiliaria,
+            codigo,
+            nome,
+            descricao: tipoPropostaDescricao.trim() || null,
+            modelo_base: modeloBase,
+            ativo: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as any)
+          .select("id, codigo, nome, descricao, modelo_base, ativo")
+          .single();
+        if (error) throw error;
+        setTiposProposta((prev) => [...prev, data as any].sort((a, b) => String(a.codigo).localeCompare(String(b.codigo))));
+      }
+      setTipoPropostaDialogOpen(false);
+      toast.success("Tipo de proposta salvo!");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao salvar tipo de proposta.");
+    } finally {
+      setSavingTipoProposta(false);
+    }
   };
 
   const handleImportText = () => {
@@ -444,6 +569,58 @@ const Dashboard = () => {
           </Button>
         </div>
 
+        <div className="mt-10 border border-border rounded-xl bg-card p-6">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h3 className="font-display text-lg font-bold text-foreground tracking-tight">Tipos de Proposta</h3>
+              <p className="text-sm text-muted-foreground">Cadastre e mantenha o texto base usado como modelo para geração de propostas.</p>
+            </div>
+            <Button variant="outline" onClick={openCreateTipoProposta} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Novo Tipo de Proposta
+            </Button>
+          </div>
+
+          {tiposProposta.length === 0 ? (
+            <div className="mt-4 text-sm text-muted-foreground border border-dashed border-border rounded-lg p-4">
+              Nenhum tipo de proposta cadastrado para esta imobiliária.
+            </div>
+          ) : (
+            <div className="mt-4 border border-border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Ativo</TableHead>
+                    <TableHead className="text-right w-[140px]">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tiposProposta.map((t) => (
+                    <TableRow key={t.id}>
+                      <TableCell className="font-mono text-xs">{t.codigo}</TableCell>
+                      <TableCell className="font-medium text-foreground">{t.nome}</TableCell>
+                      <TableCell>
+                        {t.ativo ? (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">Ativo</span>
+                        ) : (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Inativo</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => openEditTipoProposta(t)}>
+                          Editar texto
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
         <input
           ref={importInputRef}
           type="file"
@@ -519,6 +696,64 @@ const Dashboard = () => {
               <Button onClick={saveTipo} disabled={savingTipo || !tipoNome.trim()}>
                 {savingTipo ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                 Criar Tipo
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={tipoPropostaDialogOpen} onOpenChange={setTipoPropostaDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{editingTipoPropostaId ? "Editar Tipo de Proposta" : "Novo Tipo de Proposta"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            {isPlatformAdmin ? (
+              <div>
+                <Label className="text-sm font-medium">Imobiliária</Label>
+                <Select value={selectedImobiliaria} onValueChange={setSelectedImobiliaria}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Selecione a imobiliária" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {imobiliarias.map((imob) => (
+                      <SelectItem key={imob.id} value={imob.id}>
+                        {imob.nome} (CRECI {imob.creci})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Código *</Label>
+                <Input value={tipoPropostaCodigo} onChange={(e) => setTipoPropostaCodigo(e.target.value)} placeholder="ex: promessa_compra_venda" />
+              </div>
+              <div>
+                <Label>Nome *</Label>
+                <Input value={tipoPropostaNome} onChange={(e) => setTipoPropostaNome(e.target.value)} placeholder="Ex: Compra e Venda" />
+              </div>
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Input value={tipoPropostaDescricao} onChange={(e) => setTipoPropostaDescricao(e.target.value)} placeholder="Breve descrição (opcional)" />
+            </div>
+            <div>
+              <Label>Modelo Base *</Label>
+            </div>
+            <Textarea
+              value={tipoPropostaModeloBase}
+              onChange={(e) => setTipoPropostaModeloBase(e.target.value)}
+              className="min-h-[260px]"
+              placeholder="Cole aqui o modelo base da proposta..."
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setTipoPropostaDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={saveTipoProposta} disabled={savingTipoProposta}>
+                {savingTipoProposta ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Salvar
               </Button>
             </div>
           </div>

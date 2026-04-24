@@ -40,6 +40,25 @@ function getLabels(tipo: string) {
   return labelByTipo[tipo] || { vendedor: "Vendedor", comprador: "Comprador" };
 }
 
+function sanitizeForPath(input: string) {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function safeStorageFileName(originalName: string) {
+  const name = String(originalName || "");
+  const dot = name.lastIndexOf(".");
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  const safeBase = sanitizeForPath(base) || "arquivo";
+  const safeExt = /^\.[a-z0-9]{1,10}$/i.test(ext) ? ext.toLowerCase() : "";
+  return `${safeBase}${safeExt}`.slice(0, 120);
+}
+
 function getSteps(tipo: string, labels: { vendedor: string; comprador: string }) {
   const steps = [
     { number: 1, label: `${labels.vendedor}(es)` },
@@ -390,10 +409,65 @@ const ContractWizard = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `contrato_${tipo}_${new Date().toISOString().slice(0, 10)}.docx`;
+      const downloadName = `contrato_${tipo}_${new Date().toISOString().slice(0, 10)}.docx`;
+      a.download = downloadName;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("DOCX baixado com sucesso!");
+
+      if (submissionId) {
+        const safeName = safeStorageFileName(downloadName);
+        const storagePath = `submissions/${submissionId}/contrato/${Date.now()}_${safeName}`;
+        const file = new File([blob], downloadName, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+        const { error: upErr } = await supabase.storage.from("proposta-docs").upload(storagePath, file);
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from("proposta-docs").getPublicUrl(storagePath);
+
+        const { data: authData } = await supabase.auth.getUser();
+        const userId = authData?.user?.id || null;
+
+        const { data: fresh, error: freshErr } = await supabase
+          .from("submissions")
+          .select("documentos, imovel_id")
+          .eq("id", submissionId)
+          .single();
+        if (freshErr) throw freshErr;
+
+        const existingDocs = Array.isArray((fresh as any)?.documentos) ? ((fresh as any).documentos as any[]) : [];
+        const nextDocs: any[] = [...existingDocs];
+        const doc = {
+          id: crypto.randomUUID(),
+          nome: downloadName,
+          tipo: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          tamanho: byteArray.length,
+          url: urlData.publicUrl,
+          uploadedAt: new Date().toISOString(),
+          categoria: "contrato",
+          storagePath,
+        };
+        nextDocs.push(doc);
+
+        const { error: updErr } = await supabase
+          .from("submissions")
+          .update({ documentos: nextDocs } as any)
+          .eq("id", submissionId);
+        if (updErr) throw updErr;
+
+        const imovelId = (fresh as any)?.imovel_id as string | null;
+        if (imovelId) {
+          const { error: imErr } = await supabase.from("imovel_documentos").insert({
+            imovel_id: imovelId,
+            titulo: `Contrato - ${tipoInfo?.nome || tipo}`.slice(0, 180),
+            nome_arquivo: downloadName,
+            storage_path: storagePath,
+            tipo: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            tamanho: byteArray.length,
+            url: urlData.publicUrl,
+            uploaded_by: userId,
+          } as any);
+          if (imErr) throw imErr;
+        }
+      }
     } catch (err: any) {
       console.error("Error exporting DOCX:", err);
       toast.error("Erro ao exportar DOCX. Tente novamente.");

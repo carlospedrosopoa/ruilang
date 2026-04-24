@@ -1,9 +1,17 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -13,12 +21,24 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, BarChart3, Building2, ChevronRight, Users, UserCog, Sparkles, Download } from "lucide-react";
+import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Sparkles, Download, MoreHorizontal, ScrollText, Paperclip } from "lucide-react";
 import { tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
 import { Textarea } from "@/components/ui/textarea";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+type SubmissionDocumento = {
+  id: string;
+  nome: string;
+  tipo: string | null;
+  tamanho: number | null;
+  url: string;
+  uploadedAt: string;
+  categoria?: "escritura" | "contrato" | string;
+  storagePath?: string;
+};
 
 interface Submission {
   id: string;
@@ -28,11 +48,13 @@ interface Submission {
   corretor_nome: string | null;
   corretor_telefone: string | null;
   dados: any;
+  documentos?: SubmissionDocumento[] | null;
   proposta_texto?: string | null;
   proposta_gerada_em?: string | null;
   status: string;
   created_at: string;
   updated_at: string;
+  imovel_id?: string | null;
   imobiliarias?: any;
 }
 
@@ -54,15 +76,41 @@ interface CustomTipoContrato {
   modelo_base: string | null;
 }
 
+interface ImovelRef {
+  id: string;
+  titulo: string;
+  dados: any;
+  ativo: boolean;
+}
+
 const statusLabels: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   rascunho: { label: "Rascunho", icon: Clock, color: "text-yellow-500" },
   enviado: { label: "Enviado", icon: CheckCircle, color: "text-green-500" },
   contrato_gerado: { label: "Contrato Gerado", icon: FileCheck, color: "text-primary" },
 };
 
+function sanitizeForPath(input: string) {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function safeStorageFileName(originalName: string) {
+  const name = String(originalName || "");
+  const dot = name.lastIndexOf(".");
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  const safeBase = sanitizeForPath(base) || "arquivo";
+  const safeExt = /^\.[a-z0-9]{1,10}$/i.test(ext) ? ext.toLowerCase() : "";
+  return `${safeBase}${safeExt}`.slice(0, 120);
+}
+
 const PainelSubmissoes = () => {
   const navigate = useNavigate();
-  const { activeTenantId, isPlatformAdmin, memberships, signOut } = useAuth();
+  const { activeTenantId, isPlatformAdmin, memberships } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -70,10 +118,17 @@ const PainelSubmissoes = () => {
   const [novoTipo, setNovoTipo] = useState<string>("promessa_compra_venda");
   const [corretores, setCorretores] = useState<Corretor[]>([]);
   const [selectedCorretorId, setSelectedCorretorId] = useState<string | null>(null);
+  const [imoveis, setImoveis] = useState<ImovelRef[]>([]);
+  const [selectedImovelId, setSelectedImovelId] = useState<string | null>(null);
   const [proposalOpen, setProposalOpen] = useState(false);
   const [proposalLoading, setProposalLoading] = useState(false);
   const [proposalSubmissionId, setProposalSubmissionId] = useState<string | null>(null);
   const [proposalText, setProposalText] = useState<string>("");
+  const [proposalDocs, setProposalDocs] = useState<SubmissionDocumento[]>([]);
+  const [proposalImobiliaria, setProposalImobiliaria] = useState<any | null>(null);
+  const escrituraInputRef = useRef<HTMLInputElement>(null);
+  const [escrituraTarget, setEscrituraTarget] = useState<Submission | null>(null);
+  const [escrituraUploadingForId, setEscrituraUploadingForId] = useState<string | null>(null);
 
   const [customTipos, setCustomTipos] = useState<CustomTipoContrato[]>([]);
   const [tipoDialogOpen, setTipoDialogOpen] = useState(false);
@@ -116,6 +171,31 @@ const PainelSubmissoes = () => {
       setSelectedCorretorId(list[0]?.id || null);
     };
     loadCorretores();
+  }, [activeTenantId]);
+
+  useEffect(() => {
+    const loadImoveis = async () => {
+      if (!activeTenantId) {
+        setImoveis([]);
+        setSelectedImovelId(null);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("imoveis")
+        .select("id, titulo, dados, ativo")
+        .eq("imobiliaria_id", activeTenantId)
+        .eq("ativo", true)
+        .order("titulo");
+      if (error) {
+        setImoveis([]);
+        setSelectedImovelId(null);
+        return;
+      }
+      const list = (data as ImovelRef[]) || [];
+      setImoveis(list);
+      setSelectedImovelId(list[0]?.id || null);
+    };
+    loadImoveis();
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -233,9 +313,24 @@ const PainelSubmissoes = () => {
       toast.error("Selecione uma imobiliária/tenant para criar links.");
       return;
     }
+    if (!selectedImovelId) {
+      toast.error("Selecione um imóvel para gerar a coleta.");
+      return;
+    }
     setCreating(true);
     try {
       const corretor = corretores.find((c) => c.id === selectedCorretorId) || null;
+      const imovelRef = imoveis.find((i) => i.id === selectedImovelId) || null;
+      if (!imovelRef) {
+        toast.error("Imóvel não encontrado. Recarregue a página e tente novamente.");
+        return;
+      }
+      let imovelDados: any = imovelRef.dados;
+      if (typeof imovelDados === "string") {
+        try {
+          imovelDados = JSON.parse(imovelDados);
+        } catch {}
+      }
       const { data, error } = await supabase
         .from("submissions")
         .insert({
@@ -244,6 +339,8 @@ const PainelSubmissoes = () => {
           corretor_id: corretor?.id || null,
           corretor_nome: corretor?.nome || null,
           corretor_telefone: corretor?.telefone || null,
+          imovel_id: imovelRef.id,
+          dados: { imovel: imovelDados || {} } as any,
         } as any)
         .select()
         .single();
@@ -280,7 +377,97 @@ const PainelSubmissoes = () => {
   const openProposalForSubmission = async (sub: Submission) => {
     setProposalSubmissionId(sub.id);
     setProposalText(sub.proposta_texto || "");
+    const docs = Array.isArray(sub.documentos) ? (sub.documentos as SubmissionDocumento[]) : [];
+    setProposalDocs(docs);
+    setProposalImobiliaria(sub.imobiliarias || currentImobiliaria || null);
     setProposalOpen(true);
+  };
+
+  const openUploadEscritura = (sub: Submission) => {
+    setEscrituraTarget(sub);
+    escrituraInputRef.current?.click();
+  };
+
+  const handleUploadEscritura = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!escrituraTarget || files.length === 0) return;
+    const target = escrituraTarget;
+    setEscrituraUploadingForId(target.id);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id || null;
+
+      const { data: fresh, error: freshErr } = await supabase
+        .from("submissions")
+        .select("documentos, imovel_id")
+        .eq("id", target.id)
+        .single();
+      if (freshErr) throw freshErr;
+
+      const existingDocs = Array.isArray((fresh as any)?.documentos) ? ((fresh as any).documentos as any[]) : [];
+      const nextDocs: any[] = [...existingDocs];
+      const imovelId = (fresh as any)?.imovel_id as string | null;
+      const nowIso = new Date().toISOString();
+      const imovelRows: any[] = [];
+
+      for (const file of files) {
+        if (file.size > 20 * 1024 * 1024) {
+          toast.error(`${file.name} excede 20MB`);
+          continue;
+        }
+        const safeName = safeStorageFileName(file.name);
+        const storagePath = `submissions/${target.id}/escritura/${Date.now()}_${safeName}`;
+        const { error: upErr } = await supabase.storage.from("proposta-docs").upload(storagePath, file);
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from("proposta-docs").getPublicUrl(storagePath);
+        const url = urlData.publicUrl;
+
+        const doc: SubmissionDocumento = {
+          id: crypto.randomUUID(),
+          nome: file.name,
+          tipo: file.type || null,
+          tamanho: file.size,
+          url,
+          uploadedAt: nowIso,
+          categoria: "escritura",
+          storagePath,
+        };
+        nextDocs.push(doc as any);
+
+        if (imovelId) {
+          imovelRows.push({
+            imovel_id: imovelId,
+            titulo: `Escritura - ${file.name}`.slice(0, 180),
+            nome_arquivo: file.name,
+            storage_path: storagePath,
+            tipo: file.type || null,
+            tamanho: file.size,
+            url,
+            uploaded_by: userId,
+          });
+        }
+      }
+
+      const { error: updErr } = await supabase
+        .from("submissions")
+        .update({ documentos: nextDocs } as any)
+        .eq("id", target.id);
+      if (updErr) throw updErr;
+
+      if (imovelRows.length > 0) {
+        const { error: imErr } = await supabase.from("imovel_documentos").insert(imovelRows as any);
+        if (imErr) throw imErr;
+      }
+
+      toast.success("Escritura anexada.");
+      setProposalDocs(nextDocs as any);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao anexar escritura.");
+    } finally {
+      setEscrituraUploadingForId(null);
+      if (escrituraInputRef.current) escrituraInputRef.current.value = "";
+    }
   };
 
   const generateProposalForSubmission = async (sub: Submission) => {
@@ -294,6 +481,7 @@ const PainelSubmissoes = () => {
           dados: sub.dados,
           tipoContrato: sub.tipo_contrato,
           imobiliaria: sub.imobiliarias || currentImobiliaria || null,
+          imobiliariaId: (sub as any).imobiliaria_id || activeTenantId || null,
         },
       });
       if (error) throw error;
@@ -342,192 +530,357 @@ const PainelSubmissoes = () => {
     URL.revokeObjectURL(url);
   };
 
+  const downloadProposalPdf = () => {
+    if (!proposalText) return;
+
+    const imob = proposalImobiliaria || null;
+    const nome = typeof imob?.nome === "string" ? imob.nome.trim() : "";
+    const creci = typeof imob?.creci === "string" ? imob.creci.trim() : "";
+    const logoUrl = typeof imob?.logo_url === "string" ? imob.logo_url.trim() : "";
+    const site = typeof imob?.site_url === "string" ? imob.site_url.trim() : "";
+    const whatsapp = typeof imob?.whatsapp_atendimento === "string" ? imob.whatsapp_atendimento.trim() : "";
+    const endereco = [imob?.endereco, imob?.numero ? `nº ${imob.numero}` : "", imob?.bairro, imob?.cidade && imob?.estado ? `${imob.cidade}/${imob.estado}` : ""]
+      .filter((x: any) => typeof x === "string" && x.trim())
+      .map((x: string) => x.trim())
+      .join(" • ");
+
+    const escapeHtml = (s: string) =>
+      s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    const title = "Proposta de Negócio";
+    const textHtml = escapeHtml(proposalText).replace(/\n/g, "<br/>");
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      @page { size: A4; margin: 18mm 16mm; }
+      html, body { padding: 0; margin: 0; background: #ffffff; color: #0b1220; font-family: Inter, Arial, sans-serif; }
+      .header { display: flex; align-items: center; gap: 14px; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 10px; margin-bottom: 16px; }
+      .logo { height: 44px; width: auto; object-fit: contain; }
+      .brand { display: flex; flex-direction: column; gap: 2px; }
+      .brand .name { font-size: 14px; font-weight: 700; letter-spacing: 0.2px; }
+      .brand .meta { font-size: 11px; color: rgba(11,18,32,0.72); line-height: 1.4; }
+      .doc-title { font-size: 15px; font-weight: 800; margin: 0 0 10px 0; }
+      .content { font-size: 12px; line-height: 1.6; white-space: normal; }
+      .content pre { margin: 0; font-family: inherit; white-space: pre-wrap; }
+      .footer { margin-top: 14px; font-size: 10px; color: rgba(11,18,32,0.6); }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(nome || "Logo")}" />` : ""}
+      <div class="brand">
+        <div class="name">${escapeHtml(nome || "Imobiliária")}${creci ? ` • CRECI ${escapeHtml(creci)}` : ""}</div>
+        <div class="meta">${escapeHtml(endereco || "")}${(site || whatsapp) ? `${endereco ? "<br/>" : ""}${escapeHtml([site ? `Site: ${site}` : "", whatsapp ? `WhatsApp: ${whatsapp}` : ""].filter(Boolean).join(" • "))}` : ""}</div>
+      </div>
+    </div>
+    <h1 class="doc-title">${escapeHtml(title)}</h1>
+    <div class="content"><pre>${textHtml}</pre></div>
+    <div class="footer">Gerado em ${new Date().toLocaleDateString("pt-BR")}.</div>
+    <script>
+      window.onload = () => {
+        setTimeout(() => {
+          window.print();
+        }, 300);
+      };
+      window.onafterprint = () => {
+        setTimeout(() => window.close(), 200);
+      };
+    </script>
+  </body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast.error("Não foi possível abrir a janela do PDF. Verifique o bloqueador de pop-up.");
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
   const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <button onClick={() => navigate("/")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <img src="/images/logo-sielichow.png" alt="Sielichow Advocacia Empresarial" className="h-9 w-auto" />
-            <div>
-              <h1 className="font-display text-xl font-bold text-foreground">Sielichow</h1>
-              <p className="text-xs text-muted-foreground">Painel Administrativo</p>
-            </div>
-          </button>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-              <BarChart3 className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Dashboard</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/clientes")}>
-              <Users className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Clientes</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/corretores")}>
-              <UserCog className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Corretores</span>
-            </Button>
-            {isPlatformAdmin ? (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => navigate("/contratos")}>
-                  <FileCheck className="w-4 h-4 mr-1.5" />
-                  <span className="hidden sm:inline">Contratos</span>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
-                  <Building2 className="w-4 h-4 mr-1.5" />
-                  <span className="hidden sm:inline">Imobiliárias</span>
-                </Button>
-              </>
-            ) : null}
-            <Button variant="ghost" size="sm" onClick={() => signOut()}>
-              <ChevronRight className="w-4 h-4 mr-1.5 rotate-180" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
-          </div>
+    <div className="space-y-6">
+      <input
+        ref={escrituraInputRef}
+        type="file"
+        multiple
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+        className="hidden"
+        onChange={handleUploadEscritura}
+      />
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-2">
+          <FileText className="w-5 h-5 text-primary" />
+          <h2 className="font-display text-xl font-bold text-foreground">Coletas</h2>
         </div>
-      </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        {loading ? (
-          <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-        ) : (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-primary" />
-                <h2 className="font-display text-xl font-bold text-foreground">Coletas (Contratos)</h2>
-              </div>
-
-              <div className="flex gap-2">
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline"><Plus className="w-4 h-4 mr-2" />Novo Link de Coleta</Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader><DialogTitle>Criar Link de Coleta</DialogTitle></DialogHeader>
-                    <div className="space-y-4 pt-4">
-                      <div>
-                        <Label>Tipo de Contrato</Label>
-                        <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v)}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {allTipos.map((t) => (<SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>))}
-                          </SelectContent>
-                        </Select>
-                        <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
-                          <Button variant="ghost" size="sm" className="px-0" onClick={openCreateTipo}>
-                            <Plus className="w-4 h-4 mr-1.5" />
-                            Criar Novo Tipo de Contrato
-                          </Button>
-                          {customTipos.length > 0 ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="px-0"
-                              onClick={() => {
-                                const ct = customTipos.find((x) => x.id === novoTipo);
-                                if (ct) openEditTipo(ct);
-                                else toast.error("Selecione um tipo personalizado para editar.");
-                              }}
-                            >
-                              Editar Tipo Selecionado
-                            </Button>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div>
-                        <Label>Corretor</Label>
-                        <Select value={selectedCorretorId || ""} onValueChange={(v) => setSelectedCorretorId(v || null)}>
-                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                          <SelectContent>
-                            {corretores.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button onClick={handleCreateLink} disabled={creating} className="w-full">
-                        {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-                        Criar e Copiar Link
+        <div className="flex gap-2">
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline"><Plus className="w-4 h-4 mr-2" />Nova Coleta</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Criar Coleta</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div>
+                  <Label>Tipo de Contrato</Label>
+                  <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {allTipos.map((t) => (<SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
+                    <Button variant="ghost" size="sm" className="px-0" onClick={openCreateTipo}>
+                      <Plus className="w-4 h-4 mr-1.5" />
+                      Criar Novo Tipo de Contrato
+                    </Button>
+                    {customTipos.length > 0 ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="px-0"
+                        onClick={() => {
+                          const ct = customTipos.find((x) => x.id === novoTipo);
+                          if (ct) openEditTipo(ct);
+                          else toast.error("Selecione um tipo personalizado para editar.");
+                        }}
+                      >
+                        Editar Tipo Selecionado
                       </Button>
+                    ) : null}
+                  </div>
+                </div>
+                <div>
+                  <Label>Imóvel *</Label>
+                  {imoveis.length === 0 ? (
+                    <div className="mt-2 border border-dashed border-border rounded-lg p-3 text-sm text-muted-foreground">
+                      Nenhum imóvel cadastrado. Cadastre um imóvel para gerar coletas.
+                      <div className="mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setDialogOpen(false);
+                            navigate("/imoveis");
+                          }}
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Cadastrar Imóvel
+                        </Button>
+                      </div>
                     </div>
-                  </DialogContent>
-                </Dialog>
+                  ) : (
+                    <Select value={selectedImovelId || ""} onValueChange={(v) => setSelectedImovelId(v || null)}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {imoveis.map((i) => (
+                          <SelectItem key={i.id} value={i.id}>{i.titulo}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div>
+                  <Label>Corretor</Label>
+                  <Select value={selectedCorretorId || ""} onValueChange={(v) => setSelectedCorretorId(v || null)}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      {corretores.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleCreateLink} disabled={creating || imoveis.length === 0} className="w-full">
+                  {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                  Criar e Copiar Link
+                </Button>
               </div>
-            </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
 
-            {submissions.length === 0 ? (
-              <div className="text-center py-16 space-y-4">
-                <FileText className="w-16 h-16 text-muted-foreground mx-auto" />
-                <h3 className="font-display text-xl font-bold text-foreground">Nenhuma coleta ainda</h3>
-                <p className="text-muted-foreground">Crie um link de coleta para enviar ao corretor.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
+      {loading ? (
+        <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+      ) : submissions.length === 0 ? (
+        <div className="text-center py-16 space-y-4">
+          <FileText className="w-16 h-16 text-muted-foreground mx-auto" />
+          <h3 className="font-display text-xl font-bold text-foreground">Nenhuma coleta ainda</h3>
+          <p className="text-muted-foreground">Crie uma coleta para enviar ao corretor.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md overflow-hidden shadow-card">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[180px]">Status</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Imóvel</TableHead>
+                  <TableHead>Corretor</TableHead>
+                  <TableHead className="whitespace-nowrap">Criado em</TableHead>
+                  <TableHead className="text-right w-[420px]">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {submissions.map((sub) => {
                   const tipoInfo = allTipos.find((t) => t.id === sub.tipo_contrato);
                   const statusInfo = statusLabels[sub.status] || statusLabels.rascunho;
                   const StatusIcon = statusInfo.icon;
                   const hasProposal = Boolean(sub.proposta_texto && String(sub.proposta_texto).trim());
+                  const im = sub?.dados?.imovel;
+                  const imLocalizacao = typeof im?.localizacao === "string" ? im.localizacao.trim() : "";
+                  const imCidade = typeof im?.municipio === "string" ? im.municipio.trim() : "";
+                  const imUf = typeof im?.estadoImovel === "string" ? im.estadoImovel.trim() : "";
+                  const imLabel = imLocalizacao || (imCidade ? `${imCidade}${imUf ? `/${imUf}` : ""}` : "—");
+
+                  const badgeClass =
+                    sub.status === "enviado"
+                      ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/30"
+                      : sub.status === "rascunho"
+                        ? "bg-amber-400/15 text-amber-100 border-amber-300/50 shadow-[0_0_18px_rgba(250,204,21,0.25)]"
+                        : "bg-muted/30 text-foreground border-border";
+
                   return (
-                    <div key={sub.id} className="border border-border rounded-lg p-5 bg-card hover:border-primary/30 transition-colors">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-foreground truncate">{tipoInfo?.nome}</h3>
-                            <span className={`flex items-center gap-1 text-xs font-medium ${statusInfo.color}`}>
-                              <StatusIcon className="w-3.5 h-3.5" />{statusInfo.label}
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {sub.corretor_nome ? `Corretor: ${sub.corretor_nome}` : "Aguardando preenchimento"}
-                            {sub.corretor_telefone ? ` • ${sub.corretor_telefone}` : ""}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Criado: {formatDate(sub.created_at)}</p>
+                    <TableRow key={sub.id} className="hover:bg-white/5">
+                      <TableCell className="py-5">
+                        <Badge variant="outline" className={`gap-1.5 ${badgeClass}`}>
+                          <StatusIcon className="w-3.5 h-3.5" />
+                          {statusInfo.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-5">
+                        <div className="font-medium text-foreground">{tipoInfo?.nome || sub.tipo_contrato}</div>
+                        <div className="text-xs text-muted-foreground">ID: {sub.id}</div>
+                      </TableCell>
+                      <TableCell className="py-5">
+                        <div className="text-sm text-foreground">{imLabel}</div>
+                      </TableCell>
+                      <TableCell className="py-5">
+                        <div className="text-sm text-foreground">
+                          {sub.corretor_nome || "—"}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                          <Button variant="outline" size="sm" onClick={() => copyLink("coleta", sub.token)}>
-                            <Copy className="w-4 h-4 mr-1" />Link
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => {
-                            const link = `${window.location.origin}/coleta/${sub.token}`;
-                            const msg = encodeURIComponent(`Olá! Segue o link para preenchimento dos dados do contrato (${tipoInfo?.nome}):\n\n${link}\n\nPreencha todos os campos e clique em "Enviar Dados" ao final.`);
-                            window.open(`https://wa.me/?text=${msg}`, "_blank");
-                          }}>
-                            <Send className="w-4 h-4 mr-1" />WhatsApp
-                          </Button>
-                          {sub.status === "enviado" ? (
-                            <>
-                              <Button size="sm" onClick={() => handleGenerateContract(sub)}>
-                                <FileText className="w-4 h-4 mr-1" />Gerar Contrato
-                              </Button>
-                              {hasProposal ? (
-                                <Button variant="secondary" size="sm" onClick={() => openProposalForSubmission(sub)}>
-                                  <FileText className="w-4 h-4 mr-1" />Ver Proposta
-                                </Button>
-                              ) : (
-                                <Button variant="secondary" size="sm" onClick={() => generateProposalForSubmission(sub)}>
-                                  <Sparkles className="w-4 h-4 mr-1" />Gerar Proposta
-                                </Button>
-                              )}
-                            </>
+                        {sub.corretor_telefone ? (
+                          <div className="text-xs text-muted-foreground">{sub.corretor_telefone}</div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="py-5 whitespace-nowrap text-sm text-muted-foreground">
+                        {formatDate(sub.created_at)}
+                      </TableCell>
+                      <TableCell className="py-5">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                          {sub.status === "enviado" && hasProposal ? (
+                            <Button size="sm" onClick={() => openProposalForSubmission(sub)}>
+                              <FileText className="w-4 h-4 mr-1.5" />
+                              Ver Proposta
+                            </Button>
                           ) : null}
-                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteSubmission(sub.id)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  const link = `${window.location.origin}/coleta/${sub.token}`;
+                                  const msg = encodeURIComponent(
+                                    `Olá! Segue o link para preenchimento dos dados do contrato (${tipoInfo?.nome}):\n\n${link}\n\nPreencha todos os campos e clique em "Enviar Dados" ao final.`,
+                                  );
+                                  window.open(`https://wa.me/?text=${msg}`, "_blank");
+                                }}
+                              >
+                                <Send className="w-4 h-4 mr-2" />
+                                WhatsApp
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => copyLink("coleta", sub.token)}>
+                                <Copy className="w-4 h-4 mr-2" />
+                                Copiar link
+                              </DropdownMenuItem>
+
+                              <DropdownMenuSeparator />
+
+                              <DropdownMenuItem onClick={() => window.open(`/coleta/${sub.token}`, "_blank")}>
+                                <ExternalLink className="w-4 h-4 mr-2" />
+                                Abrir coleta
+                              </DropdownMenuItem>
+
+                              {sub.status === "enviado" ? (
+                                <>
+                                  <DropdownMenuItem onClick={() => generateProposalForSubmission(sub)}>
+                                    <Sparkles className="w-4 h-4 mr-2" />
+                                    Gerar proposta
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleGenerateContract(sub)}>
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    Gerar contrato
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => openUploadEscritura(sub)}
+                                    disabled={escrituraUploadingForId === sub.id}
+                                  >
+                                    {escrituraUploadingForId === sub.id ? (
+                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <ScrollText className="w-4 h-4 mr-2" />
+                                    )}
+                                    Anexar escritura
+                                  </DropdownMenuItem>
+                                </>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => openUploadEscritura(sub)}
+                                  disabled={escrituraUploadingForId === sub.id}
+                                >
+                                  {escrituraUploadingForId === sub.id ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <ScrollText className="w-4 h-4 mr-2" />
+                                  )}
+                                  Anexar escritura
+                                </DropdownMenuItem>
+                              )}
+
+                              <DropdownMenuSeparator />
+
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => handleDeleteSubmission(sub.id)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                      </div>
-                    </div>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </div>
-            )}
+              </TableBody>
+            </Table>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
       <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Proposta (Coleta)</DialogTitle>
           </DialogHeader>
@@ -542,9 +895,56 @@ const PainelSubmissoes = () => {
               <Button variant="outline" size="sm" onClick={downloadProposal} disabled={!proposalText}>
                 <Download className="w-4 h-4 mr-1" />Baixar
               </Button>
+              <Button variant="outline" size="sm" onClick={downloadProposalPdf} disabled={!proposalText}>
+                <Download className="w-4 h-4 mr-1" />PDF
+              </Button>
             </div>
           </div>
-          <div className="mt-3 border border-border rounded-lg bg-muted/20 overflow-auto p-3">
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm text-muted-foreground">Anexos</div>
+              {proposalSubmissionId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const sub = submissions.find((s) => s.id === proposalSubmissionId) || null;
+                    if (sub) openUploadEscritura(sub);
+                  }}
+                  disabled={!proposalSubmissionId}
+                >
+                  <Paperclip className="w-4 h-4 mr-1" />
+                  Anexar escritura
+                </Button>
+              ) : null}
+            </div>
+            {proposalDocs.length === 0 ? (
+              <div className="mt-2 text-sm text-muted-foreground border border-white/10 rounded-lg bg-white/5 backdrop-blur-md p-3">
+                Nenhum anexo ainda.
+              </div>
+            ) : (
+              <div className="mt-2 grid gap-2">
+                {proposalDocs.map((d) => (
+                  <a
+                    key={d.id}
+                    href={d.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 backdrop-blur-md px-3 py-2 hover:bg-white/10"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm text-foreground truncate">{d.nome}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {(d.categoria || "documento").toString().toUpperCase()} • {new Date(d.uploadedAt).toLocaleDateString("pt-BR")}
+                      </div>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mt-3 border border-border rounded-lg bg-muted/20 max-h-[50vh] overflow-auto p-3">
             {proposalLoading ? (
               <div className="py-10 flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />

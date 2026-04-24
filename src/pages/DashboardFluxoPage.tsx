@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowLeft, CalendarIcon, Loader2, TrendingUp, Link2, Users, FileText, Sparkles, FileCheck, List } from "lucide-react";
+import { CalendarIcon, Loader2, TrendingUp, Link2, Users, FileText, Sparkles, FileCheck, List } from "lucide-react";
 
 type Submission = {
   id: string;
@@ -49,16 +48,21 @@ function avg(values: number[]) {
   return values.reduce((s, v) => s + v, 0) / values.length;
 }
 
-function formatDuration(value: number | null) {
-  if (value === null) return "-";
-  if (value < 1) return `${Math.max(1, Math.round(value * 60))}m`;
-  if (value < 24) return `${value.toFixed(1)}h`;
-  const days = value / 24;
-  return `${days.toFixed(1)}d`;
+function formatDuration(valueHours: number | null) {
+  if (valueHours === null) return "-";
+  const totalMinutes = Math.max(1, Math.round(valueHours * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes - days * 60 * 24) / 60);
+  const minutes = totalMinutes - days * 60 * 24 - hours * 60;
+
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  parts.push(`${minutes}m`);
+  return parts.join(" ");
 }
 
 export default function DashboardFluxoPage() {
-  const navigate = useNavigate();
   const { activeTenantId, isPlatformAdmin } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -131,21 +135,63 @@ export default function DashboardFluxoPage() {
     const propostasGeradas = filtered.filter((s) => Boolean(s.proposta_gerada_em)).length;
     const contratosGerados = filtered.filter((s) => Boolean(s.contract_generated_at) || s.status === "contrato_gerado").length;
 
-    const prazos = filtered
-      .map((s) => durationHours(s.first_opened_at, s.submitted_at, s.created_at))
-      .filter((v): v is number => typeof v === "number" && v >= 0);
-    const avgPrazo = avg(prazos);
-
-    const firstOpen = filtered
+    const toFirstOpen = filtered
       .map((s) => (s.first_opened_at ? diffHours(s.created_at, s.first_opened_at) : null))
       .filter((v): v is number => typeof v === "number" && v >= 0);
-    const avgPrimeiraAbertura = avg(firstOpen);
+    const avgToFirstOpen = avg(toFirstOpen);
 
-    return { totalLinks, opened, submitted, propostasGeradas, contratosGerados, avgPrazo, avgPrimeiraAbertura };
+    const openToSubmit = filtered
+      .map((s) => durationHours(s.first_opened_at, s.submitted_at))
+      .filter((v): v is number => typeof v === "number" && v >= 0);
+    const avgOpenToSubmit = avg(openToSubmit);
+
+    const submitToProposal = filtered
+      .map((s) => durationHours(s.submitted_at, s.proposta_gerada_em))
+      .filter((v): v is number => typeof v === "number" && v >= 0);
+    const avgSubmitToProposal = avg(submitToProposal);
+
+    const proposalToContract = filtered
+      .map((s) => durationHours(s.proposta_gerada_em, s.contract_generated_at))
+      .filter((v): v is number => typeof v === "number" && v >= 0);
+    const avgProposalToContract = avg(proposalToContract);
+
+    const submitToContract = filtered
+      .map((s) => durationHours(s.submitted_at, s.contract_generated_at))
+      .filter((v): v is number => typeof v === "number" && v >= 0);
+    const avgSubmitToContract = avg(submitToContract);
+
+    const totalToContract = filtered
+      .map((s) => durationHours(s.created_at, s.contract_generated_at))
+      .filter((v): v is number => typeof v === "number" && v >= 0);
+    const avgPrazo = avg(totalToContract);
+
+    return {
+      totalLinks,
+      opened,
+      submitted,
+      propostasGeradas,
+      contratosGerados,
+      avgToFirstOpen,
+      avgOpenToSubmit,
+      avgSubmitToProposal,
+      avgProposalToContract,
+      avgSubmitToContract,
+      avgPrazo,
+    };
   }, [filtered]);
 
   const byCorretor = useMemo(() => {
-    const map = new Map<string, { id: string; corretor: string; links: number; opened: number; submitted: number; avgPrazo: number | null }>();
+    const map = new Map<
+      string,
+      {
+        id: string;
+        corretor: string;
+        links: number;
+        opened: number;
+        submitted: number;
+        avgPrazo: number | null;
+      }
+    >();
     for (const s of filtered) {
       const id = s.corretor_id || "sem";
       const nome =
@@ -161,8 +207,8 @@ export default function DashboardFluxoPage() {
 
     const prazosBy = new Map<string, number[]>();
     for (const s of filtered) {
-      if (!s.submitted_at) continue;
-      const h = durationHours(s.first_opened_at, s.submitted_at, s.created_at);
+      if (!s.contract_generated_at) continue;
+      const h = durationHours(s.created_at, s.contract_generated_at);
       if (h === null || h < 0) continue;
       const key = s.corretor_id || "sem";
       const list = prazosBy.get(key) || [];
@@ -202,30 +248,22 @@ export default function DashboardFluxoPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/painel")}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="font-display text-xl font-bold text-foreground">Dashboard</h1>
-              <p className="text-xs text-muted-foreground">Fluxo de Coletas</p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={clearFilters}>Limpar filtros</Button>
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground">Fluxo de coletas e geração de documentos.</p>
         </div>
-      </header>
+        <Button variant="outline" size="sm" onClick={clearFilters}>Limpar filtros</Button>
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <>
-            <div className="border border-border rounded-xl bg-card p-5 shadow-sm space-y-4">
+      {loading ? (
+        <div className="flex justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      ) : (
+        <>
+          <div className="border border-border rounded-xl bg-card p-5 shadow-sm space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <div>
                   <Label className="text-xs text-muted-foreground mb-1 block">Data Inicial</Label>
@@ -303,12 +341,12 @@ export default function DashboardFluxoPage() {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              <Kpi icon={Link2} label="Links" value={String(kpis.totalLinks)} />
-              <Kpi icon={CalendarIcon} label="1ª Abertura" value={String(kpis.opened)} />
-              <Kpi icon={Users} label="Enviadas" value={String(kpis.submitted)} />
-              <Kpi icon={Sparkles} label="Propostas" value={String(kpis.propostasGeradas)} />
-              <Kpi icon={FileCheck} label="Contratos" value={String(kpis.contratosGerados)} />
-              <Kpi icon={FileText} label="Prazo Médio" value={formatDuration(kpis.avgPrazo)} />
+              <Kpi icon={Link2} label="Links" value={formatDuration(kpis.avgToFirstOpen)} meta={`${kpis.totalLinks} links`} />
+              <Kpi icon={CalendarIcon} label="1ª Abertura" value={formatDuration(kpis.avgOpenToSubmit)} meta={`${kpis.opened} abertos`} />
+              <Kpi icon={Users} label="Enviadas" value={formatDuration(kpis.avgSubmitToProposal)} meta={`${kpis.submitted} enviadas`} />
+              <Kpi icon={Sparkles} label="Propostas" value={formatDuration(kpis.avgProposalToContract)} meta={`${kpis.propostasGeradas} propostas`} />
+              <Kpi icon={FileCheck} label="Contratos" value={formatDuration(kpis.avgSubmitToContract)} meta={`${kpis.contratosGerados} contratos`} />
+              <Kpi icon={FileText} label="Prazo Médio" value={formatDuration(kpis.avgPrazo)} meta="Link → Contrato" />
             </div>
 
             <div className="border border-border rounded-xl bg-card p-5 shadow-sm">
@@ -343,12 +381,11 @@ export default function DashboardFluxoPage() {
                 </TableBody>
               </Table>
               <p className="text-xs text-muted-foreground mt-3">
-                Prazo médio: tempo entre a primeira abertura do link e o envio da coleta. Se não houver primeira abertura registrada, usa a data de criação do link como referência.
+                Prazo médio: tempo entre a criação do link e a geração do contrato.
               </p>
             </div>
           </>
-        )}
-      </main>
+      )}
 
       <Dialog open={analiticoOpen} onOpenChange={setAnaliticoOpen}>
         <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden">
@@ -367,12 +404,12 @@ export default function DashboardFluxoPage() {
                   <TableHead>Enviado</TableHead>
                   <TableHead>Proposta</TableHead>
                   <TableHead>Contrato</TableHead>
-                  <TableHead className="text-right">Prazo (Abertura→Envio)</TableHead>
+                      <TableHead className="text-right">Prazo (Link→Contrato)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {analiticoRows.map((s) => {
-                  const prazo = durationHours(s.first_opened_at, s.submitted_at, s.created_at);
+                  const prazo = durationHours(s.created_at, s.contract_generated_at);
                   return (
                     <TableRow key={s.id}>
                       <TableCell className="font-mono text-xs">{s.id.slice(0, 8)}</TableCell>
@@ -407,10 +444,12 @@ function Kpi({
   icon: Icon,
   label,
   value,
+  meta,
 }: {
   icon: any;
   label: string;
   value: string;
+  meta?: string;
 }) {
   return (
     <div className="border border-border rounded-xl bg-card p-4 shadow-sm">
@@ -419,6 +458,7 @@ function Kpi({
         <span className="text-xs font-medium">{label}</span>
       </div>
       <div className="mt-2 text-xl font-bold text-foreground">{value}</div>
+      {meta ? <div className="mt-1 text-xs text-muted-foreground">{meta}</div> : null}
     </div>
   );
 }

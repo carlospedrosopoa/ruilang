@@ -9,9 +9,10 @@ interface Step {
 interface StepIndicatorProps {
   steps: Step[];
   currentStep: number;
+  onStepChange?: (step: number) => void;
 }
 
-const StepIndicator = ({ steps, currentStep }: StepIndicatorProps) => {
+const StepIndicator = ({ steps, currentStep, onStepChange }: StepIndicatorProps) => {
   return (
     <div className="mb-10">
       {/* Progress bar */}
@@ -31,16 +32,20 @@ const StepIndicator = ({ steps, currentStep }: StepIndicatorProps) => {
 
           return (
             <div key={step.number} className="relative flex flex-col items-center">
-              <div
+              <button
+                type="button"
+                onClick={() => onStepChange?.(step.number)}
                 className={cn(
                   "w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300 relative z-10",
                   isCompleted && "bg-primary text-primary-foreground shadow-card",
                   isCurrent && "bg-primary text-primary-foreground shadow-premium ring-4 ring-primary/15",
-                  !isCompleted && !isCurrent && "bg-card text-muted-foreground border-2 border-border"
+                  !isCompleted && !isCurrent && "bg-card text-muted-foreground border-2 border-border",
+                  onStepChange ? "cursor-pointer hover:brightness-110" : "cursor-default"
                 )}
+                disabled={!onStepChange}
               >
                 {isCompleted ? <Check className="w-4 h-4" strokeWidth={3} /> : step.number}
-              </div>
+              </button>
               <span
                 className={cn(
                   "absolute -bottom-6 text-[11px] font-medium whitespace-nowrap transition-colors duration-300",

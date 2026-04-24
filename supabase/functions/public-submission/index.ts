@@ -61,8 +61,9 @@ serve(async (req: Request) => {
     if (typeof nextPropostaTexto !== "undefined") patch.proposta_texto = nextPropostaTexto;
 
     if (existing.status !== "rascunho") {
-      const forbidden = "dados" in patch || "status" in patch;
-      if (forbidden) return jsonResponse({ error: "Submission is not editable" }, 400);
+      if (typeof patch.status === "string" && patch.status !== existing.status) {
+        return jsonResponse({ error: "Status cannot be changed after submission" }, 400);
+      }
     }
 
     if (typeof patch.status === "string" && !["rascunho", "enviado", "contrato_gerado"].includes(patch.status)) {

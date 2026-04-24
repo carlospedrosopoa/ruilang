@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/auth/AuthProvider";
 import { RequireAuth } from "@/auth/RequireAuth";
+import TenantLayout from "@/components/layout/TenantLayout";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import ContratoPage from "./pages/ContratoPage.tsx";
@@ -17,6 +18,9 @@ import ClientesPage from "./pages/ClientesPage.tsx";
 import CorretoresPage from "./pages/CorretoresPage.tsx";
 import DashboardFluxoPage from "./pages/DashboardFluxoPage.tsx";
 import ContratosGeradosPage from "./pages/ContratosGeradosPage.tsx";
+import ImoveisPage from "./pages/ImoveisPage.tsx";
+import TiposPropostaPage from "./pages/TiposPropostaPage.tsx";
+import ImobiliariaSettingsPage from "./pages/ImobiliariaSettingsPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -48,14 +52,6 @@ const App = () => (
             />
             <Route path="/coleta/:token" element={<ColetaPage />} />
             <Route
-              path="/painel"
-              element={
-                <RequireAuth>
-                  <PainelSubmissoes />
-                </RequireAuth>
-              }
-            />
-            <Route
               path="/imobiliarias"
               element={
                 <RequireAuth requirePlatformAdmin>
@@ -73,37 +69,21 @@ const App = () => (
             />
             <Route path="/proposta/:token" element={<PropostaPage />} />
             <Route
-              path="/relatorios"
               element={
                 <RequireAuth>
-                  <RelatoriosPage />
+                  <TenantLayout />
                 </RequireAuth>
               }
-            />
-            <Route
-              path="/clientes"
-              element={
-                <RequireAuth>
-                  <ClientesPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/corretores"
-              element={
-                <RequireAuth>
-                  <CorretoresPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <RequireAuth>
-                  <DashboardFluxoPage />
-                </RequireAuth>
-              }
-            />
+            >
+              <Route path="/painel" element={<PainelSubmissoes />} />
+              <Route path="/imoveis" element={<ImoveisPage />} />
+              <Route path="/dashboard" element={<DashboardFluxoPage />} />
+              <Route path="/clientes" element={<ClientesPage />} />
+              <Route path="/corretores" element={<CorretoresPage />} />
+              <Route path="/tipos-proposta" element={<TiposPropostaPage />} />
+              <Route path="/configuracoes-imobiliaria" element={<ImobiliariaSettingsPage />} />
+              <Route path="/relatorios" element={<RelatoriosPage />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
