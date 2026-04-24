@@ -577,7 +577,7 @@ const PainelSubmissoes = () => {
   </head>
   <body>
     <div class="header">
-      ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(nome || "Logo")}" />` : ""}
+      ${logoUrl ? `<img id="pactadocLogo" class="logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(nome || "Logo")}" crossorigin="anonymous" referrerpolicy="no-referrer" />` : ""}
       <div class="brand">
         <div class="name">${escapeHtml(nome || "Imobiliária")}${creci ? ` • CRECI ${escapeHtml(creci)}` : ""}</div>
         <div class="meta">${escapeHtml(endereco || "")}${(site || whatsapp) ? `${endereco ? "<br/>" : ""}${escapeHtml([site ? `Site: ${site}` : "", whatsapp ? `WhatsApp: ${whatsapp}` : ""].filter(Boolean).join(" • "))}` : ""}</div>
@@ -587,10 +587,30 @@ const PainelSubmissoes = () => {
     <div class="content"><pre>${textHtml}</pre></div>
     <div class="footer">Gerado em ${new Date().toLocaleDateString("pt-BR")}.</div>
     <script>
-      window.onload = () => {
-        setTimeout(() => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const waitLogo = () =>
+        new Promise((resolve) => {
+          const img = document.getElementById("pactadocLogo");
+          if (!img) return resolve();
+          if (img.complete && img.naturalWidth > 0) return resolve();
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+        });
+
+      window.onload = async () => {
+        try {
+          await Promise.race([waitLogo(), sleep(1800)]);
+          if (document.fonts && document.fonts.ready) {
+            await Promise.race([document.fonts.ready, sleep(800)]);
+          }
+          await sleep(150);
+          window.focus();
+          requestAnimationFrame(() => window.print());
+        } catch {
+          window.focus();
           window.print();
-        }, 300);
+        }
       };
       window.onafterprint = () => {
         setTimeout(() => window.close(), 200);
