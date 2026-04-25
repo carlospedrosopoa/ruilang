@@ -33,7 +33,9 @@ serve(async (req: Request) => {
 
     const { data: existing, error: findError } = await admin
       .from("submissions")
-      .select("*, imobiliarias(*)")
+      .select(
+        "*, imobiliarias(*), imoveis(id, titulo, dados, vendedor_cliente_id, clientes(id, nome_completo, cpf, email, telefone, endereco, bairro, cidade, estado, cep, documento_tipo, documento_numero))",
+      )
       .eq("token", token)
       .maybeSingle();
 

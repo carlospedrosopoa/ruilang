@@ -152,6 +152,8 @@ const ContractWizard = () => {
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
   const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
   const [imobiliariaId, setImobiliariaId] = useState<string | null>(null);
+  const [imobiliariaNome, setImobiliariaNome] = useState("");
+  const [imobiliariaLogo, setImobiliariaLogo] = useState("");
   const [customPerfis, setCustomPerfis] = useState<Array<{ id: string; nome: string }>>([]);
   const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -178,6 +180,8 @@ const ContractWizard = () => {
 
   useEffect(() => {
     if (!submissionId) return;
+    if (didLoadSubmissionRef.current) return;
+    
     const loadSubmission = async () => {
       const selectFull = "dados, imobiliaria_id, contract_texto";
       const selectFallback = "dados, imobiliaria_id";
@@ -295,20 +299,33 @@ const ContractWizard = () => {
   }, [submissionId, tipo, vendedores, compradores, imovel, imovelPermuta, pagamento, locacao, perfilContrato, peculiaridades]);
 
   useEffect(() => {
-    const loadPerfis = async () => {
+    const loadPerfisEInfo = async () => {
       if (!imobiliariaId) {
         setCustomPerfis([]);
+        setImobiliariaNome("");
+        setImobiliariaLogo("");
         return;
       }
-      const { data } = await supabase
+      
+      const { data: perfisData } = await supabase
         .from("perfis_contrato")
         .select("id, nome")
         .eq("imobiliaria_id", imobiliariaId)
         .eq("ativo", true)
         .order("created_at", { ascending: true });
-      setCustomPerfis(((data as any[]) || []).map((p) => ({ id: p.id, nome: p.nome })));
+      setCustomPerfis(((perfisData as any[]) || []).map((p) => ({ id: p.id, nome: p.nome })));
+
+      const { data: imoData } = await supabase
+        .from("imobiliarias")
+        .select("nome, logo_url")
+        .eq("id", imobiliariaId)
+        .single();
+      if (imoData) {
+        setImobiliariaNome(imoData.nome || "");
+        setImobiliariaLogo(imoData.logo_url || "");
+      }
     };
-    loadPerfis();
+    loadPerfisEInfo();
   }, [imobiliariaId]);
 
   const next = () => {
@@ -324,6 +341,13 @@ const ContractWizard = () => {
       setStepKey(k => k + 1);
       setCurrentStep(currentStep - 1);
     }
+  };
+
+  const handleStepChange = (step: number) => {
+    if (step === currentStep) return;
+    setDirection(step > currentStep ? "forward" : "backward");
+    setStepKey(k => k + 1);
+    setCurrentStep(step);
   };
 
   const handleGenerate = async () => {
@@ -622,9 +646,15 @@ const ContractWizard = () => {
       <header className="gradient-primary border-b border-primary/20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
           <button onClick={() => navigate("/")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-8 w-auto" />
-            <div>
-              <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">Sielichow</h1>
+            {imobiliariaLogo ? (
+              <img src={imobiliariaLogo} alt={imobiliariaNome || "Imobiliária"} className="h-8 w-auto bg-white/10 rounded-md p-1 object-contain" />
+            ) : (
+              <div className="h-8 w-8 rounded-md bg-white/10 flex items-center justify-center text-primary-foreground font-bold">
+                {imobiliariaNome ? imobiliariaNome.charAt(0).toUpperCase() : "I"}
+              </div>
+            )}
+            <div className="text-left">
+              <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">{imobiliariaNome || "Imobiliária"}</h1>
               <p className="text-[10px] text-primary-foreground/50 font-medium uppercase tracking-wider">{tipoInfo?.nome || "Contrato"}</p>
               {submissionId ? (
                 <button
@@ -646,7 +676,7 @@ const ContractWizard = () => {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        <StepIndicator steps={steps} currentStep={currentStep} />
+        <StepIndicator steps={steps} currentStep={currentStep} onStepChange={handleStepChange} />
 
         <div
           key={stepKey}

@@ -160,6 +160,26 @@ const ColetaPage = () => {
         if (dados.locacao) setLocacao(dados.locacao);
       }
 
+      const hasVendedores =
+        Array.isArray(dados?.vendedores) && (dados.vendedores as any[]).some((v) => typeof v?.nome === "string" && v.nome.trim());
+      const cliente = (submission as any)?.imoveis?.clientes || null;
+      if (!hasVendedores && cliente) {
+        const v = criarPessoaVazia();
+        v.nome = String(cliente?.nome_completo || "").trim();
+        v.cpf = String(cliente?.cpf || "").trim();
+        v.email = String(cliente?.email || "").trim() || undefined;
+        v.telefone = String(cliente?.telefone || "").trim() || undefined;
+        v.endereco = String(cliente?.endereco || "").trim();
+        v.bairro = String(cliente?.bairro || "").trim();
+        v.cidade = String(cliente?.cidade || "").trim();
+        v.estado = String(cliente?.estado || "").trim();
+        v.cep = String(cliente?.cep || "").trim();
+        const docTipo = String(cliente?.documento_tipo || "").toLowerCase();
+        if (docTipo === "rg" || docTipo === "cnh") v.documentoTipo = docTipo as any;
+        v.documentoNumero = String(cliente?.documento_numero || "").trim();
+        if (v.nome || v.cpf) setVendedores([v]);
+      }
+
       if (submission.status === "enviado" || submission.status === "contrato_gerado") {
         setSubmitted(true);
       }

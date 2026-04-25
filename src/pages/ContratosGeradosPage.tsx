@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Building2, ClipboardList, Copy, Download, FileDown, FileText, Loader2, Pencil, Search, UserCog } from "lucide-react";
+import { Copy, Download, FileDown, FileText, Loader2, Pencil, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/auth/AuthProvider";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -33,7 +32,6 @@ type SubmissionRow = {
 
 const ContratosGeradosPage = () => {
   const navigate = useNavigate();
-  const { signOut } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -256,48 +254,14 @@ const ContratosGeradosPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <button onClick={() => navigate("/painel")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <img src="/images/logo-sielichow.png" alt="Sielichow Advocacia Empresarial" className="h-9 w-auto" />
-            <div>
-              <h1 className="font-display text-xl font-bold text-foreground">Sielichow</h1>
-              <p className="text-xs text-muted-foreground">Contratos Gerados</p>
-            </div>
-          </button>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/painel")}>
-              <ClipboardList className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Coletas</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-              <BarChart3 className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Dashboard</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/corretores")}>
-              <UserCog className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Corretores</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/imobiliarias")}>
-              <Building2 className="w-4 h-4 mr-1.5" />
-              <span className="hidden sm:inline">Imobiliárias</span>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => signOut()}>
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
-          </div>
+    <div className="w-full space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <FileText className="w-5 h-5 text-primary" />
+          <h2 className="font-display text-2xl font-bold text-foreground">Contratos</h2>
+          <Badge variant="secondary">{filtered.length}</Badge>
         </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-primary" />
-            <h2 className="font-display text-2xl font-bold text-foreground">Contratos</h2>
-            <Badge variant="secondary">{filtered.length}</Badge>
-          </div>
-        </div>
+      </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-2">
@@ -491,7 +455,6 @@ const ContratosGeradosPage = () => {
             </div>
           </DialogContent>
         </Dialog>
-      </main>
     </div>
   );
 };

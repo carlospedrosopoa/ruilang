@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { BarChart3, Building2, ClipboardList, FileCheck, FileText, Home, LogOut, Settings, Users, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthProvider";
 
 const tenantNavItems = [
   { to: "/painel", label: "Coletas", icon: ClipboardList },
+  { to: "/contratos", label: "Contratos", icon: FileCheck },
   { to: "/imoveis", label: "Imóveis", icon: Home },
   { to: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { to: "/tipos-proposta", label: "Tipos de Proposta", icon: FileText },
@@ -23,16 +24,19 @@ export default function TenantLayout() {
 
   const active = memberships.find((m) => m.tenantId === activeTenantId) || null;
   const tenantName = active?.tenant?.nome || "Imobiliária";
-  const logoSrc = useMemo(() => "/images/logo-pactadoc.png", []);
+  const logoSrc = useMemo(() => active?.tenant?.logo_url || "/images/logo-pactadoc.png", [active?.tenant?.logo_url]);
   const goSettings = () => navigate("/configuracoes-imobiliaria");
   const navItems = useMemo(() => {
     if (!isPlatformAdmin) return tenantNavItems;
     return [
       ...tenantNavItems,
-      { to: "/contratos", label: "Contratos", icon: FileCheck },
       { to: "/imobiliarias", label: "Imobiliárias", icon: Building2 },
     ];
   }, [isPlatformAdmin]);
+
+  useEffect(() => {
+    setLogoBroken(false);
+  }, [logoSrc]);
 
   return (
     <div className="min-h-screen bg-background">

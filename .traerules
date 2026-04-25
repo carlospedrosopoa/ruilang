@@ -1,0 +1,90 @@
+PactaDoc — Diretrizes de UI (Dark Mode Premium)
+
+Objetivo
+- Garantir que qualquer nova página/componente siga exatamente o padrão visual atual do PactaDoc: Dark Mode Premium, cores “Pacta”, tipografia, espaçamentos e raio de borda.
+- Priorizar tokens semânticos do tema (Tailwind + CSS variables). Evitar cores hard-coded.
+
+Tema e Dark Mode
+- O app é Dark-first. Deve renderizar corretamente com o tema dark ativo (classe "dark" no root).
+- Use sempre as cores semânticas (bg-background, bg-card, text-foreground, text-muted-foreground, border-border, ring-ring, etc.).
+- Para headers premium (ex.: topo do app), o padrão usado é o fundo Pacta (pacta-bg) com borda sutil.
+
+Cores (extraídas do tailwind.config.ts e src/index.css)
+
+1) Cores “Pacta” (Tailwind extend.colors)
+- pacta-bg: #041126
+- pacta-primary: #00F2B5
+
+2) Tokens semânticos (CSS variables em src/index.css)
+- background: hsl(217 81% 8%)
+- foreground: hsl(210 40% 98%)
+- card: hsl(216 65% 11%)
+- card-foreground: hsl(210 40% 98%)
+- popover: hsl(216 65% 11%)
+- popover-foreground: hsl(210 40% 98%)
+- primary: hsl(165 100% 48%)
+- primary-foreground: hsl(217 81% 8%)
+- secondary: hsl(216 40% 16%)
+- secondary-foreground: hsl(210 40% 98%)
+- muted: hsl(216 40% 16%)
+- muted-foreground: hsl(215 20% 72%)
+- accent: hsl(216 40% 16%)
+- accent-foreground: hsl(210 40% 98%)
+- destructive: hsl(0 84.2% 60.2%)
+- destructive-foreground: hsl(0 0% 98%)
+- success: hsl(142.1 76.2% 36.3%)
+- success-foreground: hsl(0 0% 98%)
+- border: hsl(216 34% 22%)
+- input: hsl(216 34% 22%)
+- ring: hsl(165 100% 48%)
+
+3) Tokens de sidebar (CSS variables)
+- sidebar-background: hsl(217 81% 8%)
+- sidebar-foreground: hsl(210 40% 98%)
+- sidebar-primary: hsl(165 100% 48%)
+- sidebar-primary-foreground: hsl(217 81% 8%)
+- sidebar-accent: hsl(216 40% 16%)
+- sidebar-accent-foreground: hsl(210 40% 98%)
+- sidebar-border: hsl(216 34% 22%)
+- sidebar-ring: hsl(165 100% 48%)
+
+Gradientes e sombras (CSS variables + utilities)
+- gradient-primary: linear-gradient(135deg, hsl(165 100% 48%), hsl(188 100% 46%))
+- gradient-accent: linear-gradient(135deg, hsl(216 40% 16%), hsl(216 65% 11%))
+- shadow-soft: var(--shadow-soft)
+- shadow-card: var(--shadow-card)
+- shadow-elevated: var(--shadow-elevated)
+- shadow-premium: var(--shadow-premium)
+- Preferir classes utilitárias existentes: shadow-soft, shadow-card, shadow-elevated, shadow-premium, gradient-primary, gradient-accent.
+
+Tipografia
+- Fonte de títulos: var(--font-display) = "Playfair Display"
+- Fonte do corpo: var(--font-body) = "Inter"
+- Headings (h1..h4) devem usar a família display; textos gerais devem usar a família body.
+- Padrão já existente: classes font-display e font-body.
+
+Raio de borda (border-radius)
+- Raio base do sistema: --radius = 0.625rem
+- Tailwind tokens:
+  - rounded-lg => var(--radius)
+  - rounded-md => calc(var(--radius) - 2px)
+  - rounded-sm => calc(var(--radius) - 4px)
+- Preferir rounded-lg em cards/containers e rounded-md em inputs/controles.
+
+Espaçamentos e grid
+- Preferir layouts com container central e respiro consistente (padrão recorrente: px-4, py-4/py-8, gap-3/gap-4/gap-6).
+- Cards e seções: usar border-border + bg-card, com padding 4–6 e espaçamento vertical com space-y-4/space-y-6.
+
+Componentes e estilo (padrão “Premium”)
+- Preferir componentes shadcn/ui existentes (Button, Card, Input, Label, Select, Dialog, Table, etc.).
+- Contornos e divisórias devem ser sutis: border-border, border-white/5 (quando em header pacta-bg), text-muted-foreground para secundário.
+- Estados (hover/focus):
+  - hover: leve aumento de contraste (ex.: hover:bg-white/5 em headers escuros)
+  - focus: ring com ring-ring / primary (não usar outline “padrão do browser”)
+- Ícones: lucide-react, tamanhos comuns w-4 h-4 (botões) e w-5/w-6 em headers.
+
+Regras do que NÃO fazer
+- Não introduzir paletas novas nem hex soltos em componentes (exceto casos já estabelecidos como o header pacta-bg).
+- Não usar fundo branco/claro para seções principais.
+- Não criar variações de radius e sombras fora das variáveis/tokens existentes.
+- Não inventar tipografia diferente: títulos sempre display, texto sempre body.

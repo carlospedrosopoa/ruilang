@@ -22,7 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Sparkles, Download, MoreHorizontal, ScrollText, Paperclip } from "lucide-react";
-import { tiposContrato, TipoContrato } from "@/types/contract";
+import { tiposContrato, TipoContrato, criarPessoaVazia } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
@@ -331,6 +331,35 @@ const PainelSubmissoes = () => {
           imovelDados = JSON.parse(imovelDados);
         } catch {}
       }
+
+      const { data: imovelExtra, error: imovelExtraError } = await supabase
+        .from("imoveis")
+        .select(
+          "vendedor_cliente_id, clientes(id, nome_completo, cpf, email, telefone, endereco, bairro, cidade, estado, cep, documento_tipo, documento_numero)",
+        )
+        .eq("id", imovelRef.id)
+        .maybeSingle();
+      if (imovelExtraError) throw imovelExtraError;
+
+      const cliente = (imovelExtra as any)?.clientes || null;
+      const vendedoresPrefill = (() => {
+        if (!cliente) return null;
+        const v = criarPessoaVazia();
+        v.nome = String(cliente?.nome_completo || "").trim();
+        v.cpf = String(cliente?.cpf || "").trim();
+        v.email = String(cliente?.email || "").trim() || undefined;
+        v.telefone = String(cliente?.telefone || "").trim() || undefined;
+        v.endereco = String(cliente?.endereco || "").trim();
+        v.bairro = String(cliente?.bairro || "").trim();
+        v.cidade = String(cliente?.cidade || "").trim();
+        v.estado = String(cliente?.estado || "").trim();
+        v.cep = String(cliente?.cep || "").trim();
+        const docTipo = String(cliente?.documento_tipo || "").toLowerCase();
+        if (docTipo === "rg" || docTipo === "cnh") v.documentoTipo = docTipo as any;
+        v.documentoNumero = String(cliente?.documento_numero || "").trim();
+        return [v];
+      })();
+
       const { data, error } = await supabase
         .from("submissions")
         .insert({
@@ -340,7 +369,7 @@ const PainelSubmissoes = () => {
           corretor_nome: corretor?.nome || null,
           corretor_telefone: corretor?.telefone || null,
           imovel_id: imovelRef.id,
-          dados: { imovel: imovelDados || {} } as any,
+          dados: { imovel: imovelDados || {}, ...(vendedoresPrefill ? { vendedores: vendedoresPrefill } : {}) } as any,
         } as any)
         .select()
         .single();
@@ -476,12 +505,19 @@ const PainelSubmissoes = () => {
     setProposalOpen(true);
     setProposalLoading(true);
     try {
+      const { data: fresh, error: freshErr } = await supabase
+        .from("submissions")
+        .select("dados, tipo_contrato, imobiliaria_id, imobiliarias(*)")
+        .eq("id", sub.id)
+        .single();
+      if (freshErr) throw freshErr;
+
       const { data, error } = await supabase.functions.invoke("generate-proposal", {
         body: {
-          dados: sub.dados,
-          tipoContrato: sub.tipo_contrato,
-          imobiliaria: sub.imobiliarias || currentImobiliaria || null,
-          imobiliariaId: (sub as any).imobiliaria_id || activeTenantId || null,
+          dados: (fresh as any)?.dados ?? sub.dados,
+          tipoContrato: String((fresh as any)?.tipo_contrato ?? sub.tipo_contrato),
+          imobiliaria: (fresh as any)?.imobiliarias || sub.imobiliarias || currentImobiliaria || null,
+          imobiliariaId: (fresh as any)?.imobiliaria_id || (sub as any).imobiliaria_id || activeTenantId || null,
         },
       });
       if (error) throw error;

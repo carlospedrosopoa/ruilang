@@ -45,7 +45,7 @@ const App = () => (
             <Route
               path="/contrato/:tipo"
               element={
-                <RequireAuth requirePlatformAdmin>
+                <RequireAuth>
                   <ContratoPage />
                 </RequireAuth>
               }
@@ -59,14 +59,6 @@ const App = () => (
                 </RequireAuth>
               }
             />
-            <Route
-              path="/contratos"
-              element={
-                <RequireAuth requirePlatformAdmin>
-                  <ContratosGeradosPage />
-                </RequireAuth>
-              }
-            />
             <Route path="/proposta/:token" element={<PropostaPage />} />
             <Route
               element={
@@ -76,6 +68,7 @@ const App = () => (
               }
             >
               <Route path="/painel" element={<PainelSubmissoes />} />
+              <Route path="/contratos" element={<ContratosGeradosPage />} />
               <Route path="/imoveis" element={<ImoveisPage />} />
               <Route path="/dashboard" element={<DashboardFluxoPage />} />
               <Route path="/clientes" element={<ClientesPage />} />
