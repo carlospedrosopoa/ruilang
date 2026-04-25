@@ -568,9 +568,15 @@ const ColetaPage = () => {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
-          <img src="/images/logo-sielichow.png" alt="Sielichow" className="h-9 w-auto" />
+          {imobiliaria?.logo_url ? (
+            <img src={imobiliaria.logo_url} alt={imobiliaria?.nome || "Imobiliária"} className="h-9 w-auto bg-white/10 rounded-md p-1 object-contain" />
+          ) : (
+            <div className="h-9 w-9 rounded-md bg-white/10 flex items-center justify-center text-primary-foreground font-bold">
+              {imobiliaria?.nome ? imobiliaria.nome.charAt(0).toUpperCase() : "I"}
+            </div>
+          )}
           <div>
-            <h1 className="font-display text-xl font-bold text-foreground">Coleta de Dados</h1>
+            <h1 className="font-display text-xl font-bold text-foreground">{imobiliaria?.nome || "Coleta de Dados"}</h1>
             <p className="text-xs text-muted-foreground">{tipoInfo?.nome || "Contrato"}</p>
           </div>
           {isSaving && (
