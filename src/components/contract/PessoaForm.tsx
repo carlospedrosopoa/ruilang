@@ -19,6 +19,7 @@ interface PessoaFormProps {
   index: number;
   isConjuge?: boolean;
   hideEstadoCivil?: boolean;
+  emailRequired?: boolean;
   onExtractFiles?: (files: File[]) => Promise<void> | void;
 }
 
@@ -50,7 +51,7 @@ function parseAddressParts(fullAddress: string) {
   return { bairro, cidade, estado, cep };
 }
 
-const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil, onExtractFiles }: PessoaFormProps) => {
+const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil, emailRequired, onExtractFiles }: PessoaFormProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [textDialogOpen, setTextDialogOpen] = useState(false);
@@ -420,8 +421,14 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
         </div>
 
         <div>
-          <Label>E-mail</Label>
-          <Input type="email" value={pessoa.email || ""} onChange={(e) => update("email", e.target.value)} placeholder="email@exemplo.com" />
+          <Label>E-mail{emailRequired ? " *" : ""}</Label>
+          <Input
+            type="email"
+            required={!!emailRequired}
+            value={pessoa.email || ""}
+            onChange={(e) => update("email", e.target.value)}
+            placeholder="email@exemplo.com"
+          />
         </div>
 
         <div>

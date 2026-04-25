@@ -8,12 +8,13 @@ interface StepCompradoresProps {
   onChange: (compradores: Pessoa[]) => void;
   titulo?: string;
   tituloPlural?: string;
+  emailRequired?: boolean;
   onExtractFiles?: (files: File[]) => Promise<void> | void;
 }
 
 const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
 
-const StepCompradores = ({ compradores, onChange, titulo = "Comprador", tituloPlural = "Comprador(es)", onExtractFiles }: StepCompradoresProps) => {
+const StepCompradores = ({ compradores, onChange, titulo = "Comprador", tituloPlural = "Comprador(es)", emailRequired, onExtractFiles }: StepCompradoresProps) => {
   const add = () => onChange([...compradores, criarPessoaVazia()]);
 
   const update = (index: number, pessoa: Pessoa) => {
@@ -105,6 +106,7 @@ const StepCompradores = ({ compradores, onChange, titulo = "Comprador", tituloPl
             index={index}
             isConjuge={!!comprador.conjugeDeId}
             hideEstadoCivil={!!comprador.conjugeDeId}
+            emailRequired={emailRequired}
             onExtractFiles={onExtractFiles}
           />
         );

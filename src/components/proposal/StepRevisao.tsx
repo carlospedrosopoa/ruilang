@@ -63,6 +63,7 @@ const StepRevisao = ({
                 )}
                 <Field label="Nome" value={v.nome} />
                 <Field label="CPF" value={v.cpf} />
+                <Field label="E-mail" value={v.email || ""} />
                 <Field label="Estado Civil" value={v.estadoCivil} />
                 <Field label="Endereço" value={`${v.endereco}, ${v.bairro} - ${v.cidade}/${v.estado}`} />
               </div>
@@ -79,6 +80,7 @@ const StepRevisao = ({
                 )}
                 <Field label="Nome" value={c.nome} />
                 <Field label="CPF" value={c.cpf} />
+                <Field label="E-mail" value={c.email || ""} />
                 <Field label="Estado Civil" value={c.estadoCivil} />
                 <Field label="Endereço" value={`${c.endereco}, ${c.bairro} - ${c.cidade}/${c.estado}`} />
               </div>

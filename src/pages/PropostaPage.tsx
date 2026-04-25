@@ -148,6 +148,34 @@ const PropostaPage = () => {
     pagamento,
   }), [vendedores, compradores, imovel, pagamento]);
 
+  const validateEmailsPartes = useCallback(() => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const missing: string[] = [];
+
+    let vendedorNum = 0;
+    for (const v of vendedores) {
+      if (!v.conjugeDeId) vendedorNum += 1;
+      const label = v.conjugeDeId ? `Cônjuge do Vendedor ${vendedorNum}` : `Vendedor ${vendedorNum}`;
+      const email = (v.email || "").trim();
+      if (!email || !emailRegex.test(email)) missing.push(label);
+    }
+
+    let compradorNum = 0;
+    for (const c of compradores) {
+      if (!c.conjugeDeId) compradorNum += 1;
+      const label = c.conjugeDeId ? `Cônjuge do Comprador ${compradorNum}` : `Comprador ${compradorNum}`;
+      const email = (c.email || "").trim();
+      if (!email || !emailRegex.test(email)) missing.push(label);
+    }
+
+    if (missing.length > 0) {
+      toast.error(`E-mail obrigatório (válido) em: ${missing.join(", ")}.`);
+      return false;
+    }
+
+    return true;
+  }, [vendedores, compradores]);
+
   const saveDraft = useCallback(async () => {
     if (!propostaId || !token) return;
     setIsSaving(true);
@@ -171,6 +199,7 @@ const PropostaPage = () => {
   }, [propostaId, corretorNome, corretorCreci, imobiliariaNome, getDados, documentos]);
 
   const next = async () => {
+    if (currentStep === 1 && !validateEmailsPartes()) return;
     setDirection("forward");
     setStepKey((k) => k + 1);
     setCurrentStep((s) => s + 1);
@@ -200,6 +229,7 @@ const PropostaPage = () => {
 
   const handleSubmit = async () => {
     if (!propostaId || !token) return;
+    if (!validateEmailsPartes()) return;
     setIsSaving(true);
     try {
       const { error } = await supabase.functions.invoke("public-proposta", {
@@ -227,6 +257,7 @@ const PropostaPage = () => {
   };
 
   const handleGenerateProposal = async () => {
+    if (!validateEmailsPartes()) return;
     setIsGeneratingProposal(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-proposal", {
@@ -447,9 +478,9 @@ const PropostaPage = () => {
       case 1:
         return (
           <div className="space-y-8">
-            <StepVendedores vendedores={vendedores} onChange={setVendedores} onExtractFiles={autoAttachExtractFiles} />
+            <StepVendedores vendedores={vendedores} onChange={setVendedores} emailRequired onExtractFiles={autoAttachExtractFiles} />
             <div className="border-t border-border pt-8">
-              <StepCompradores compradores={compradores} onChange={setCompradores} onExtractFiles={autoAttachExtractFiles} />
+              <StepCompradores compradores={compradores} onChange={setCompradores} emailRequired onExtractFiles={autoAttachExtractFiles} />
             </div>
           </div>
         );
