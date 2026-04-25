@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { BarChart3, Building2, ClipboardList, FileText, Home, LogOut, Settings, Users, UserCog } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, FileCheck, FileText, Home, LogOut, Settings, Users, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
 
-const navItems = [
+const tenantNavItems = [
   { to: "/painel", label: "Coletas", icon: ClipboardList },
   { to: "/imoveis", label: "Imóveis", icon: Home },
   { to: "/dashboard", label: "Dashboard", icon: BarChart3 },
@@ -18,13 +18,21 @@ const navItems = [
 export default function TenantLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { memberships, activeTenantId, setActiveTenantId, signOut } = useAuth();
+  const { memberships, activeTenantId, setActiveTenantId, signOut, isPlatformAdmin } = useAuth();
   const [logoBroken, setLogoBroken] = useState(false);
 
   const active = memberships.find((m) => m.tenantId === activeTenantId) || null;
   const tenantName = active?.tenant?.nome || "Imobiliária";
   const logoSrc = useMemo(() => "/images/logo-pactadoc.png", []);
   const goSettings = () => navigate("/configuracoes-imobiliaria");
+  const navItems = useMemo(() => {
+    if (!isPlatformAdmin) return tenantNavItems;
+    return [
+      ...tenantNavItems,
+      { to: "/contratos", label: "Contratos", icon: FileCheck },
+      { to: "/imobiliarias", label: "Imobiliárias", icon: Building2 },
+    ];
+  }, [isPlatformAdmin]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -136,6 +144,16 @@ export default function TenantLayout() {
                 </button>
               )}
             </div>
+            {isPlatformAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/")}
+                className="text-slate-300/70 hover:text-slate-100 hover:bg-white/5"
+              >
+                Área Admin
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => signOut()}>
               <LogOut className="w-4 h-4 mr-1.5" />
               <span className="hidden sm:inline">Sair</span>

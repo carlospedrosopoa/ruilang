@@ -198,6 +198,15 @@ const PropostaPage = () => {
     }
   }, [propostaId, corretorNome, corretorCreci, imobiliariaNome, getDados, documentos]);
 
+  const handleManualSave = useCallback(async () => {
+    try {
+      await saveDraft();
+      toast.success("Rascunho salvo.");
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao salvar rascunho.");
+    }
+  }, [saveDraft]);
+
   const next = async () => {
     if (currentStep === 1 && !validateEmailsPartes()) return;
     setDirection("forward");
@@ -519,11 +528,38 @@ const PropostaPage = () => {
             <h1 className="font-display text-lg font-bold text-primary-foreground">Proposta Imobiliária</h1>
             <p className="text-[10px] text-primary-foreground/60 font-medium">{corretorNome} • CRECI {corretorCreci}</p>
           </div>
-          {isSaving && (
-            <div className="ml-auto flex items-center gap-1 text-xs text-primary-foreground/50">
-              <Loader2 className="w-3 h-3 animate-spin" /> Salvando...
-            </div>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            {currentStep > 0 && (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleManualSave}
+                  disabled={isSaving}
+                  className="bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/15"
+                >
+                  {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : "Salvar"}
+                </Button>
+                {currentStep !== 5 && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      try { await saveDraft(); } catch {}
+                      setDirection("forward");
+                      setStepKey((k) => k + 1);
+                      setCurrentStep(5);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    disabled={isSaving}
+                    className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+                  >
+                    Ir para enviar
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </header>
 
