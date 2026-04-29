@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 type Membership = {
   tenantId: string;
   role: string;
-  tenant?: { id: string; nome: string; logo_url?: string | null } | null;
+  tenant?: { id: string; nome: string } | null;
 };
 
 type AuthContextValue = {
@@ -29,37 +29,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
-    let currentUserId: string | null = null;
 
     const load = async (nextSession: Session | null) => {
       if (!isMounted) return;
       setSession(nextSession);
+      setIsPlatformAdmin(false);
+      setMemberships([]);
+      setActiveTenantId(null);
 
-      const nextUserId = nextSession?.user?.id || null;
-
-      if (!nextUserId) {
-        setIsPlatformAdmin(false);
-        setMemberships([]);
-        setActiveTenantId(null);
-        currentUserId = null;
+      if (!nextSession?.user) {
         setLoading(false);
         return;
       }
 
-      if (nextUserId !== currentUserId) {
-        setIsPlatformAdmin(false);
-        setMemberships([]);
-        setActiveTenantId(null);
-      }
-
-      currentUserId = nextUserId;
+      const userId = nextSession.user.id;
 
       const [{ data: adminRow }, { data: memberRows }] = await Promise.all([
-        supabase.from("platform_admins").select("user_id").eq("user_id", nextUserId).maybeSingle(),
+        supabase.from("platform_admins").select("user_id").eq("user_id", userId).maybeSingle(),
         supabase
           .from("tenant_members")
-          .select("tenant_id, role, imobiliarias(id, nome, logo_url)")
-          .eq("user_id", nextUserId),
+          .select("tenant_id, role, imobiliarias(id, nome)")
+          .eq("user_id", userId),
       ]);
 
       if (!isMounted) return;
@@ -75,10 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })) || [];
 
       setMemberships(mapped);
-      setActiveTenantId((prev) => {
-        if (prev && mapped.some((m) => m.tenantId === prev)) return prev;
-        return mapped[0]?.tenantId || null;
-      });
+      setActiveTenantId(mapped[0]?.tenantId || null);
       setLoading(false);
     };
 

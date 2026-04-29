@@ -252,6 +252,7 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
+          imobiliaria_id: string | null
           instructions_ia: string | null
           model: string | null
           perfil: string
@@ -265,6 +266,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          imobiliaria_id?: string | null
           instructions_ia?: string | null
           model?: string | null
           perfil: string
@@ -278,6 +280,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          imobiliaria_id?: string | null
           instructions_ia?: string | null
           model?: string | null
           perfil?: string
@@ -287,7 +290,15 @@ export type Database = {
           updated_at?: string
           version?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "contract_templates_imobiliaria_id_fkey"
+            columns: ["imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       imobiliarias: {
         Row: {
@@ -366,6 +377,32 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      platform_settings: {
+        Row: {
+          defaults_imobiliaria_id: string | null
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          defaults_imobiliaria_id?: string | null
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          defaults_imobiliaria_id?: string | null
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_settings_defaults_imobiliaria_id_fkey"
+            columns: ["defaults_imobiliaria_id"]
+            isOneToOne: false
+            referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       propostas: {
         Row: {
@@ -672,6 +709,7 @@ export type Database = {
       tipos_contrato: {
         Row: {
           ativo: boolean
+          codigo: string
           created_at: string
           created_by: string | null
           descricao: string | null
@@ -686,6 +724,7 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          codigo?: string
           created_at?: string
           created_by?: string | null
           descricao?: string | null
@@ -700,6 +739,7 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          codigo?: string
           created_at?: string
           created_by?: string | null
           descricao?: string | null
@@ -769,6 +809,7 @@ export type Database = {
       perfis_contrato: {
         Row: {
           ativo: boolean
+          codigo: string
           created_at: string
           created_by: string | null
           descricao: string | null
@@ -777,10 +818,12 @@ export type Database = {
           imobiliaria_id: string
           instructions_ia: string | null
           nome: string
+          tipo_contrato_id: string
           updated_at: string
         }
         Insert: {
           ativo?: boolean
+          codigo?: string
           created_at?: string
           created_by?: string | null
           descricao?: string | null
@@ -789,10 +832,12 @@ export type Database = {
           imobiliaria_id: string
           instructions_ia?: string | null
           nome: string
+          tipo_contrato_id: string
           updated_at?: string
         }
         Update: {
           ativo?: boolean
+          codigo?: string
           created_at?: string
           created_by?: string | null
           descricao?: string | null
@@ -801,6 +846,7 @@ export type Database = {
           imobiliaria_id?: string
           instructions_ia?: string | null
           nome?: string
+          tipo_contrato_id?: string
           updated_at?: string
         }
         Relationships: [
@@ -809,6 +855,13 @@ export type Database = {
             columns: ["imobiliaria_id"]
             isOneToOne: false
             referencedRelation: "imobiliarias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "perfis_contrato_tipo_contrato_id_fkey"
+            columns: ["tipo_contrato_id"]
+            isOneToOne: false
+            referencedRelation: "tipos_contrato"
             referencedColumns: ["id"]
           },
         ]

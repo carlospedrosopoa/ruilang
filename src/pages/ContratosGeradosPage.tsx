@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/auth/AuthProvider";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ type SubmissionRow = {
 
 const ContratosGeradosPage = () => {
   const navigate = useNavigate();
+  const { isPlatformAdmin, activeTenantId, memberships } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -47,25 +49,35 @@ const ContratosGeradosPage = () => {
   const [editing, setEditing] = useState<SubmissionRow | null>(null);
   const [minutaText, setMinutaText] = useState("");
   const [isExportingDocx, setIsExportingDocx] = useState(false);
+  const canEditMinuta = isPlatformAdmin;
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const imobPromise = supabase.from("imobiliarias").select("id, nome").order("nome");
+      const imobPromise = isPlatformAdmin
+        ? supabase.from("imobiliarias").select("id, nome").order("nome")
+        : Promise.resolve({
+            data: (memberships || [])
+              .map((m) => (m.tenant ? { id: m.tenant.id, nome: m.tenant.nome } : null))
+              .filter(Boolean) as Imobiliaria[],
+            error: null,
+          });
       const selectFull =
         "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at, contract_texto, contract_texto_updated_at, dados";
       const selectFallback = "id, tipo_contrato, imobiliaria_id, corretor_nome, status, created_at, contract_generated_at, dados";
 
-      const [imobRes, firstTry] = await Promise.all([
-        imobPromise,
-        supabase.from("submissions").select(selectFull).order("created_at", { ascending: false }).limit(2000),
-      ]);
+      let subsQuery = supabase.from("submissions").select(selectFull).order("created_at", { ascending: false }).limit(2000);
+      if (!isPlatformAdmin && activeTenantId) subsQuery = subsQuery.eq("imobiliaria_id", activeTenantId);
+
+      const [imobRes, firstTry] = await Promise.all([imobPromise as any, subsQuery]);
 
       let subsData = firstTry.data as any[] | null;
       if (firstTry.error) {
         const msg = String((firstTry.error as any)?.message || "");
         if (msg.toLowerCase().includes("contract_texto")) {
-          const retry = await supabase.from("submissions").select(selectFallback).order("created_at", { ascending: false }).limit(2000);
+          let retryQuery = supabase.from("submissions").select(selectFallback).order("created_at", { ascending: false }).limit(2000);
+          if (!isPlatformAdmin && activeTenantId) retryQuery = retryQuery.eq("imobiliaria_id", activeTenantId);
+          const retry = await retryQuery;
           subsData = retry.data as any[] | null;
         } else {
           toast.error(msg || "Erro ao carregar contratos.");
@@ -90,7 +102,11 @@ const ContratosGeradosPage = () => {
       setLoading(false);
     };
     load();
-  }, []);
+  }, [isPlatformAdmin, activeTenantId, memberships]);
+
+  useEffect(() => {
+    if (!isPlatformAdmin && activeTenantId) setFilterImobiliaria(activeTenantId);
+  }, [isPlatformAdmin, activeTenantId]);
 
   const imobiliariaById = useMemo(() => {
     const map = new Map<string, string>();
@@ -101,7 +117,8 @@ const ContratosGeradosPage = () => {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (filterImobiliaria !== "all" && r.imobiliaria_id !== filterImobiliaria) return false;
+      if (!isPlatformAdmin && activeTenantId && r.imobiliaria_id !== activeTenantId) return false;
+      if (isPlatformAdmin && filterImobiliaria !== "all" && r.imobiliaria_id !== filterImobiliaria) return false;
       if (filterStatus !== "all" && r.status !== filterStatus) return false;
       if (!q) return true;
       const hay = [
@@ -116,7 +133,7 @@ const ContratosGeradosPage = () => {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, filterImobiliaria, filterStatus, search, imobiliariaById]);
+  }, [rows, filterImobiliaria, filterStatus, search, imobiliariaById, isPlatformAdmin, activeTenantId]);
 
   useEffect(() => {
     setPage(1);
@@ -144,8 +161,20 @@ const ContratosGeradosPage = () => {
     return `${start}–${end}`;
   }, [filtered.length, pageSizeNumber, safePage]);
 
+  const canOpenWizardRow = (r: SubmissionRow) => {
+    if (isPlatformAdmin) return true;
+    if (!activeTenantId) return false;
+    return r.imobiliaria_id === activeTenantId;
+  };
+
   const openWizard = (r: SubmissionRow) => {
+    if (!canOpenWizardRow(r)) return;
     navigate(`/contrato/${r.tipo_contrato}?submissionId=${r.id}`);
+  };
+
+  const openWizardEdit = (r: SubmissionRow) => {
+    if (!canOpenWizardRow(r)) return;
+    navigate(`/contrato/${r.tipo_contrato}?submissionId=${r.id}&new=1`);
   };
 
   const handleEditMinutaClick = (r: SubmissionRow) => {
@@ -153,7 +182,7 @@ const ContratosGeradosPage = () => {
       openEditor(r);
       return;
     }
-    toast.error("Este contrato ainda não tem minuta salva. Clique em “Abrir formulário” e gere a minuta primeiro.");
+    toast.error("Este contrato ainda não tem minuta salva. Abra o formulário e gere a minuta primeiro.");
   };
 
   const openEditor = (r: SubmissionRow) => {
@@ -163,6 +192,7 @@ const ContratosGeradosPage = () => {
   };
 
   const saveEditor = async () => {
+    if (!canEditMinuta) return;
     if (!editing) return;
     const text = minutaText.trim();
     if (!text) {
@@ -219,8 +249,20 @@ const ContratosGeradosPage = () => {
     if (!editing || !minutaText.trim()) return;
     setIsExportingDocx(true);
     try {
+      let tipoContratoNome: string | null = null;
+      if (editing.imobiliaria_id) {
+        const { data: tipoRow } = await supabase
+          .from("tipos_contrato")
+          .select("nome")
+          .eq("imobiliaria_id", editing.imobiliaria_id)
+          .eq("codigo", editing.tipo_contrato)
+          .maybeSingle();
+        const nm = String((tipoRow as any)?.nome || "").trim();
+        if (nm) tipoContratoNome = nm;
+      }
+
       const { data, error } = await supabase.functions.invoke("generate-docx", {
-        body: { minuta: minutaText, tipoContrato: editing.tipo_contrato },
+        body: { minuta: minutaText, tipoContrato: editing.tipo_contrato, tipoContratoNome, format: "visual_law" },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -254,23 +296,23 @@ const ContratosGeradosPage = () => {
   };
 
   return (
-    <div className="w-full space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-primary" />
-          <h2 className="font-display text-2xl font-bold text-foreground">Contratos</h2>
+          <h1 className="font-display text-2xl font-bold text-foreground">Contratos</h1>
           <Badge variant="secondary">{filtered.length}</Badge>
         </div>
       </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2">
-            <Label>Buscar</Label>
-            <div className="relative">
-              <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" placeholder="ID, partes, corretor, tipo, imobiliária..." />
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-2">
+          <Label>Buscar</Label>
+          <div className="relative">
+            <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" placeholder="ID, partes, corretor, tipo, imobiliária..." />
           </div>
+        </div>
+        {isPlatformAdmin ? (
           <div>
             <Label>Imobiliária</Label>
             <Select value={filterImobiliaria} onValueChange={setFilterImobiliaria}>
@@ -283,178 +325,185 @@ const ContratosGeradosPage = () => {
               </SelectContent>
             </Select>
           </div>
-        </div>
+        ) : null}
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <Label>Status</Label>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="rascunho">Rascunho</SelectItem>
-                <SelectItem value="enviado">Enviado</SelectItem>
-                <SelectItem value="contrato_gerado">Contrato gerado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Itens por página</Label>
-            <Select value={pageSize} onValueChange={setPageSize}>
-              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-                <SelectItem value="200">200</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <Label>Status</Label>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="rascunho">Rascunho</SelectItem>
+              <SelectItem value="enviado">Enviado</SelectItem>
+              <SelectItem value="contrato_gerado">Contrato gerado</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+        <div>
+          <Label>Itens por página</Label>
+          <Select value={pageSize} onValueChange={setPageSize}>
+            <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="25">25</SelectItem>
+              <SelectItem value="50">50</SelectItem>
+              <SelectItem value="100">100</SelectItem>
+              <SelectItem value="200">200</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-        <div className="border border-border rounded-xl bg-card shadow-sm overflow-hidden">
-          <div className="max-h-[65vh] overflow-auto">
-            {loading ? (
-              <div className="flex justify-center py-16">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
+      <div className="border border-border rounded-xl bg-card shadow-sm overflow-hidden">
+        <div className="max-h-[65vh] overflow-auto">
+          {loading ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="sticky left-0 z-20 bg-card">Ações</TableHead>
+                  <TableHead>ID</TableHead>
+                  {isPlatformAdmin ? <TableHead>Imobiliária</TableHead> : null}
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Criado em</TableHead>
+                  <TableHead>Partes</TableHead>
+                  <TableHead>Corretor</TableHead>
+                  <TableHead>Gerado em</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginated.length === 0 ? (
                   <TableRow>
-                    <TableHead className="sticky left-0 z-20 bg-card">Ações</TableHead>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Imobiliária</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Criado em</TableHead>
-                    <TableHead>Partes</TableHead>
-                    <TableHead>Corretor</TableHead>
-                    <TableHead>Gerado em</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableCell colSpan={isPlatformAdmin ? 9 : 8} className="text-center py-10 text-sm text-muted-foreground">
+                      Nenhum contrato encontrado.
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginated.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center py-10 text-sm text-muted-foreground">
-                        Nenhum contrato encontrado.
+                ) : (
+                  paginated.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="sticky left-0 z-10 bg-card">
+                        <div className="flex gap-2 flex-wrap">
+                          {canOpenWizardRow(r) ? (
+                            <Button size="sm" variant="outline" onClick={() => openWizardEdit(r)}>
+                              <FileText className="w-4 h-4 mr-1.5" />
+                              {r.contract_texto?.trim() ? "Editar dados" : "Abrir formulário"}
+                            </Button>
+                          ) : null}
+                          <Button size="sm" onClick={() => handleEditMinutaClick(r)} disabled={!r.contract_texto?.trim()}>
+                            <Pencil className="w-4 h-4 mr-1.5" />
+                            Minuta
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{r.id.slice(0, 8)}</TableCell>
+                      {isPlatformAdmin ? (
+                        <TableCell className="text-sm">{r.imobiliaria_id ? (imobiliariaById.get(r.imobiliaria_id) || "-") : "-"}</TableCell>
+                      ) : null}
+                      <TableCell className="text-sm">{r.tipo_contrato}</TableCell>
+                      <TableCell className="text-sm">
+                        {r.created_at ? format(parseISO(r.created_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "-"}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="space-y-1">
+                          <div className="truncate max-w-[220px]">
+                            <span className="text-muted-foreground">1ª parte:</span> {r.vendedor_nome || "-"}
+                          </div>
+                          <div className="truncate max-w-[220px]">
+                            <span className="text-muted-foreground">2ª parte:</span> {r.comprador_nome || "-"}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">{r.corretor_nome || "-"}</TableCell>
+                      <TableCell className="text-sm">
+                        {r.contract_generated_at ? format(parseISO(r.contract_generated_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge variant="secondary">{r.status}</Badge>
+                          <Badge variant={r.contract_texto ? "default" : "outline"}>
+                            {r.contract_texto ? "Com minuta" : "Sem minuta"}
+                          </Badge>
+                          {r.contract_texto_updated_at ? (
+                            <Badge variant="outline">
+                              Editado {format(parseISO(r.contract_texto_updated_at), "dd/MM/yy", { locale: ptBR })}
+                            </Badge>
+                          ) : null}
+                        </div>
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    paginated.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="sticky left-0 z-10 bg-card">
-                          <div className="flex gap-2 flex-wrap">
-                            <Button size="sm" variant="outline" onClick={() => openWizard(r)}>
-                              <FileText className="w-4 h-4 mr-1.5" />
-                              Abrir
-                            </Button>
-                            <Button size="sm" onClick={() => handleEditMinutaClick(r)} disabled={!r.contract_texto?.trim()}>
-                              <Pencil className="w-4 h-4 mr-1.5" />
-                              Minuta
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">{r.id.slice(0, 8)}</TableCell>
-                        <TableCell className="text-sm">{r.imobiliaria_id ? (imobiliariaById.get(r.imobiliaria_id) || "-") : "-"}</TableCell>
-                        <TableCell className="text-sm">{r.tipo_contrato}</TableCell>
-                        <TableCell className="text-sm">
-                          {r.created_at ? format(parseISO(r.created_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "-"}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          <div className="space-y-1">
-                            <div className="truncate max-w-[220px]">
-                              <span className="text-muted-foreground">1ª parte:</span> {r.vendedor_nome || "-"}
-                            </div>
-                            <div className="truncate max-w-[220px]">
-                              <span className="text-muted-foreground">2ª parte:</span> {r.comprador_nome || "-"}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">{r.corretor_nome || "-"}</TableCell>
-                        <TableCell className="text-sm">
-                          {r.contract_generated_at ? format(parseISO(r.contract_generated_at), "dd/MM/yy HH:mm", { locale: ptBR }) : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2 flex-wrap">
-                            <Badge variant="secondary">{r.status}</Badge>
-                            <Badge variant={r.contract_texto ? "default" : "outline"}>
-                              {r.contract_texto ? "Com minuta" : "Sem minuta"}
-                            </Badge>
-                            {r.contract_texto_updated_at ? (
-                              <Badge variant="outline">
-                                Editado {format(parseISO(r.contract_texto_updated_at), "dd/MM/yy", { locale: ptBR })}
-                              </Badge>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            )}
-          </div>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </div>
+      </div>
 
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-sm text-muted-foreground">
-            Mostrando {pageRangeLabel} de {filtered.length}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1}>
-              Anterior
-            </Button>
-            <Badge variant="secondary">
-              Página {safePage} / {totalPages}
-            </Badge>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage >= totalPages}
-            >
-              Próximo
-            </Button>
-          </div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-sm text-muted-foreground">
+          Mostrando {pageRangeLabel} de {filtered.length}
         </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1}>
+            Anterior
+          </Button>
+          <Badge variant="secondary">
+            Página {safePage} / {totalPages}
+          </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+          >
+            Próximo
+          </Button>
+        </div>
+      </div>
 
-        <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-          <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle>Editar Contrato</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto pr-1">
-              <div className="space-y-3">
-                <Textarea value={minutaText} onChange={(e) => setMinutaText(e.target.value)} className="min-h-[420px]" />
-              </div>
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{canEditMinuta ? "Editar Contrato" : "Contrato"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="space-y-3">
+              <Textarea value={minutaText} readOnly={!canEditMinuta} onChange={(e) => setMinutaText(e.target.value)} className="min-h-[420px]" />
             </div>
-            <div className="pt-4 flex items-center justify-between gap-2 border-t border-border flex-wrap">
-              <div className="flex gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={handleCopy} disabled={!minutaText.trim()}>
-                  <Copy className="w-4 h-4 mr-1.5" />
-                  Copiar
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleDownloadTxt} disabled={!minutaText.trim()}>
-                  <Download className="w-4 h-4 mr-1.5" />
-                  .txt
-                </Button>
-                <Button size="sm" onClick={handleDownloadDocx} disabled={!minutaText.trim() || isExportingDocx}>
-                  {isExportingDocx ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileDown className="w-4 h-4 mr-1.5" />}
-                  {isExportingDocx ? "Gerando..." : "Baixar .docx"}
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setEditorOpen(false)} disabled={saving}>
-                  Cancelar
-                </Button>
+          </div>
+          <div className="pt-4 flex items-center justify-between gap-2 border-t border-border flex-wrap">
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={handleCopy} disabled={!minutaText.trim()}>
+                <Copy className="w-4 h-4 mr-1.5" />
+                Copiar
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDownloadTxt} disabled={!minutaText.trim()}>
+                <Download className="w-4 h-4 mr-1.5" />
+                .txt
+              </Button>
+              <Button size="sm" onClick={handleDownloadDocx} disabled={!minutaText.trim() || isExportingDocx}>
+                {isExportingDocx ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileDown className="w-4 h-4 mr-1.5" />}
+                {isExportingDocx ? "Gerando..." : "Baixar .docx"}
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEditorOpen(false)} disabled={saving}>
+                Cancelar
+              </Button>
+              {canEditMinuta ? (
                 <Button onClick={saveEditor} disabled={saving || !minutaText.trim()}>
                   {saving ? "Salvando..." : "Salvar"}
                 </Button>
-              </div>
+              ) : null}
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

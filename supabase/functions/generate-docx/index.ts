@@ -18,6 +18,12 @@ import {
   BorderStyle,
   TabStopType,
   TabStopPosition,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  ShadingType,
+  VerticalAlign,
 } from "https://esm.sh/docx@9.5.0";
 
 // ═══════════════════════════════════════════════════════
@@ -81,7 +87,7 @@ function getTipoLabel(tipo?: string): string {
   return labels[tipo || ""] || "MINUTA CONTRATUAL";
 }
 
-function buildDocx(minuta: string, tipoContrato?: string) {
+function buildDocxAbnt(minuta: string, tipoContrato?: string) {
   const cleaned = stripMarkdown(minuta);
   const lines = cleaned.split("\n");
   const children: any[] = [];
@@ -353,13 +359,447 @@ function buildDocx(minuta: string, tipoContrato?: string) {
   return doc;
 }
 
+const VL_FONT = "Times New Roman";
+const VL_BODY_PT = 11;
+const VL_BODY_SIZE = VL_BODY_PT * 2;
+const VL_TITLE_PT = 16;
+const VL_TITLE_SIZE = VL_TITLE_PT * 2;
+const VL_SMALL_PT = 9;
+const VL_SMALL_SIZE = VL_SMALL_PT * 2;
+const VL_LINE_SPACING = 276;
+const VL_PARA_AFTER = 120;
+const VL_SECTION_BEFORE = 240;
+const VL_SECTION_AFTER = 160;
+const VL_MARGIN_TOP = 1440;
+const VL_MARGIN_BOTTOM = 1440;
+const VL_MARGIN_LEFT = 1440;
+const VL_MARGIN_RIGHT = 1440;
+const VL_BLUE = "1F4E79";
+const VL_LIGHT_GRAY = "F2F2F2";
+const VL_LIGHT_BLUE = "DDEBF7";
+const VL_GRAY = "666666";
+const VL_GRAY_LIGHT = "999999";
+
+function isAllCapsHeading(trimmed: string) {
+  return (
+    trimmed === trimmed.toUpperCase() &&
+    trimmed.length > 3 &&
+    trimmed.length < 120 &&
+    !trimmed.startsWith("R$") &&
+    !trimmed.startsWith("§") &&
+    /[A-ZÀ-Ú]/.test(trimmed)
+  );
+}
+
+function makeRuleParagraph() {
+  return new Paragraph({
+    spacing: { before: 80, after: 220 },
+    border: {
+      bottom: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE, space: 2 },
+    },
+  });
+}
+
+function isEmentaHeading(trimmed: string) {
+  const normalized = trimmed.replace(/[.\-:]/g, "").replace(/\s+/g, "").toUpperCase();
+  return normalized === "EMENTA";
+}
+
+function stripEmentaPrefix(original: string) {
+  const m = original.match(/^\s*(E\s*M\s*E\s*N\s*T\s*A|EMENTA)\s*[:\-]?\s*/i);
+  if (!m) return original.trim();
+  return original.slice(m[0].length).trim();
+}
+
+function normalizeHeadingKey(input: string) {
+  try {
+    return input
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .replace(/[^A-Za-z0-9]/g, "")
+      .toUpperCase();
+  } catch {
+    return input.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  }
+}
+
+const VL_SKIP_TOP_HEADINGS = new Set([
+  "MINUTA",
+  "MINUTACONTRATUAL",
+  "CONTRATOPARTICULARDE",
+  "PROMESSADECOMPRAEVENDA",
+  "PROMESSADECOMPRAEVENDADEIMOVEL",
+  "COMINTERMEDIACAOIMOBILIARIA",
+  "CONTRATOPARTICULARDEPROMESSADECOMPRAEVENDADEIMOVEL",
+]);
+
+function isSignatureStartKey(key: string) {
+  return (
+    key.startsWith("VENDEDOR") ||
+    key.startsWith("COMPRADOR") ||
+    key.startsWith("CONJUGE") ||
+    key.startsWith("TESTEMUNHA") ||
+    key.startsWith("IMOBILIARIAINTERMEDIADORA") ||
+    key.startsWith("REPRESENTANTE") ||
+    key === "ASSINATURAS" ||
+    key.startsWith("ASSINATURA")
+  );
+}
+
+function makeVisualSignatureCell(title: string) {
+  return new TableCell({
+    verticalAlign: VerticalAlign.CENTER,
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 260, after: 70, line: VL_LINE_SPACING },
+        children: [new TextRun({ text: "__________________________________", size: VL_BODY_SIZE, font: VL_FONT, color: VL_BLUE })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 60, line: VL_LINE_SPACING },
+        children: [new TextRun({ text: title, bold: true, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_BLUE })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 0, line: VL_LINE_SPACING },
+        children: [new TextRun({ text: "Nome:", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY_LIGHT })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 0, line: VL_LINE_SPACING },
+        children: [new TextRun({ text: "CPF:", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY_LIGHT })],
+      }),
+    ],
+  });
+}
+
+function normalizeTipoTitle(input: string) {
+  const base = input.trim();
+  if (!base) return "";
+  const upper = base.toUpperCase();
+  const normalized = normalizeHeadingKey(upper);
+  const promessaKey = normalizeHeadingKey("PROMESSA DE COMPRA E VENDA");
+  const imovelKey = normalizeHeadingKey("IMÓVEL");
+  if (normalized.includes(promessaKey) && !normalized.includes(imovelKey)) return `${upper} DE IMÓVEL`;
+  return upper;
+}
+
+function buildDocxVisualLaw(minuta: string, tipoContrato?: string, tipoContratoNome?: string | null) {
+  const cleaned = stripMarkdown(minuta);
+  const lines = cleaned.split("\n");
+  const children: any[] = [];
+
+  const hasIntermediacao = (() => {
+    for (let idx = 0; idx < Math.min(lines.length, 30); idx++) {
+      const t = String(lines[idx] || "").trim();
+      if (!t) continue;
+      if (normalizeHeadingKey(t) === "COMINTERMEDIACAOIMOBILIARIA") return true;
+    }
+    return false;
+  })();
+
+  const tipoLabel = getTipoLabel(tipoContrato);
+  const tituloPrincipal =
+    tipoContrato === "promessa_compra_venda"
+      ? "PROMESSA DE COMPRA E VENDA DE IMÓVEL"
+      : typeof tipoContratoNome === "string" && tipoContratoNome.trim()
+        ? normalizeTipoTitle(tipoContratoNome)
+        : tipoLabel;
+
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 60, line: VL_LINE_SPACING },
+      children: [new TextRun({ text: "CONTRATO PARTICULAR DE", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY })],
+    })
+  );
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 40, line: VL_LINE_SPACING },
+      children: [new TextRun({ text: tituloPrincipal, bold: true, size: VL_TITLE_SIZE, font: VL_FONT, color: VL_BLUE })],
+    })
+  );
+  if (tipoContrato === "promessa_compra_venda" || hasIntermediacao) {
+    children.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 0, after: 140, line: VL_LINE_SPACING },
+        children: [new TextRun({ text: "com Intermediação Imobiliária", italics: true, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_BLUE })],
+      })
+    );
+  } else {
+    children.push(new Paragraph({ spacing: { after: 140 } }));
+  }
+  children.push(makeRuleParagraph());
+
+  let i = 0;
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+
+    if (!trimmed) {
+      children.push(new Paragraph({ spacing: { after: 80 } }));
+      i++;
+      continue;
+    }
+
+    const key = normalizeHeadingKey(trimmed);
+    if (i < 12 && VL_SKIP_TOP_HEADINGS.has(key)) {
+      i++;
+      continue;
+    }
+
+    const signatureWindowStart = Math.max(12, lines.length - 120);
+    if (i >= signatureWindowStart && isSignatureStartKey(key)) {
+      break;
+    }
+
+    if (isEmentaHeading(trimmed)) {
+      const ementaParts: string[] = [];
+      const afterLabel = stripEmentaPrefix(lines[i]);
+      if (afterLabel) ementaParts.push(afterLabel);
+      i++;
+      while (i < lines.length) {
+        const nextTrimmed = lines[i].trim();
+        if (!nextTrimmed) break;
+        if (/^CL[ÁA]USULA\s/i.test(nextTrimmed)) break;
+        if (isAllCapsHeading(nextTrimmed)) break;
+        ementaParts.push(nextTrimmed);
+        i++;
+      }
+      const ementaText = ementaParts.join(" ").trim();
+
+      children.push(
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [
+            new TableRow({
+              children: [
+                new TableCell({
+                  shading: { type: ShadingType.CLEAR, color: "auto", fill: VL_LIGHT_BLUE },
+                  children: [
+                    new Paragraph({
+                      spacing: { before: 120, after: 80, line: VL_LINE_SPACING },
+                      children: [new TextRun({ text: "E M E N T A", bold: true, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_BLUE })],
+                    }),
+                    new Paragraph({
+                      alignment: AlignmentType.JUSTIFIED,
+                      spacing: { after: 120, line: VL_LINE_SPACING },
+                      children: [new TextRun({ text: ementaText, size: VL_BODY_SIZE, font: VL_FONT })],
+                    }),
+                  ],
+                  margins: { top: 120, bottom: 120, left: 200, right: 200 },
+                  borders: {
+                    top: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE },
+                    bottom: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE },
+                    left: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE },
+                    right: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE },
+                  },
+                }),
+              ],
+            }),
+          ],
+        })
+      );
+      children.push(new Paragraph({ spacing: { after: 200 } }));
+      continue;
+    }
+
+    const isClauseHeader = /^CL[ÁA]USULA\s/i.test(trimmed);
+    if (isClauseHeader) {
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.LEFT,
+          spacing: { before: VL_SECTION_BEFORE, after: VL_SECTION_AFTER, line: VL_LINE_SPACING },
+          border: {
+            left: { style: BorderStyle.SINGLE, size: 14, color: VL_BLUE, space: 6 },
+          },
+          indent: { left: 200 },
+          children: [new TextRun({ text: trimmed, bold: true, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_BLUE })],
+        })
+      );
+      i++;
+      continue;
+    }
+
+    if (isAllCapsHeading(trimmed)) {
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.LEFT,
+          spacing: { before: VL_SECTION_BEFORE, after: 80, line: VL_LINE_SPACING },
+          children: [new TextRun({ text: trimmed, bold: true, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_BLUE })],
+        })
+      );
+      children.push(
+        new Paragraph({
+          spacing: { before: 0, after: 160 },
+          border: {
+            bottom: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE, space: 2 },
+          },
+        })
+      );
+      i++;
+      continue;
+    }
+
+    const romanMatch = trimmed.match(/^([IVXLC]+)\s*[-–.]\s*(.*)$/);
+    if (romanMatch) {
+      const numeral = romanMatch[1];
+      const rest = romanMatch[2] || "";
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          spacing: { after: VL_PARA_AFTER, line: VL_LINE_SPACING },
+          indent: { left: 360, hanging: 360 },
+          children: [
+            new TextRun({ text: `${numeral} — `, bold: true, size: VL_BODY_SIZE, font: VL_FONT, color: VL_BLUE }),
+            new TextRun({ text: rest, size: VL_BODY_SIZE, font: VL_FONT }),
+          ],
+        })
+      );
+      i++;
+      continue;
+    }
+
+    const paragrafoUnicoMatch = trimmed.match(/^Par[aá]grafo\s+único\.\s*(.*)$/i);
+    if (paragrafoUnicoMatch) {
+      const rest = paragrafoUnicoMatch[1] || "";
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          spacing: { after: VL_PARA_AFTER, line: VL_LINE_SPACING },
+          children: [
+            new TextRun({ text: "Parágrafo único.", bold: true, size: VL_BODY_SIZE, font: VL_FONT, color: VL_BLUE }),
+            new TextRun({ text: rest ? ` ${rest}` : "", italics: true, size: VL_BODY_SIZE, font: VL_FONT }),
+          ],
+        })
+      );
+      i++;
+      continue;
+    }
+
+    const isSubItem = /^[§]/.test(trimmed) || /^[a-z]\)/.test(trimmed) || /^[0-9]+\.[0-9]+\.?/.test(trimmed);
+    if (isSubItem) {
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          spacing: { after: VL_PARA_AFTER, line: VL_LINE_SPACING },
+          indent: { left: 360 },
+          children: [new TextRun({ text: trimmed, size: VL_BODY_SIZE, font: VL_FONT })],
+        })
+      );
+      i++;
+      continue;
+    }
+
+    children.push(
+      new Paragraph({
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { after: VL_PARA_AFTER, line: VL_LINE_SPACING },
+        children: [new TextRun({ text: trimmed, size: VL_BODY_SIZE, font: VL_FONT })],
+      })
+    );
+    i++;
+  }
+
+  children.push(new Paragraph({ spacing: { before: 360 } }));
+  children.push(
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          children: [makeVisualSignatureCell("VENDEDOR(A)"), makeVisualSignatureCell("COMPRADOR(A)")],
+        }),
+        new TableRow({
+          children: [makeVisualSignatureCell("CÔNJUGE/COMP. DO VENDEDOR"), makeVisualSignatureCell("CÔNJUGE/COMP. DO COMPRADOR")],
+        }),
+      ],
+    })
+  );
+
+  children.push(new Paragraph({ spacing: { before: 260 } }));
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 200, after: 70, line: VL_LINE_SPACING },
+      children: [new TextRun({ text: "__________________________________", size: VL_BODY_SIZE, font: VL_FONT, color: VL_BLUE })],
+    })
+  );
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 40, line: VL_LINE_SPACING },
+      children: [new TextRun({ text: "IMOBILIÁRIA INTERMEDIADORA", bold: true, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_BLUE })],
+    })
+  );
+
+  children.push(new Paragraph({ spacing: { before: 220, after: 80 } }));
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 80, line: VL_LINE_SPACING },
+      children: [new TextRun({ text: "TESTEMUNHAS", bold: true, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_BLUE })],
+    })
+  );
+  children.push(
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [new TableRow({ children: [makeVisualSignatureCell("1ª TESTEMUNHA"), makeVisualSignatureCell("2ª TESTEMUNHA")] })],
+    })
+  );
+
+  const currentYear = new Date().getFullYear();
+  const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: { font: VL_FONT, size: VL_BODY_SIZE },
+          paragraph: { spacing: { line: VL_LINE_SPACING } },
+        },
+      },
+    },
+    sections: [
+      {
+        properties: {
+          page: {
+            size: { width: PAGE_WIDTH, height: PAGE_HEIGHT },
+            margin: { top: VL_MARGIN_TOP, right: VL_MARGIN_RIGHT, bottom: VL_MARGIN_BOTTOM, left: VL_MARGIN_LEFT },
+          },
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+                border: {
+                  top: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE, space: 4 },
+                },
+                children: [
+                  new TextRun({ text: `© ${currentYear} — Documento de uso restrito`, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
+                  new TextRun({ text: "\t" }),
+                  new TextRun({ text: "Página ", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
+                  new TextRun({ children: [PageNumber.CURRENT], size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
+                ],
+              }),
+            ],
+          }),
+        },
+        children,
+      },
+    ],
+  });
+
+  return doc;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { minuta, tipoContrato } = await req.json();
+    const { minuta, tipoContrato, tipoContratoNome, format } = await req.json();
 
     if (!minuta) {
       return new Response(
@@ -368,7 +808,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const doc = buildDocx(minuta, tipoContrato);
+    const doc = format === "visual_law" ? buildDocxVisualLaw(minuta, tipoContrato, tipoContratoNome) : buildDocxAbnt(minuta, tipoContrato);
     const buffer = await Packer.toBuffer(doc);
 
     const uint8 = new Uint8Array(buffer);

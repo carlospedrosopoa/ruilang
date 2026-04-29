@@ -140,6 +140,7 @@ export interface DadosBancarios {
 
 export interface Pagamento {
   valorTotal: string;
+  valorHonorarios?: string;
   parcelas: Parcela[];
   multaMoratoria: string;
   jurosMora: string;
@@ -278,6 +279,7 @@ export function criarImovelPermutaVazio(): ImovelPermuta {
 export function criarPagamentoVazio(): Pagamento {
   return {
     valorTotal: "",
+    valorHonorarios: "",
     parcelas: [
       { id: crypto.randomUUID(), descricao: "Arras confirmatórias no ato da assinatura", valor: "", quantidade: 1, tipo: "arras", dataVencimento: "" },
     ],

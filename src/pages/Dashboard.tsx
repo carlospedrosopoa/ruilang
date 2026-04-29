@@ -34,6 +34,7 @@ interface Imobiliaria {
 
 interface CustomTipoContrato {
   id: string;
+  codigo: string;
   nome: string;
   descricao: string | null;
   icone: string;
@@ -98,7 +99,7 @@ const Dashboard = () => {
       }
       const { data } = await supabase
         .from("tipos_contrato")
-        .select("id, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
+        .select("id, codigo, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
         .eq("imobiliaria_id", selectedImobiliaria)
         .eq("ativo", true)
         .order("created_at", { ascending: true });
@@ -128,10 +129,10 @@ const Dashboard = () => {
   }, [selectedImobiliaria]);
 
   const allTipos = useMemo(() => {
-    return [
-      ...tiposContrato.map((t) => ({ id: t.id as string, nome: t.nome, descricao: t.descricao, icone: t.icone, subcategoria: t.subcategoria })),
-      ...customTipos.map((t) => ({ id: t.id, nome: t.nome, descricao: t.descricao || "", icone: t.icone, subcategoria: undefined })),
-    ];
+    if (customTipos.length > 0) {
+      return customTipos.map((t) => ({ id: t.codigo, nome: t.nome, descricao: t.descricao || "", icone: t.icone, subcategoria: undefined }));
+    }
+    return tiposContrato.map((t) => ({ id: t.id as string, nome: t.nome, descricao: t.descricao, icone: t.icone, subcategoria: t.subcategoria }));
   }, [customTipos]);
 
   const handleSelect = async (tipo: string) => {
@@ -300,7 +301,7 @@ const Dashboard = () => {
           modelo_base: tipoModeloBase.trim() || null,
           created_by: userId,
         } as any)
-        .select("id, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
+        .select("id, codigo, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
         .single();
       if (error) throw error;
       setCustomTipos((prev) => [...prev, data as any]);

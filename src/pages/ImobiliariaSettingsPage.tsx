@@ -173,7 +173,7 @@ export default function ImobiliariaSettingsPage() {
         .eq("id", activeTenantId)
         .select("id")
         .maybeSingle();
-      if (error) throw error;
+      if (error) throw new Error(error.message || "Erro ao salvar configurações.");
       if (!updatedRow?.id) throw new Error("Sem permissão para salvar as configurações desta imobiliária.");
       toast.success("Configurações salvas.");
       await load();
@@ -198,7 +198,7 @@ export default function ImobiliariaSettingsPage() {
       const safeName = safeStorageFileName(file.name);
       const storagePath = `imobiliarias/${activeTenantId}/logo/${Date.now()}_${safeName}`;
       const { error: upErr } = await supabase.storage.from("proposta-docs").upload(storagePath, file, { upsert: true } as any);
-      if (upErr) throw upErr;
+      if (upErr) throw new Error(`Upload da logo: ${upErr.message || "erro desconhecido"}`);
 
       const { data: urlData } = supabase.storage.from("proposta-docs").getPublicUrl(storagePath);
       const url = urlData.publicUrl;
@@ -213,7 +213,7 @@ export default function ImobiliariaSettingsPage() {
         .eq("id", activeTenantId)
         .select("id")
         .maybeSingle();
-      if (updErr) throw updErr;
+      if (updErr) throw new Error(`Salvar logo: ${updErr.message || "erro desconhecido"}`);
       if (!logoUpdRow?.id) throw new Error("Sem permissão para atualizar a logo desta imobiliária.");
 
       if (previous && previous !== storagePath) {

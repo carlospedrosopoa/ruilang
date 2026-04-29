@@ -35,8 +35,13 @@ const labelByTipo: Record<TipoContrato, { vendedor: string; comprador: string }>
   locacao: { vendedor: "Locador", comprador: "Locatário" },
 };
 
-function getSteps(tipo: TipoContrato) {
-  const labels = labelByTipo[tipo];
+const defaultLabels = { vendedor: "Vendedor", comprador: "Comprador" };
+
+function isBuiltinTipo(value: string): value is TipoContrato {
+  return Object.prototype.hasOwnProperty.call(labelByTipo, value);
+}
+
+function getSteps(tipo: TipoContrato, labels: { vendedor: string; comprador: string }) {
   const steps = [
     { number: 1, label: "Corretor" },
     { number: 2, label: `${labels.vendedor}(es)` },
@@ -97,7 +102,8 @@ const ColetaPage = () => {
   const { token } = useParams<{ token: string }>();
   const [loading, setLoading] = useState(true);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
-  const [tipo, setTipo] = useState<TipoContrato>("promessa_compra_venda");
+  const [tipoCodigo, setTipoCodigo] = useState<string>("promessa_compra_venda");
+  const [tipoBase, setTipoBase] = useState<TipoContrato>("promessa_compra_venda");
   const [status, setStatus] = useState("rascunho");
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -110,6 +116,7 @@ const ColetaPage = () => {
   const [imovelPermuta, setImovelPermuta] = useState<ImovelPermuta>(criarImovelPermutaVazio());
   const [pagamento, setPagamento] = useState<Pagamento>(criarPagamentoVazio());
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
+  const [perfilContrato, setPerfilContrato] = useState<string>("equilibrado");
   const [isSaving, setIsSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -120,11 +127,13 @@ const ColetaPage = () => {
 
   // Imobiliaria data
   const [imobiliaria, setImobiliaria] = useState<any>(null);
+  const [tipoNome, setTipoNome] = useState<string | null>(null);
+  const [labels, setLabels] = useState<{ vendedor: string; comprador: string }>(labelByTipo.promessa_compra_venda);
 
-  const labels = labelByTipo[tipo];
-  const steps = getSteps(tipo);
+  const steps = getSteps(tipoBase, labels);
   const totalSteps = steps.length;
-  const tipoInfo = tiposContrato.find((t) => t.id === tipo);
+  const tipoInfo = tiposContrato.find((t) => t.id === tipoBase);
+  const tipoDisplayName = tipoNome || tipoInfo?.nome || "Contrato";
 
   useEffect(() => {
     const loadSubmission = async () => {
@@ -142,7 +151,9 @@ const ColetaPage = () => {
       const submission = data.submission as any;
 
       setSubmissionId(submission.id);
-      setTipo(submission.tipo_contrato as TipoContrato);
+      const codigo = String(submission.tipo_contrato || "promessa_compra_venda").trim() || "promessa_compra_venda";
+      setTipoCodigo(codigo);
+      setTipoBase(isBuiltinTipo(codigo) ? codigo : "promessa_compra_venda");
       setStatus(submission.status);
       setCorretorNome(submission.corretor_nome || "");
       setCorretorTelefone(submission.corretor_telefone || "");
@@ -156,12 +167,74 @@ const ColetaPage = () => {
         if (dados.compradores?.length) setCompradores(dados.compradores);
         if (dados.imovel) setImovel(dados.imovel);
         if (dados.imovelPermuta) setImovelPermuta(dados.imovelPermuta);
-        if (dados.pagamento) setPagamento(dados.pagamento);
+        if (dados.pagamento) {
+          const base = criarPagamentoVazio();
+          const incoming = dados.pagamento as any;
+          const parcelas = Array.isArray(incoming?.parcelas) ? incoming.parcelas : base.parcelas;
+          setPagamento({ ...base, ...incoming, parcelas } as any);
+        }
         if (dados.locacao) setLocacao(dados.locacao);
+        if (typeof dados.perfilContrato === "string" && dados.perfilContrato.trim()) setPerfilContrato(dados.perfilContrato.trim());
       }
 
-      const hasVendedores =
+      if (isBuiltinTipo(codigo)) {
+        setLabels(labelByTipo[codigo]);
+        setTipoNome(null);
+      } else {
+        const imobId = (submission.imobiliaria_id || submission.imobiliarias?.id || null) as string | null;
+        if (imobId) {
+          try {
+            const { data: tipoRow } = await supabase
+              .from("tipos_contrato")
+              .select("nome, label_vendedor, label_comprador")
+              .eq("imobiliaria_id", imobId)
+              .eq("codigo", codigo)
+              .maybeSingle();
+            const vend = String((tipoRow as any)?.label_vendedor || "").trim() || defaultLabels.vendedor;
+            const comp = String((tipoRow as any)?.label_comprador || "").trim() || defaultLabels.comprador;
+            setLabels({ vendedor: vend, comprador: comp });
+            const nm = String((tipoRow as any)?.nome || "").trim();
+            setTipoNome(nm || null);
+          } catch {
+            setLabels(defaultLabels);
+            setTipoNome(null);
+          }
+        } else {
+          setLabels(defaultLabels);
+          setTipoNome(null);
+        }
+      }
+
+      let hasVendedores =
         Array.isArray(dados?.vendedores) && (dados.vendedores as any[]).some((v) => typeof v?.nome === "string" && v.nome.trim());
+
+      if (!hasVendedores) {
+        const raw = (dados as any)?.imovel?.vendedores;
+        const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
+        const mapped = list
+          .map((r: any) => {
+            const v = criarPessoaVazia();
+            v.nome = String(r?.nome || r?.nome_completo || "").trim();
+            v.cpf = String(r?.cpf || "").trim();
+            v.email = String(r?.email || "").trim() || undefined;
+            v.telefone = String(r?.telefone || "").trim() || undefined;
+            v.endereco = String(r?.endereco || "").trim();
+            v.bairro = String(r?.bairro || "").trim();
+            v.cidade = String(r?.cidade || "").trim();
+            v.estado = String(r?.estado || "").trim();
+            v.cep = String(r?.cep || "").trim();
+            const docTipo = String(r?.documentoTipo || r?.documento_tipo || "").toLowerCase();
+            if (docTipo === "rg" || docTipo === "cnh") v.documentoTipo = docTipo as any;
+            v.documentoNumero = String(r?.documentoNumero || r?.documento_numero || "").trim();
+            v.documentoOrgao = String(r?.documentoOrgao || r?.documento_orgao || "").trim();
+            return v;
+          })
+          .filter((v) => Boolean(v.nome.trim() || v.cpf.trim() || v.documentoNumero.trim()));
+        if (mapped.length) {
+          setVendedores(mapped);
+          hasVendedores = true;
+        }
+      }
       const cliente = (submission as any)?.imoveis?.clientes || null;
       if (!hasVendedores && cliente) {
         const v = criarPessoaVazia();
@@ -219,8 +292,9 @@ const ColetaPage = () => {
     vendedores,
     compradores,
     imovel,
-    ...(tipo === "promessa_compra_venda_permuta" ? { imovelPermuta } : {}),
-    ...(tipo === "locacao" ? { locacao } : { pagamento }),
+    ...(tipoBase === "promessa_compra_venda_permuta" ? { imovelPermuta } : {}),
+    ...(tipoBase === "locacao" ? { locacao } : { pagamento }),
+    perfilContrato,
   });
 
   const saveDraft = async () => {
@@ -275,7 +349,7 @@ const ColetaPage = () => {
     setIsGeneratingProposal(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-proposal", {
-        body: { dados: getDados(), tipoContrato: tipo, imobiliaria, imobiliariaId: imobiliaria?.id || null },
+        body: { dados: getDados(), tipoContrato: tipoCodigo, imobiliaria, imobiliariaId: imobiliaria?.id || null },
       });
 
       if (error) throw error;
@@ -317,7 +391,7 @@ const ColetaPage = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `proposta_${tipo}_${new Date().toISOString().slice(0, 10)}.txt`;
+      a.download = `proposta_${tipoCodigo}_${new Date().toISOString().slice(0, 10)}.txt`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -433,7 +507,7 @@ const ColetaPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="font-semibold text-foreground">Tipo:</span>{" "}
-                <span className="text-muted-foreground">{tipoInfo?.nome}</span>
+                <span className="text-muted-foreground">{tipoDisplayName}</span>
               </div>
               <div>
                 <span className="font-semibold text-foreground">Corretor:</span>{" "}
@@ -451,11 +525,15 @@ const ColetaPage = () => {
                 <span className="font-semibold text-foreground">Imóvel:</span>{" "}
                 <span className="text-muted-foreground">{imovel.localizacao || "—"}, {imovel.municipio || "—"}/{imovel.estadoImovel || "—"}</span>
               </div>
-              {tipo !== "locacao" && (
+              {tipoBase !== "locacao" && (
                 <>
                   <div>
                     <span className="font-semibold text-foreground">Valor Total:</span>{" "}
                     <span className="text-muted-foreground">{formatCurrencyFromInput(pagamento.valorTotal) || (pagamento.valorTotal ? `R$ ${pagamento.valorTotal}` : "—")}</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-foreground">Honorários:</span>{" "}
+                    <span className="text-muted-foreground">{formatCurrencyFromInput(pagamento.valorHonorarios || "") || (pagamento.valorHonorarios ? `R$ ${pagamento.valorHonorarios}` : "—")}</span>
                   </div>
                   {(() => {
                     const arras = (Array.isArray(pagamento.parcelas) ? pagamento.parcelas : []).filter(
@@ -487,7 +565,7 @@ const ColetaPage = () => {
                   })()}
                 </>
               )}
-              {tipo === "locacao" && (
+              {tipoBase === "locacao" && (
                 <div>
                   <span className="font-semibold text-foreground">Aluguel:</span>{" "}
                   <span className="text-muted-foreground">R$ {locacao.valorAluguel || "—"}</span>
@@ -568,16 +646,10 @@ const ColetaPage = () => {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
-          {imobiliaria?.logo_url ? (
-            <img src={imobiliaria.logo_url} alt={imobiliaria?.nome || "Imobiliária"} className="h-9 w-auto bg-white/10 rounded-md p-1 object-contain" />
-          ) : (
-            <div className="h-9 w-9 rounded-md bg-white/10 flex items-center justify-center text-primary-foreground font-bold">
-              {imobiliaria?.nome ? imobiliaria.nome.charAt(0).toUpperCase() : "I"}
-            </div>
-          )}
+          <img src="/images/logo-pactadoc.png" alt="PactaDoc" className="h-9 w-auto" />
           <div>
-            <h1 className="font-display text-xl font-bold text-foreground">{imobiliaria?.nome || "Coleta de Dados"}</h1>
-            <p className="text-xs text-muted-foreground">{tipoInfo?.nome || "Contrato"}</p>
+            <h1 className="font-display text-xl font-bold text-foreground">Coleta de Dados</h1>
+            <p className="text-xs text-muted-foreground">{tipoDisplayName}</p>
           </div>
           {isSaving && (
             <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">

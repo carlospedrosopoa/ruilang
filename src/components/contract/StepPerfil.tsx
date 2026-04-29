@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useAuth } from "@/auth/AuthProvider";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface StepPerfilProps {
   tipoContrato: TipoContrato;
+  tipoContratoId?: string | null;
   perfilContrato: PerfilContrato;
   onChange: (perfil: PerfilContrato) => void;
   peculiaridades?: string;
@@ -63,8 +63,7 @@ const perfilColors: Record<string, { bg: string; border: string; icon: string; a
   },
 };
 
-const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "", onPeculiaridadesChange, imobiliariaId }: StepPerfilProps) => {
-  const { isPlatformAdmin } = useAuth();
+const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, peculiaridades = "", onPeculiaridadesChange, imobiliariaId }: StepPerfilProps) => {
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templatePerfil, setTemplatePerfil] = useState<string>(String(perfilContrato));
   const [loadingTemplate, setLoadingTemplate] = useState(false);
@@ -88,15 +87,15 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
   }, [perfilContrato]);
 
   const allPerfis = useMemo<PerfilItem[]>(() => {
-    const base = perfisContrato.map((p) => ({
+    if (imobiliariaId) return customPerfis;
+    return perfisContrato.map((p) => ({
       id: p.id as string,
       nome: p.nome,
       descricao: p.descricao,
       icone: p.icone,
       origem: "builtin" as const,
     }));
-    return [...base, ...customPerfis];
-  }, [customPerfis]);
+  }, [customPerfis, imobiliariaId]);
 
   const templatePerfilLabel = useMemo(() => {
     const item = allPerfis.find((p) => p.id === templatePerfil);
@@ -105,19 +104,20 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
 
   useEffect(() => {
     const loadCustom = async () => {
-      if (!imobiliariaId) {
+      if (!imobiliariaId || !tipoContratoId) {
         setCustomPerfis([]);
         return;
       }
       const { data } = await supabase
         .from("perfis_contrato")
-        .select("id, nome, descricao, icone, instructions_ia")
+        .select("codigo, nome, descricao, icone, instructions_ia")
         .eq("imobiliaria_id", imobiliariaId)
+        .eq("tipo_contrato_id", tipoContratoId)
         .eq("ativo", true)
         .order("created_at", { ascending: true });
 
       const list = ((data as any[]) || []).map((r) => ({
-        id: r.id,
+        id: r.codigo,
         nome: r.nome,
         descricao: r.descricao || "",
         icone: r.icone || "Scale",
@@ -127,39 +127,47 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
       setCustomPerfis(list);
     };
     loadCustom();
-  }, [imobiliariaId]);
+  }, [imobiliariaId, tipoContratoId]);
 
   useEffect(() => {
     const loadConfigured = async () => {
       const { data } = await supabase
         .from("contract_templates")
-        .select("perfil")
+        .select("perfil, imobiliaria_id")
         .eq("tipo_contrato", tipoContrato)
         .eq("active", true)
+        .or(imobiliariaId ? `imobiliaria_id.eq.${imobiliariaId},imobiliaria_id.is.null` : "imobiliaria_id.is.null")
         .limit(1000);
       const set = new Set<string>(((data as any[]) || []).map((r) => String(r.perfil)));
       setConfiguredPerfis(set);
     };
     loadConfigured();
-  }, [tipoContrato]);
+  }, [imobiliariaId, tipoContrato]);
 
   const loadTemplate = async () => {
     setLoadingTemplate(true);
-    const { data, error } = await supabase
-      .from("contract_templates")
-      .select("template_text, instructions_ia, active")
-      .eq("tipo_contrato", tipoContrato)
-      .eq("perfil", templatePerfil)
-      .eq("active", true)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const makeBaseQuery = () =>
+      supabase
+        .from("contract_templates")
+        .select("template_text, instructions_ia, active")
+        .eq("tipo_contrato", tipoContrato)
+        .eq("perfil", templatePerfil)
+        .eq("active", true)
+        .order("version", { ascending: false })
+        .limit(1);
 
-    if (error) {
-      setTemplateText("");
-      setInstructionsIa("");
-      setLoadingTemplate(false);
-      return;
+    let data: any = null;
+    if (imobiliariaId) {
+      const tenantRes = await makeBaseQuery().eq("imobiliaria_id", imobiliariaId).maybeSingle();
+      if (!tenantRes.error && tenantRes.data?.template_text) {
+        data = tenantRes.data;
+      } else {
+        const globalRes = await makeBaseQuery().is("imobiliaria_id", null).maybeSingle();
+        if (!globalRes.error) data = globalRes.data;
+      }
+    } else {
+      const globalRes = await makeBaseQuery().is("imobiliaria_id", null).maybeSingle();
+      if (!globalRes.error) data = globalRes.data;
     }
 
     setTemplateText(data?.template_text || "");
@@ -173,8 +181,8 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
   }, [templateOpen, tipoContrato, templatePerfil]);
 
   const save = async () => {
-    if (!isPlatformAdmin) {
-      toast.error("Apenas o administrador da plataforma pode alterar o modelo base.");
+    if (!imobiliariaId) {
+      toast.error("Selecione uma imobiliária para salvar o modelo base.");
       return;
     }
     if (!templateText.trim()) {
@@ -189,6 +197,7 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
         .select("version")
         .eq("tipo_contrato", tipoContrato)
         .eq("perfil", templatePerfil)
+        .eq("imobiliaria_id", imobiliariaId)
         .order("version", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -200,9 +209,11 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
         .from("contract_templates")
         .update({ active: false })
         .eq("tipo_contrato", tipoContrato)
-        .eq("perfil", templatePerfil);
+        .eq("perfil", templatePerfil)
+        .eq("imobiliaria_id", imobiliariaId);
 
       const { error: insErr } = await supabase.from("contract_templates").insert({
+        imobiliaria_id: imobiliariaId,
         tipo_contrato: tipoContrato,
         perfil: templatePerfil,
         provider: "manual",
@@ -230,7 +241,7 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
   };
 
   const openCreatePerfil = () => {
-    if (!imobiliariaId) {
+    if (!imobiliariaId || !tipoContratoId) {
       toast.error("Selecione uma imobiliária para criar perfis.");
       return;
     }
@@ -242,7 +253,7 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
   };
 
   const savePerfil = async () => {
-    if (!imobiliariaId) {
+    if (!imobiliariaId || !tipoContratoId) {
       toast.error("Selecione uma imobiliária.");
       return;
     }
@@ -258,18 +269,19 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
         .from("perfis_contrato")
         .insert({
           imobiliaria_id: imobiliariaId,
+          tipo_contrato_id: tipoContratoId,
           nome: perfilNome.trim(),
           descricao: perfilDescricao.trim() || null,
           icone: perfilIcone,
           instructions_ia: perfilInstructions.trim() || null,
           created_by: userId,
         } as any)
-        .select("id, nome, descricao, icone, instructions_ia")
+        .select("codigo, nome, descricao, icone, instructions_ia")
         .single();
       if (error) throw error;
 
       const created = {
-        id: data.id,
+        id: data.codigo,
         nome: data.nome,
         descricao: data.descricao || "",
         icone: data.icone || "Scale",
@@ -422,11 +434,7 @@ const StepPerfil = ({ tipoContrato, perfilContrato, onChange, peculiaridades = "
                     />
                   </div>
                 </div>
-                {!isPlatformAdmin ? (
-                  <p className="text-xs text-muted-foreground">
-                    Apenas o administrador da plataforma pode salvar alterações do modelo base.
-                  </p>
-                ) : null}
+                <p className="text-xs text-muted-foreground">Este modelo base é salvo no nível da imobiliária selecionada.</p>
               </div>
             )}
           </div>

@@ -64,10 +64,17 @@ const ImobiliariasPage = () => {
   const [userPassword, setUserPassword] = useState("");
   const [creatingUser, setCreatingUser] = useState(false);
   const [testingAI, setTestingAI] = useState(false);
+  const [defaultsImobiliariaId, setDefaultsImobiliariaId] = useState<string | null>(null);
+  const [savingDefaults, setSavingDefaults] = useState(false);
+  const [seedingTenantId, setSeedingTenantId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("imobiliarias").select("*").order("nome");
+    const [imobRes, settingsRes] = await Promise.all([
+      supabase.from("imobiliarias").select("*").order("nome"),
+      supabase.from("platform_settings").select("defaults_imobiliaria_id").eq("id", true).maybeSingle(),
+    ]);
+    const { data, error } = imobRes;
     if (error) {
       const hint =
         error.message?.toLowerCase().includes("invalid api key") ||
@@ -81,6 +88,7 @@ const ImobiliariasPage = () => {
       return;
     }
     setImobiliarias((data as Imobiliaria[]) || []);
+    setDefaultsImobiliariaId((settingsRes.data as any)?.defaults_imobiliaria_id || null);
     setLoading(false);
   };
 
@@ -112,9 +120,16 @@ const ImobiliariasPage = () => {
         if (error) throw error;
         toast.success("Imobiliária atualizada!");
       } else {
-        const { error } = await supabase.from("imobiliarias").insert(payload);
+        const { data: created, error } = await supabase.from("imobiliarias").insert(payload).select("id").single();
         if (error) throw error;
         toast.success("Imobiliária cadastrada!");
+        if (!defaultsImobiliariaId && created?.id) {
+          setDefaultsImobiliariaId(created.id);
+          await supabase
+            .from("platform_settings")
+            .update({ defaults_imobiliaria_id: created.id, updated_at: new Date().toISOString() } as any)
+            .eq("id", true);
+        }
       }
 
       setDialogOpen(false);
@@ -232,6 +247,40 @@ const ImobiliariasPage = () => {
 
   const updateField = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
 
+  const saveDefaults = async () => {
+    setSavingDefaults(true);
+    try {
+      const { error } = await supabase
+        .from("platform_settings")
+        .update({ defaults_imobiliaria_id: defaultsImobiliariaId, updated_at: new Date().toISOString() } as any)
+        .eq("id", true);
+      if (error) throw error;
+      toast.success("Imobiliária modelo atualizada!");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao salvar imobiliária modelo.");
+    } finally {
+      setSavingDefaults(false);
+    }
+  };
+
+  const seedFromDefaults = async (tenantId: string) => {
+    if (!defaultsImobiliariaId) {
+      toast.error("Defina a imobiliária modelo primeiro.");
+      return;
+    }
+    if (!confirm("Deseja herdar Tipos de Contrato, Perfis de Contrato, Tipos de Proposta e Modelos Base da imobiliária modelo?")) return;
+    setSeedingTenantId(tenantId);
+    try {
+      const { error } = await supabase.rpc("seed_imobiliaria_from_defaults", { target_imobiliaria_id: tenantId } as any);
+      if (error) throw error;
+      toast.success("Padrões herdados com sucesso.");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao herdar padrões.");
+    } finally {
+      setSeedingTenantId(null);
+    }
+  };
+
   const handleTestOpenAI = async () => {
     setTestingAI(true);
     try {
@@ -290,6 +339,28 @@ const ImobiliariasPage = () => {
           </div>
         </div>
 
+        <div className="mb-6 border border-border bg-card rounded-xl p-4 flex flex-col md:flex-row md:items-end gap-4">
+          <div className="flex-1">
+            <Label>Imobiliária modelo (herança automática)</Label>
+            <Select value={defaultsImobiliariaId || ""} onValueChange={(v) => setDefaultsImobiliariaId(v || null)}>
+              <SelectTrigger className="mt-2">
+                <SelectValue placeholder="Selecione a imobiliária modelo" />
+              </SelectTrigger>
+              <SelectContent>
+                {imobiliarias.map((i) => (
+                  <SelectItem key={i.id} value={i.id}>
+                    {i.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={saveDefaults} disabled={savingDefaults}>
+            {savingDefaults ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            Salvar modelo
+          </Button>
+        </div>
+
         {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -312,6 +383,16 @@ const ImobiliariasPage = () => {
                     <p className="text-sm text-muted-foreground">CRECI: {imob.creci}</p>
                   </div>
                   <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => seedFromDefaults(imob.id)}
+                      disabled={seedingTenantId === imob.id}
+                      title="Herdar padrões"
+                      aria-label="Herdar padrões"
+                    >
+                      {seedingTenantId === imob.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => openCreateUser(imob.id)}>
                       <UserPlus className="w-4 h-4" />
                     </Button>

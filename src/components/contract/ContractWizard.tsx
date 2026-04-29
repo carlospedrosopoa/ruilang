@@ -133,6 +133,7 @@ const ContractWizard = () => {
   const tipo = (tipoParam as string) || "promessa_compra_venda";
   const forceStartAtFirst = searchParams.get("new") === "1";
   const [customTipoInfo, setCustomTipoInfo] = useState<any | null>(null);
+  const [tipoContratoId, setTipoContratoId] = useState<string | null>(null);
   const tipoInfo = tiposContrato.find((t) => t.id === (tipo as any)) || customTipoInfo;
   const labels = customTipoInfo
     ? { vendedor: customTipoInfo.label_vendedor || "Vendedor", comprador: customTipoInfo.label_comprador || "Comprador" }
@@ -152,8 +153,6 @@ const ContractWizard = () => {
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
   const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
   const [imobiliariaId, setImobiliariaId] = useState<string | null>(null);
-  const [imobiliariaNome, setImobiliariaNome] = useState("");
-  const [imobiliariaLogo, setImobiliariaLogo] = useState("");
   const [customPerfis, setCustomPerfis] = useState<Array<{ id: string; nome: string }>>([]);
   const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -163,25 +162,26 @@ const ContractWizard = () => {
 
   useEffect(() => {
     const loadTipo = async () => {
-      const builtIn = tiposContrato.some((t) => t.id === (tipo as any));
-      if (builtIn) {
+      if (!imobiliariaId) {
         setCustomTipoInfo(null);
+        setTipoContratoId(null);
         return;
       }
       const { data } = await supabase
         .from("tipos_contrato")
-        .select("id, nome, descricao, label_vendedor, label_comprador")
-        .eq("id", tipo)
+        .select("id, codigo, nome, descricao, label_vendedor, label_comprador")
+        .eq("imobiliaria_id", imobiliariaId)
+        .eq("codigo", tipo)
         .maybeSingle();
+
       setCustomTipoInfo(data || null);
+      setTipoContratoId((data as any)?.id || null);
     };
     loadTipo();
-  }, [tipo]);
+  }, [imobiliariaId, tipo]);
 
   useEffect(() => {
     if (!submissionId) return;
-    if (didLoadSubmissionRef.current) return;
-    
     const loadSubmission = async () => {
       const selectFull = "dados, imobiliaria_id, contract_texto";
       const selectFallback = "dados, imobiliaria_id";
@@ -299,34 +299,33 @@ const ContractWizard = () => {
   }, [submissionId, tipo, vendedores, compradores, imovel, imovelPermuta, pagamento, locacao, perfilContrato, peculiaridades]);
 
   useEffect(() => {
-    const loadPerfisEInfo = async () => {
-      if (!imobiliariaId) {
+    const loadPerfis = async () => {
+      if (!imobiliariaId || !tipoContratoId) {
         setCustomPerfis([]);
-        setImobiliariaNome("");
-        setImobiliariaLogo("");
         return;
       }
-      
-      const { data: perfisData } = await supabase
+      const { data } = await supabase
         .from("perfis_contrato")
-        .select("id, nome")
+        .select("codigo, nome")
         .eq("imobiliaria_id", imobiliariaId)
+        .eq("tipo_contrato_id", tipoContratoId)
         .eq("ativo", true)
         .order("created_at", { ascending: true });
-      setCustomPerfis(((perfisData as any[]) || []).map((p) => ({ id: p.id, nome: p.nome })));
-
-      const { data: imoData } = await supabase
-        .from("imobiliarias")
-        .select("nome, logo_url")
-        .eq("id", imobiliariaId)
-        .single();
-      if (imoData) {
-        setImobiliariaNome(imoData.nome || "");
-        setImobiliariaLogo(imoData.logo_url || "");
-      }
+      setCustomPerfis(((data as any[]) || []).map((p) => ({ id: p.codigo, nome: p.nome })));
     };
-    loadPerfisEInfo();
-  }, [imobiliariaId]);
+    loadPerfis();
+  }, [imobiliariaId, tipoContratoId]);
+
+  useEffect(() => {
+    if (!customPerfis.length) return;
+    const ids = new Set(customPerfis.map((p) => p.id));
+    if (ids.has(String(perfilContrato))) return;
+    const preferred =
+      customPerfis.find((p) => p.nome.toLowerCase().includes("equilibr"))?.id ||
+      customPerfis[0]?.id ||
+      null;
+    if (preferred) setPerfilContrato(preferred as any);
+  }, [customPerfis, perfilContrato]);
 
   const next = () => {
     if (currentStep < totalSteps) {
@@ -343,10 +342,11 @@ const ContractWizard = () => {
     }
   };
 
-  const handleStepChange = (step: number) => {
+  const goToStep = (step: number) => {
+    if (step < 1 || step > totalSteps) return;
     if (step === currentStep) return;
     setDirection(step > currentStep ? "forward" : "backward");
-    setStepKey(k => k + 1);
+    setStepKey((k) => k + 1);
     setCurrentStep(step);
   };
 
@@ -367,7 +367,7 @@ const ContractWizard = () => {
       };
 
       const { data, error } = await supabase.functions.invoke("generate-contract", {
-        body: { contrato, submissionId },
+        body: { contrato, submissionId, imobiliariaId },
       });
 
       if (error) throw error;
@@ -417,7 +417,7 @@ const ContractWizard = () => {
     setIsExportingDocx(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-docx", {
-        body: { minuta, tipoContrato: tipo },
+        body: { minuta, tipoContrato: tipo, tipoContratoNome: tipoInfo?.nome || null, format: "visual_law" },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -536,7 +536,17 @@ const ContractWizard = () => {
       return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
     }
     if (currentStepObj.label === "Perfil") {
-      return <StepPerfil tipoContrato={tipo as TipoContrato} perfilContrato={perfilContrato} onChange={setPerfilContrato} peculiaridades={peculiaridades} onPeculiaridadesChange={setPeculiaridades} imobiliariaId={imobiliariaId} />;
+      return (
+        <StepPerfil
+          tipoContrato={tipo as TipoContrato}
+          tipoContratoId={tipoContratoId}
+          perfilContrato={perfilContrato}
+          onChange={setPerfilContrato}
+          peculiaridades={peculiaridades}
+          onPeculiaridadesChange={setPeculiaridades}
+          imobiliariaId={imobiliariaId}
+        />
+      );
     }
     if (currentStepObj.label === "Gerar") {
       if (minuta) {
@@ -610,10 +620,16 @@ const ContractWizard = () => {
                 <span className="text-foreground font-medium">{imovel.localizacao || "—"}, {imovel.municipio || "—"}/{imovel.estadoImovel || "—"}</span>
               </div>
               {tipo !== "locacao" && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Valor Total</span>
-                  <span className="text-foreground font-medium">R$ {pagamento.valorTotal || "—"}</span>
-                </div>
+                <>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Valor Total</span>
+                    <span className="text-foreground font-medium">R$ {pagamento.valorTotal || "—"}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Honorários</span>
+                    <span className="text-foreground font-medium">R$ {pagamento.valorHonorarios || "—"}</span>
+                  </div>
+                </>
               )}
               {tipo === "locacao" && (
                 <div className="flex flex-col gap-1">
@@ -645,16 +661,10 @@ const ContractWizard = () => {
       {/* Premium Header */}
       <header className="gradient-primary border-b border-primary/20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
-          <button onClick={() => navigate("/")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            {imobiliariaLogo ? (
-              <img src={imobiliariaLogo} alt={imobiliariaNome || "Imobiliária"} className="h-8 w-auto bg-white/10 rounded-md p-1 object-contain" />
-            ) : (
-              <div className="h-8 w-8 rounded-md bg-white/10 flex items-center justify-center text-primary-foreground font-bold">
-                {imobiliariaNome ? imobiliariaNome.charAt(0).toUpperCase() : "I"}
-              </div>
-            )}
-            <div className="text-left">
-              <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">{imobiliariaNome || "Imobiliária"}</h1>
+          <button onClick={() => navigate("/painel")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <img src="/images/logo-pactadoc.png" alt="PactaDoc" className="h-8 w-auto" />
+            <div>
+              <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">PactaDoc</h1>
               <p className="text-[10px] text-primary-foreground/50 font-medium uppercase tracking-wider">{tipoInfo?.nome || "Contrato"}</p>
               {submissionId ? (
                 <button
@@ -676,7 +686,7 @@ const ContractWizard = () => {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-        <StepIndicator steps={steps} currentStep={currentStep} onStepChange={handleStepChange} />
+        <StepIndicator steps={steps} currentStep={currentStep} onStepChange={goToStep} />
 
         <div
           key={stepKey}
@@ -686,7 +696,7 @@ const ContractWizard = () => {
         </div>
 
         <div className="flex items-center justify-between mt-10 pt-6 border-t border-border">
-          <Button variant="outline" onClick={currentStep === 1 ? () => navigate("/") : prev} className="gap-2">
+          <Button variant="outline" onClick={currentStep === 1 ? () => navigate("/painel") : prev} className="gap-2">
             <ArrowLeft className="w-4 h-4" />
             {currentStep === 1 ? "Voltar" : "Anterior"}
           </Button>

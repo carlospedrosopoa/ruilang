@@ -112,34 +112,73 @@ function fixLocalEDataInContractText(text: string, contrato: any) {
   return text;
 }
 
-async function getActiveTemplate(admin: any, tipoContrato: string, perfil: string) {
-  const { data, error } = await admin
+async function getActiveTemplate(admin: any, tipoContrato: string, perfil: string, imobiliariaId: string | null) {
+  if (imobiliariaId) {
+    const tenant = await admin
+      .from("contract_templates")
+      .select("id, template_text, instructions_ia, provider, model, version")
+      .eq("tipo_contrato", tipoContrato)
+      .eq("perfil", perfil)
+      .eq("imobiliaria_id", imobiliariaId)
+      .eq("active", true)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!tenant.error && tenant.data?.template_text) return tenant.data;
+  }
+
+  const global = await admin
     .from("contract_templates")
     .select("id, template_text, instructions_ia, provider, model, version")
     .eq("tipo_contrato", tipoContrato)
     .eq("perfil", perfil)
+    .is("imobiliaria_id", null)
     .eq("active", true)
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) return null;
-  return data;
+  if (global.error) return null;
+  return global.data;
 }
 
 async function saveTemplate(
   admin: any,
-  params: { tipoContrato: string; perfil: string; provider: string; model: string; templateText: string; instructionsIa?: string | null },
+  params: {
+    tipoContrato: string;
+    perfil: string;
+    provider: string;
+    model: string;
+    templateText: string;
+    instructionsIa?: string | null;
+    imobiliariaId: string | null;
+  },
 ) {
-  const existing = await admin
+  const existingQuery = admin
     .from("contract_templates")
     .select("version")
     .eq("tipo_contrato", params.tipoContrato)
-    .eq("perfil", params.perfil)
+    .eq("perfil", params.perfil);
+  const existing = await (params.imobiliariaId
+    ? existingQuery.eq("imobiliaria_id", params.imobiliariaId)
+    : existingQuery.is("imobiliaria_id", null)
+  )
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
   const nextVersion = (existing.data?.version || 0) + 1;
+
+  const disableQuery = admin
+    .from("contract_templates")
+    .update({ active: false })
+    .eq("tipo_contrato", params.tipoContrato)
+    .eq("perfil", params.perfil);
+  await (params.imobiliariaId
+    ? disableQuery.eq("imobiliaria_id", params.imobiliariaId)
+    : disableQuery.is("imobiliaria_id", null)
+  );
+
   await admin.from("contract_templates").insert({
+    imobiliaria_id: params.imobiliariaId,
     tipo_contrato: params.tipoContrato,
     perfil: params.perfil,
     provider: params.provider,
@@ -152,6 +191,96 @@ async function saveTemplate(
   });
 }
 
+async function generatePeculiaridadesText(params: {
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
+  tipoLabel: string;
+  baseTemplate: string;
+  contrato: any;
+  peculiaridades: string;
+  instructionsIa?: string | null;
+}) {
+  const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
+
+TAREFA:
+Gerar APENAS cláusulas adicionais (texto simples) para incorporar PECULIARIDADES em um contrato já existente.
+
+REGRAS:
+- NÃO reescreva o contrato base.
+- NÃO repita cláusulas já existentes.
+- Escreva cláusulas "CLÁUSULA ADICIONAL PRIMEIRA", "CLÁUSULA ADICIONAL SEGUNDA", etc.
+- Use linguagem jurídica formal e consistente com o contrato base.
+- Gere APENAS o texto das cláusulas adicionais (sem explicações, sem markdown).`;
+
+  const extraInstructions = typeof params.instructionsIa === "string" && params.instructionsIa.trim()
+    ? `\n\nINSTRUÇÕES ADICIONAIS (OBRIGATÓRIAS):\n${params.instructionsIa.trim()}\n`
+    : "";
+
+  const userPrompt = `CONTRATO BASE (${params.tipoLabel}) - NÃO REESCREVER:
+${params.baseTemplate}
+
+DADOS DO CONTRATO (para contexto):
+${JSON.stringify(params.contrato, null, 2)}
+
+PECULIARIDADES A INCORPORAR:
+${params.peculiaridades}
+${extraInstructions}
+
+Gere somente as cláusulas adicionais.`;
+
+  if (params.provider === "openai") {
+    return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+  }
+  return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+}
+
+async function integratePeculiaridadesInContract(params: {
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
+  tipoLabel: string;
+  contratoText: string;
+  contrato: any;
+  peculiaridades: string;
+  instructionsIa?: string | null;
+}) {
+  const extraInstructions = typeof params.instructionsIa === "string" && params.instructionsIa.trim()
+    ? `\n\nINSTRUÇÕES ADICIONAIS (OBRIGATÓRIAS):\n${params.instructionsIa.trim()}\n`
+    : "";
+
+  const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro, com 20 anos de experiência em estruturação de negócios complexos (compra e venda, incorporação e locação), meticuloso e com profundo conhecimento do Código Civil, da Lei de Registros Públicos e da jurisprudência do STJ.
+
+TAREFA:
+Integrar PECULIARIDADES no CONTRATO abaixo, inserindo-as no LOCAL CORRETO do corpo do contrato (conforme o contexto), sem colocar nada após as assinaturas.
+
+REGRAS:
+- Retorne o CONTRATO COMPLETO já com as inserções.
+- NÃO use markdown.
+- NÃO invente dados.
+- NÃO altere nomes/CPFs/endereço das partes, descrição do imóvel, valores ou forma de pagamento já definidos no contrato (apenas adicione regras/obrigações relacionadas às peculiaridades).
+- Para cada peculiaridade, escolha a seção/cláusula adequada (ex.: objeto/obrigações/vistoria/posse/encargos/benfeitorias/condomínio/limpeza/devolução etc.).
+- Priorize inserir como subcláusula/item dentro de uma cláusula existente (ex.: itens 1.1, 1.2; ou parágrafos), mantendo a numeração consistente, para evitar renumerar todo o contrato.
+- Se for inevitável criar uma nova cláusula, insira no ponto correto e ajuste a numeração subsequente de forma consistente com o estilo do documento.
+- As inserções devem ter redação jurídica e se harmonizar com o texto existente.${extraInstructions}`;
+
+  const userPrompt = `CONTRATO (${params.tipoLabel}):
+${params.contratoText}
+
+DADOS DO CONTRATO (para contexto; não inventar nada além disso):
+${JSON.stringify(params.contrato, null, 2)}
+
+PECULIARIDADES (OBRIGATÓRIO integrar no lugar correto):
+${params.peculiaridades}
+
+Retorne o contrato completo com as peculiaridades integradas no corpo do texto (não no final após assinaturas).`;
+
+  if (params.provider === "openai") {
+    return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+  }
+  return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+}
+
 async function renderContractFromTemplate(params: {
   provider: AiProvider;
   apiKey: string;
@@ -160,7 +289,6 @@ async function renderContractFromTemplate(params: {
   templateText: string;
   contrato: any;
   instructionsIa?: string | null;
-  peculiaridades?: string | null;
 }) {
   const paymentSpec = buildPaymentSpec(params.contrato);
   const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
@@ -180,10 +308,6 @@ REGRAS OBRIGATÓRIAS:
     ? `\n\nINSTRUÇÕES ADICIONAIS (OBRIGATÓRIAS):\n${params.instructionsIa.trim()}\n`
     : "";
 
-  const peculiaridadesText = typeof params.peculiaridades === "string" && params.peculiaridades.trim()
-    ? `\n\nPECULIARIDADES (OBRIGATÓRIO integrar no lugar correto do corpo do contrato):\n${params.peculiaridades.trim()}\n`
-    : "";
-
   const userPrompt = `MODELO BASE (REFERÊNCIA) - SUBSTITUIR DADOS PELOS INFORMADOS:
 ${params.templateText}
 
@@ -193,8 +317,8 @@ ${JSON.stringify(params.contrato, null, 2)}
 DADOS OFICIAIS DE VALOR/PAGAMENTO (OBRIGATÓRIO):
 ${paymentSpec}
 ${extraInstructions}
-${peculiaridadesText}
-Gere a minuta final completa usando a estrutura do modelo base, com todos os dados substituídos pelos oficiais${peculiaridadesText ? " e as peculiaridades integradas" : ""}.`;
+
+Gere a minuta final completa usando a estrutura do modelo base, com todos os dados substituídos pelos oficiais.`;
 
   if (params.provider === "openai") {
     return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
@@ -447,7 +571,39 @@ function hasCriticalDataFromForm(text: string, contrato: any) {
   return { ok: missing.length === 0, missing, needles };
 }
 
+async function fixPaymentInContract(params: {
+  provider: AiProvider;
+  apiKey: string;
+  model: string;
+  tipoLabel: string;
+  contratoText: string;
+  contrato: any;
+}) {
+  const paymentSpec = buildPaymentSpec(params.contrato);
+  const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
 
+TAREFA:
+Ajustar SOMENTE as cláusulas relacionadas a VALOR/PREÇO e FORMA DE PAGAMENTO do contrato abaixo, para que fiquem 100% coerentes com os dados oficiais.
+
+REGRAS:
+- Não alterar outras cláusulas além das relacionadas a pagamento/valor.
+- Se o texto atual tiver valores diferentes do oficial, reescreva integralmente as cláusulas de pagamento para corrigir.
+- Não inventar dados.
+- Não usar markdown. Retornar o contrato completo (texto final).`;
+
+  const userPrompt = `CONTRATO ATUAL:
+${params.contratoText}
+
+DADOS OFICIAIS DE VALOR/PAGAMENTO (OBRIGATÓRIO):
+${paymentSpec}
+
+Retorne o contrato completo com as cláusulas de pagamento corrigidas conforme os dados oficiais.`;
+
+  if (params.provider === "openai") {
+    return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+  }
+  return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
+}
 
 async function callOpenAiText(params: { apiKey: string; model: string; systemPrompt: string; userPrompt: string }) {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -926,6 +1082,14 @@ serve(async (req: Request) => {
     const { contrato } = body ?? {};
     if (!contrato) throw new Error("Missing 'contrato' in request body");
     const submissionId = typeof body?.submissionId === "string" ? body.submissionId : null;
+    const imobiliariaIdFromBody = typeof body?.imobiliariaId === "string" ? body.imobiliariaId : null;
+
+    let submissionImobiliariaId: string | null = null;
+    if (admin && submissionId) {
+      const { data } = await admin.from("submissions").select("imobiliaria_id").eq("id", submissionId).maybeSingle();
+      submissionImobiliariaId = (data as any)?.imobiliaria_id || null;
+    }
+    const templateImobiliariaId = submissionImobiliariaId || imobiliariaIdFromBody;
 
     let tipoLabel = tipoLabels[contrato.tipoContrato] || "Contrato Imobiliário";
     if (typeof contrato?.tipoContratoNome === "string" && contrato.tipoContratoNome.trim()) {
@@ -942,12 +1106,39 @@ serve(async (req: Request) => {
     const perfilSelecionado = contrato.perfilContrato || "equilibrado";
     let perfilTexto = getPerfilInstrucoes(perfilSelecionado, contrato.tipoContrato);
     let perfilInstructionsIa: string | null = null;
-    if (!perfilTexto && admin && typeof perfilSelecionado === "string" && perfilSelecionado.length >= 32) {
-      const { data } = await admin
-        .from("perfis_contrato")
-        .select("nome, instructions_ia")
-        .eq("id", perfilSelecionado)
-        .maybeSingle();
+    if (!perfilTexto && admin && typeof perfilSelecionado === "string") {
+      let data: any = null;
+
+      if (perfilSelecionado.length >= 32) {
+        const byId = await admin
+          .from("perfis_contrato")
+          .select("nome, instructions_ia")
+          .eq("id", perfilSelecionado)
+          .maybeSingle();
+        if (!byId.error && byId.data?.nome) data = byId.data;
+      }
+
+      if (!data && imobiliariaId) {
+        const tipoRow = await admin
+          .from("tipos_contrato")
+          .select("id")
+          .eq("imobiliaria_id", imobiliariaId)
+          .eq("codigo", contrato.tipoContrato)
+          .maybeSingle();
+
+        const tipoId = tipoRow.data?.id as string | undefined;
+        if (tipoId) {
+          const byCodigo = await admin
+            .from("perfis_contrato")
+            .select("nome, instructions_ia")
+            .eq("imobiliaria_id", imobiliariaId)
+            .eq("tipo_contrato_id", tipoId)
+            .eq("codigo", perfilSelecionado)
+            .maybeSingle();
+          if (!byCodigo.error && byCodigo.data?.nome) data = byCodigo.data;
+        }
+      }
+
       if (data?.nome) {
         const instr = typeof data.instructions_ia === "string" ? data.instructions_ia.trim() : "";
         perfilInstructionsIa = instr || null;
@@ -1014,14 +1205,12 @@ REGRAS DE QUALIDADE E SEGURANÇA:
     const perfil = normalizePerfil(contrato.perfilContrato);
     const contratoSemPeculiaridades = { ...contrato };
     delete (contratoSemPeculiaridades as any).peculiaridades;
-    
-    const peculiaridades = typeof contrato.peculiaridades === "string" ? contrato.peculiaridades.trim() : "";
 
     const userPromptBase = `Gere um ${tipoLabel} completo e profissional com os seguintes dados:
 
 DADOS DO CONTRATO:
 ${JSON.stringify(contratoSemPeculiaridades, null, 2)}
-${peculiaridades ? `\nPECULIARIDADES (OBRIGATÓRIO integrar no lugar correto do corpo do contrato):\n${peculiaridades}\n` : ""}
+
 Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instruções, qualificação detalhada das partes com todos os dados fornecidos, e espaço para assinaturas e testemunhas.`;
 
     const requestedProvider = getProviderFromRequest(body);
@@ -1037,7 +1226,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     let templateInstructionsIa: string | null = null;
 
     if (admin) {
-      const existingTemplate = await getActiveTemplate(admin, contrato.tipoContrato, perfil);
+      const existingTemplate = await getActiveTemplate(admin, contrato.tipoContrato, perfil, templateImobiliariaId);
       if (existingTemplate?.template_text) {
         minutaBase = existingTemplate.template_text;
         baseSource = "template";
@@ -1160,7 +1349,6 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   templateText: minutaBase,
                   contrato: contratoSemPeculiaridades,
                   instructionsIa: templateInstructionsIa,
-                  peculiaridades: peculiaridades || null,
                 });
                 renderProvider = "openai";
                 renderModel = model;
@@ -1191,7 +1379,6 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   templateText: minutaBase,
                   contrato: contratoSemPeculiaridades,
                   instructionsIa: templateInstructionsIa,
-                  peculiaridades: peculiaridades || null,
                 });
                 renderProvider = "gemini";
                 renderModel = model;
@@ -1219,8 +1406,86 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       }
 
       baseContrato = rendered.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+
+      if (renderProvider) {
+        const tryOrderFix: AiProvider[] = renderProvider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+        let fixed: string | null = null;
+        let lastFixErr: unknown = null;
+        for (const p of tryOrderFix) {
+          try {
+            if (p === "openai") {
+              const key = Deno.env.get("OPENAI_API_KEY");
+              if (!key) throw new Error("OPENAI_API_KEY is not configured");
+              const models = [
+                Deno.env.get("OPENAI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("OPENAI_MODEL_CONTRACT_PAYMENT_FIX") || renderModel || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+                Deno.env.get("OPENAI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+              ];
+              let openAiError: unknown = null;
+              for (const model of models) {
+                try {
+                  fixed = await fixCoreDataInContract({
+                    provider: "openai",
+                    apiKey: key,
+                    model,
+                    tipoLabel,
+                    contratoText: baseContrato,
+                    contrato: contratoSemPeculiaridades,
+                    instructionsIa: templateInstructionsIa,
+                  });
+                  break;
+                } catch (e) {
+                  openAiError = e;
+                  const status = (e as any)?.status;
+                  if (status === 429) continue;
+                  throw e;
+                }
+              }
+              if (fixed === null && openAiError) throw openAiError;
+            } else {
+              const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+              if (!key) throw new Error("GEMINI_API_KEY is not configured");
+              const models = [
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+              ];
+              let geminiError: unknown = null;
+              for (const model of models) {
+                try {
+                  fixed = await fixCoreDataInContract({
+                    provider: "gemini",
+                    apiKey: key,
+                    model,
+                    tipoLabel,
+                    contratoText: baseContrato,
+                    contrato: contratoSemPeculiaridades,
+                    instructionsIa: templateInstructionsIa,
+                  });
+                  break;
+                } catch (e) {
+                  geminiError = e;
+                  const status = (e as any)?.status;
+                  if (status === 429 || status === 404) continue;
+                  throw e;
+                }
+              }
+              if (fixed === null && geminiError) throw geminiError;
+            }
+            break;
+          } catch (e) {
+            lastFixErr = e;
+            const status = (e as any)?.status;
+            const shouldForceFallback = status === 404;
+            if (!failover && !shouldForceFallback) break;
+          }
+        }
+        if (fixed && fixed.trim()) {
+          baseContrato = fixed.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+        } else if (lastFixErr) {
+          throw lastFixErr instanceof Error ? lastFixErr : new Error("Erro ao ajustar dados principais do contrato");
+        }
+      }
     } else if (shouldAutoSaveTemplates() && admin && usedModel) {
-      const existingTemplate = await getActiveTemplate(admin, contrato.tipoContrato, perfil);
+      const existingTemplate = await getActiveTemplate(admin, contrato.tipoContrato, perfil, templateImobiliariaId);
       if (!existingTemplate?.template_text) {
         await saveTemplate(admin, {
           tipoContrato: contrato.tipoContrato,
@@ -1228,11 +1493,101 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
           provider: usedProvider,
           model: usedModel,
           templateText: minutaBase,
+          imobiliariaId: templateImobiliariaId,
         });
       }
     }
 
     let minutaFinal = baseContrato;
+    const peculiaridades = typeof contrato.peculiaridades === "string" ? contrato.peculiaridades.trim() : "";
+    if (peculiaridades) {
+      const providerForPec = usedModel ? usedProvider : provider;
+      const failover = isFailoverEnabled();
+      const tryOrder: AiProvider[] = providerForPec === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+      let integratedText: string | null = null;
+      let lastPecError: unknown = null;
+
+      for (const p of tryOrder) {
+        try {
+          if (p === "openai") {
+            const key = Deno.env.get("OPENAI_API_KEY");
+            if (!key) throw new Error("OPENAI_API_KEY is not configured");
+            const models = [
+              Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_INTEGRATE") || Deno.env.get("OPENAI_MODEL_CONTRACT_PEC") || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+              Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_INTEGRATE_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+            ];
+            let openAiError: unknown = null;
+            for (const model of models) {
+              try {
+                integratedText = await integratePeculiaridadesInContract({
+                  provider: "openai",
+                  apiKey: key,
+                  model,
+                  tipoLabel,
+                  contratoText: baseContrato,
+                  contrato: contratoSemPeculiaridades,
+                  peculiaridades,
+                  instructionsIa: templateInstructionsIa,
+                });
+                break;
+              } catch (e) {
+                openAiError = e;
+                const status = (e as any)?.status;
+                if (status === 429) continue;
+                throw e;
+              }
+            }
+            if (integratedText === null && openAiError) throw openAiError;
+          } else {
+            const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+            if (!key) throw new Error("GEMINI_API_KEY is not configured");
+            const models = [
+              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_INTEGRATE") || Deno.env.get("GEMINI_MODEL_CONTRACT_PEC") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_INTEGRATE_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
+            ];
+            let geminiError: unknown = null;
+            for (const model of models) {
+              try {
+                integratedText = await integratePeculiaridadesInContract({
+                  provider: "gemini",
+                  apiKey: key,
+                  model,
+                  tipoLabel,
+                  contratoText: baseContrato,
+                  contrato: contratoSemPeculiaridades,
+                  peculiaridades,
+                  instructionsIa: templateInstructionsIa,
+                });
+                break;
+              } catch (e) {
+                geminiError = e;
+                const status = (e as any)?.status;
+                if (status === 429 || status === 404) continue;
+                throw e;
+              }
+            }
+            if (integratedText === null && geminiError) throw geminiError;
+          }
+          break;
+        } catch (e) {
+          lastPecError = e;
+          const status = (e as any)?.status;
+          const shouldForceFallback = status === 404;
+          if (!failover && !shouldForceFallback) break;
+        }
+      }
+
+      if (integratedText === null) {
+        throw lastPecError instanceof Error ? lastPecError : new Error("Erro ao gerar peculiaridades");
+      }
+      const cleanedIntegrated = (integratedText || "").replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
+      const integratedOk = cleanedIntegrated.trim() && cleanedIntegrated.trim() !== baseContrato.trim();
+      if (integratedOk) {
+        minutaFinal = cleanedIntegrated;
+      } else {
+        throw new Error("Não foi possível integrar as peculiaridades no corpo do contrato. Ajuste as peculiaridades ou tente novamente.");
+      }
+    }
 
     if (baseSource !== "ai") {
       const check = hasCriticalDataFromForm(minutaFinal, contratoSemPeculiaridades);

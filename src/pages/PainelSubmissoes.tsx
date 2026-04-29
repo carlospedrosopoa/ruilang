@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,6 +68,7 @@ interface Corretor {
 
 interface CustomTipoContrato {
   id: string;
+  codigo: string;
   nome: string;
   descricao: string | null;
   icone: string;
@@ -75,6 +76,8 @@ interface CustomTipoContrato {
   label_comprador: string;
   modelo_base: string | null;
 }
+
+type PerfilBlindagemOption = { codigo: string; nome: string };
 
 interface ImovelRef {
   id: string;
@@ -110,16 +113,22 @@ function safeStorageFileName(originalName: string) {
 
 const PainelSubmissoes = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { activeTenantId, isPlatformAdmin, memberships } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [novoTipo, setNovoTipo] = useState<string>("promessa_compra_venda");
+  const [novoPerfil, setNovoPerfil] = useState<string>("equilibrado");
+  const [perfisBlindagem, setPerfisBlindagem] = useState<PerfilBlindagemOption[]>([]);
+  const [loadingPerfisBlindagem, setLoadingPerfisBlindagem] = useState(false);
   const [corretores, setCorretores] = useState<Corretor[]>([]);
   const [selectedCorretorId, setSelectedCorretorId] = useState<string | null>(null);
   const [imoveis, setImoveis] = useState<ImovelRef[]>([]);
   const [selectedImovelId, setSelectedImovelId] = useState<string | null>(null);
+  const [imovelSearch, setImovelSearch] = useState("");
+  const [imovelVendedorSearch, setImovelVendedorSearch] = useState("");
   const [proposalOpen, setProposalOpen] = useState(false);
   const [proposalLoading, setProposalLoading] = useState(false);
   const [proposalSubmissionId, setProposalSubmissionId] = useState<string | null>(null);
@@ -127,6 +136,7 @@ const PainelSubmissoes = () => {
   const [proposalDocs, setProposalDocs] = useState<SubmissionDocumento[]>([]);
   const [proposalImobiliaria, setProposalImobiliaria] = useState<any | null>(null);
   const escrituraInputRef = useRef<HTMLInputElement>(null);
+  const prefillImovelIdRef = useRef<string | null>(null);
   const [escrituraTarget, setEscrituraTarget] = useState<Submission | null>(null);
   const [escrituraUploadingForId, setEscrituraUploadingForId] = useState<string | null>(null);
 
@@ -193,10 +203,81 @@ const PainelSubmissoes = () => {
       }
       const list = (data as ImovelRef[]) || [];
       setImoveis(list);
-      setSelectedImovelId(list[0]?.id || null);
+      const pending = prefillImovelIdRef.current;
+      const nextId = pending && list.some((i) => i.id === pending) ? pending : null;
+      setSelectedImovelId(nextId);
+      prefillImovelIdRef.current = null;
     };
     loadImoveis();
   }, [activeTenantId]);
+
+  const imoveisView = useMemo(() => {
+    const parseDados = (raw: any) => {
+      if (!raw) return null;
+      if (typeof raw === "string") {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      }
+      return typeof raw === "object" ? raw : null;
+    };
+
+    const safeStr = (v: any) => String(v || "").trim();
+
+    return imoveis.map((im) => {
+      const d = parseDados(im.dados);
+      const enderecoParts = [
+        safeStr(d?.localizacao),
+        safeStr(d?.bairro),
+        safeStr(d?.municipio),
+        safeStr(d?.estadoImovel),
+        safeStr(d?.cep),
+      ].filter(Boolean);
+      const endereco = enderecoParts.join(" • ");
+
+      const vendRaw = d?.vendedores;
+      const vendList = Array.isArray(vendRaw) ? vendRaw : vendRaw && typeof vendRaw === "object" ? [vendRaw] : [];
+      const vendedores = vendList
+        .map((v: any) => safeStr(v?.nome || v?.nome_completo))
+        .filter(Boolean)
+        .join(", ");
+
+      return {
+        id: im.id,
+        titulo: im.titulo,
+        endereco: endereco || "—",
+        vendedores: vendedores || "—",
+        searchText: `${safeStr(im.titulo)} ${enderecoParts.join(" ")} ${vendedores}`.toLowerCase(),
+        vendedorText: vendedores.toLowerCase(),
+      };
+    });
+  }, [imoveis]);
+
+  const imoveisFiltered = useMemo(() => {
+    const q = imovelSearch.trim().toLowerCase();
+    const vq = imovelVendedorSearch.trim().toLowerCase();
+    return imoveisView.filter((im) => {
+      if (q && !im.searchText.includes(q)) return false;
+      if (vq && !im.vendedorText.includes(vq)) return false;
+      return true;
+    });
+  }, [imoveisView, imovelSearch, imovelVendedorSearch]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || "");
+    const shouldOpen = params.get("create") === "1";
+    const imovelId = params.get("imovelId");
+    if (!shouldOpen) return;
+
+    if (imovelId) {
+      prefillImovelIdRef.current = imovelId;
+      if (imoveis.some((i) => i.id === imovelId)) setSelectedImovelId(imovelId);
+    }
+    setDialogOpen(true);
+    navigate("/painel", { replace: true });
+  }, [location.search, navigate, imoveis]);
 
   useEffect(() => {
     const loadCustomTipos = async () => {
@@ -206,7 +287,7 @@ const PainelSubmissoes = () => {
       }
       const { data } = await supabase
         .from("tipos_contrato")
-        .select("id, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
+        .select("id, codigo, nome, descricao, icone, label_vendedor, label_comprador, modelo_base")
         .eq("imobiliaria_id", activeTenantId)
         .eq("ativo", true)
         .order("created_at", { ascending: true });
@@ -215,12 +296,66 @@ const PainelSubmissoes = () => {
     loadCustomTipos();
   }, [activeTenantId]);
 
-  const allTipos = useMemo(() => {
-    return [
-      ...tiposContrato.map((t) => ({ id: t.id as string, nome: t.nome, descricao: t.descricao, icone: t.icone })),
-      ...customTipos.map((t) => ({ id: t.id, nome: t.nome, descricao: t.descricao || "", icone: t.icone })),
-    ];
+  useEffect(() => {
+    if (!customTipos.length) return;
+    const codes = new Set(customTipos.map((t) => t.codigo));
+    if (codes.has(novoTipo)) return;
+    setNovoTipo(customTipos[0].codigo);
   }, [customTipos]);
+
+  const allTipos = useMemo(() => {
+    if (customTipos.length > 0) {
+      return customTipos.map((t) => ({ id: t.codigo, nome: t.nome, descricao: t.descricao || "", icone: t.icone }));
+    }
+    return tiposContrato.map((t) => ({ id: t.id as string, nome: t.nome, descricao: t.descricao, icone: t.icone }));
+  }, [customTipos]);
+
+  useEffect(() => {
+    const loadPerfis = async () => {
+      if (!activeTenantId) {
+        setPerfisBlindagem([]);
+        setNovoPerfil("equilibrado");
+        return;
+      }
+      setLoadingPerfisBlindagem(true);
+      try {
+        const tipoRes = await supabase
+          .from("tipos_contrato")
+          .select("id")
+          .eq("imobiliaria_id", activeTenantId)
+          .eq("codigo", novoTipo)
+          .maybeSingle();
+        const tipoId = (tipoRes.data as any)?.id as string | undefined;
+        if (!tipoId) {
+          setPerfisBlindagem([]);
+          setNovoPerfil("equilibrado");
+          return;
+        }
+        const { data, error } = await supabase
+          .from("perfis_contrato")
+          .select("codigo, nome")
+          .eq("imobiliaria_id", activeTenantId)
+          .eq("tipo_contrato_id", tipoId)
+          .eq("ativo", true)
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        const list = ((data as any[]) || []).map((p) => ({ codigo: String(p.codigo), nome: String(p.nome) }));
+        setPerfisBlindagem(list);
+
+        const codes = new Set(list.map((p) => p.codigo));
+        if (codes.has(novoPerfil)) return;
+        const preferred = list.find((p) => p.nome.toLowerCase().includes("equilibr"))?.codigo || list[0]?.codigo || "equilibrado";
+        setNovoPerfil(preferred);
+      } catch (e: any) {
+        setPerfisBlindagem([]);
+        setNovoPerfil("equilibrado");
+        toast.error(e?.message || "Erro ao carregar perfis de blindagem.");
+      } finally {
+        setLoadingPerfisBlindagem(false);
+      }
+    };
+    loadPerfis();
+  }, [activeTenantId, novoTipo]);
 
   const openCreateTipo = () => {
     setEditingTipo(null);
@@ -317,6 +452,10 @@ const PainelSubmissoes = () => {
       toast.error("Selecione um imóvel para gerar a coleta.");
       return;
     }
+    if (!novoPerfil || !novoPerfil.trim()) {
+      toast.error("Selecione o perfil de blindagem.");
+      return;
+    }
     setCreating(true);
     try {
       const corretor = corretores.find((c) => c.id === selectedCorretorId) || null;
@@ -332,33 +471,64 @@ const PainelSubmissoes = () => {
         } catch {}
       }
 
-      const { data: imovelExtra, error: imovelExtraError } = await supabase
-        .from("imoveis")
-        .select(
-          "vendedor_cliente_id, clientes(id, nome_completo, cpf, email, telefone, endereco, bairro, cidade, estado, cep, documento_tipo, documento_numero)",
-        )
-        .eq("id", imovelRef.id)
-        .maybeSingle();
-      if (imovelExtraError) throw imovelExtraError;
+      const vendedoresFromImovel = (() => {
+        const raw = (imovelDados as any)?.vendedores;
+        const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
+        if (!list.length) return null;
 
-      const cliente = (imovelExtra as any)?.clientes || null;
-      const vendedoresPrefill = (() => {
-        if (!cliente) return null;
-        const v = criarPessoaVazia();
-        v.nome = String(cliente?.nome_completo || "").trim();
-        v.cpf = String(cliente?.cpf || "").trim();
-        v.email = String(cliente?.email || "").trim() || undefined;
-        v.telefone = String(cliente?.telefone || "").trim() || undefined;
-        v.endereco = String(cliente?.endereco || "").trim();
-        v.bairro = String(cliente?.bairro || "").trim();
-        v.cidade = String(cliente?.cidade || "").trim();
-        v.estado = String(cliente?.estado || "").trim();
-        v.cep = String(cliente?.cep || "").trim();
-        const docTipo = String(cliente?.documento_tipo || "").toLowerCase();
-        if (docTipo === "rg" || docTipo === "cnh") v.documentoTipo = docTipo as any;
-        v.documentoNumero = String(cliente?.documento_numero || "").trim();
-        return [v];
+        const mapped = list
+          .map((r: any) => {
+            const v = criarPessoaVazia();
+            v.nome = String(r?.nome || r?.nome_completo || "").trim();
+            v.cpf = String(r?.cpf || "").trim();
+            v.email = String(r?.email || "").trim() || undefined;
+            v.telefone = String(r?.telefone || "").trim() || undefined;
+            v.endereco = String(r?.endereco || "").trim();
+            v.bairro = String(r?.bairro || "").trim();
+            v.cidade = String(r?.cidade || "").trim();
+            v.estado = String(r?.estado || "").trim();
+            v.cep = String(r?.cep || "").trim();
+            const docTipo = String(r?.documentoTipo || r?.documento_tipo || "").toLowerCase();
+            if (docTipo === "rg" || docTipo === "cnh") v.documentoTipo = docTipo as any;
+            v.documentoNumero = String(r?.documentoNumero || r?.documento_numero || "").trim();
+            v.documentoOrgao = String(r?.documentoOrgao || r?.documento_orgao || "").trim();
+            return v;
+          })
+          .filter((v) => Boolean(v.nome.trim() || v.cpf.trim() || v.documentoNumero.trim()));
+
+        return mapped.length ? mapped : null;
       })();
+
+      let vendedoresPrefill = vendedoresFromImovel;
+      if (!vendedoresPrefill) {
+        const { data: imovelExtra, error: imovelExtraError } = await supabase
+          .from("imoveis")
+          .select(
+            "vendedor_cliente_id, clientes(id, nome_completo, cpf, email, telefone, endereco, bairro, cidade, estado, cep, documento_tipo, documento_numero)",
+          )
+          .eq("id", imovelRef.id)
+          .maybeSingle();
+        if (imovelExtraError) throw imovelExtraError;
+
+        const cliente = (imovelExtra as any)?.clientes || null;
+        vendedoresPrefill = (() => {
+          if (!cliente) return null;
+          const v = criarPessoaVazia();
+          v.nome = String(cliente?.nome_completo || "").trim();
+          v.cpf = String(cliente?.cpf || "").trim();
+          v.email = String(cliente?.email || "").trim() || undefined;
+          v.telefone = String(cliente?.telefone || "").trim() || undefined;
+          v.endereco = String(cliente?.endereco || "").trim();
+          v.bairro = String(cliente?.bairro || "").trim();
+          v.cidade = String(cliente?.cidade || "").trim();
+          v.estado = String(cliente?.estado || "").trim();
+          v.cep = String(cliente?.cep || "").trim();
+          const docTipo = String(cliente?.documento_tipo || "").toLowerCase();
+          if (docTipo === "rg" || docTipo === "cnh") v.documentoTipo = docTipo as any;
+          v.documentoNumero = String(cliente?.documento_numero || "").trim();
+          return [v];
+        })();
+      }
 
       const { data, error } = await supabase
         .from("submissions")
@@ -369,7 +539,11 @@ const PainelSubmissoes = () => {
           corretor_nome: corretor?.nome || null,
           corretor_telefone: corretor?.telefone || null,
           imovel_id: imovelRef.id,
-          dados: { imovel: imovelDados || {}, ...(vendedoresPrefill ? { vendedores: vendedoresPrefill } : {}) } as any,
+          dados: {
+            imovel: imovelDados || {},
+            ...(vendedoresPrefill ? { vendedores: vendedoresPrefill } : {}),
+            perfilContrato: novoPerfil,
+          } as any,
         } as any)
         .select()
         .single();
@@ -393,8 +567,14 @@ const PainelSubmissoes = () => {
     else { toast.success("Excluído!"); setSubmissions((prev) => prev.filter((s) => s.id !== id)); }
   };
 
-  const handleGenerateContract = (submission: Submission) => {
-    navigate(`/contrato/${submission.tipo_contrato}?submissionId=${submission.id}`);
+  const handleGenerateContract = async (submission: Submission) => {
+    let tipoCodigo = String(submission.tipo_contrato || "").trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tipoCodigo) && activeTenantId) {
+      const res = await supabase.from("tipos_contrato").select("codigo").eq("id", tipoCodigo).maybeSingle();
+      const resolved = (res.data as any)?.codigo;
+      if (typeof resolved === "string" && resolved.trim()) tipoCodigo = resolved.trim();
+    }
+    navigate(`/contrato/${tipoCodigo}?submissionId=${submission.id}`);
   };
 
   const currentImobiliaria = useMemo(() => {
@@ -713,35 +893,6 @@ const PainelSubmissoes = () => {
               <DialogHeader><DialogTitle>Criar Coleta</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-4">
                 <div>
-                  <Label>Tipo de Contrato</Label>
-                  <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {allTipos.map((t) => (<SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>))}
-                    </SelectContent>
-                  </Select>
-                  <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
-                    <Button variant="ghost" size="sm" className="px-0" onClick={openCreateTipo}>
-                      <Plus className="w-4 h-4 mr-1.5" />
-                      Criar Novo Tipo de Contrato
-                    </Button>
-                    {customTipos.length > 0 ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="px-0"
-                        onClick={() => {
-                          const ct = customTipos.find((x) => x.id === novoTipo);
-                          if (ct) openEditTipo(ct);
-                          else toast.error("Selecione um tipo personalizado para editar.");
-                        }}
-                      >
-                        Editar Tipo Selecionado
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-                <div>
                   <Label>Imóvel *</Label>
                   {imoveis.length === 0 ? (
                     <div className="mt-2 border border-dashed border-border rounded-lg p-3 text-sm text-muted-foreground">
@@ -761,14 +912,49 @@ const PainelSubmissoes = () => {
                       </div>
                     </div>
                   ) : (
-                    <Select value={selectedImovelId || ""} onValueChange={(v) => setSelectedImovelId(v || null)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        {imoveis.map((i) => (
-                          <SelectItem key={i.id} value={i.id}>{i.titulo}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="mt-2 space-y-3">
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <Input value={imovelSearch} onChange={(e) => setImovelSearch(e.target.value)} placeholder="Buscar por endereço ou título" />
+                        <Input value={imovelVendedorSearch} onChange={(e) => setImovelVendedorSearch(e.target.value)} placeholder="Filtrar por vendedor" />
+                      </div>
+                      <div className="border border-border rounded-lg overflow-hidden">
+                        <div className="max-h-[220px] overflow-y-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Título</TableHead>
+                                <TableHead>Endereço</TableHead>
+                                <TableHead>Vendedor</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {imoveisFiltered.length === 0 ? (
+                                <TableRow>
+                                  <TableCell colSpan={3} className="text-sm text-muted-foreground py-6 text-center">
+                                    Nenhum imóvel encontrado com esses filtros.
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                imoveisFiltered.map((im) => {
+                                  const selected = selectedImovelId === im.id;
+                                  return (
+                                    <TableRow
+                                      key={im.id}
+                                      className={selected ? "bg-primary/10" : "hover:bg-white/5 cursor-pointer"}
+                                      onClick={() => setSelectedImovelId(im.id)}
+                                    >
+                                      <TableCell className="font-medium">{im.titulo}</TableCell>
+                                      <TableCell className="text-muted-foreground">{im.endereco}</TableCell>
+                                      <TableCell className="text-muted-foreground">{im.vendedores}</TableCell>
+                                    </TableRow>
+                                  );
+                                })
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
                 <div>
@@ -777,6 +963,48 @@ const PainelSubmissoes = () => {
                     <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
                       {corretores.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Tipo de Contrato</Label>
+                  <Select value={novoTipo} onValueChange={(v) => setNovoTipo(v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {allTipos.map((t) => (<SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-2 flex items-center justify-between gap-2 flex-wrap">
+                    <Button variant="ghost" size="sm" className="px-0" onClick={openCreateTipo}>
+                      <Plus className="w-4 h-4 mr-1.5" />
+                      Criar Novo Tipo de Contrato
+                    </Button>
+                    {customTipos.length > 0 ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="px-0"
+                        onClick={() => {
+                          const ct = customTipos.find((x) => x.codigo === novoTipo);
+                          if (ct) openEditTipo(ct);
+                          else toast.error("Selecione um tipo personalizado para editar.");
+                        }}
+                      >
+                        Editar Tipo Selecionado
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                <div>
+                  <Label>Perfil de Blindagem *</Label>
+                  <Select
+                    value={novoPerfil}
+                    onValueChange={(v) => setNovoPerfil(v)}
+                    disabled={loadingPerfisBlindagem || perfisBlindagem.length === 0}
+                  >
+                    <SelectTrigger><SelectValue placeholder={loadingPerfisBlindagem ? "Carregando..." : "Selecione"} /></SelectTrigger>
+                    <SelectContent>
+                      {perfisBlindagem.map((p) => (<SelectItem key={p.codigo} value={p.codigo}>{p.nome}</SelectItem>))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -814,7 +1042,10 @@ const PainelSubmissoes = () => {
               </TableHeader>
               <TableBody>
                 {submissions.map((sub) => {
-                  const tipoInfo = allTipos.find((t) => t.id === sub.tipo_contrato);
+                  const tipoInfo =
+                    allTipos.find((t) => t.id === sub.tipo_contrato) ||
+                    customTipos.find((t) => t.id === sub.tipo_contrato) ||
+                    null;
                   const statusInfo = statusLabels[sub.status] || statusLabels.rascunho;
                   const StatusIcon = statusInfo.icon;
                   const hasProposal = Boolean(sub.proposta_texto && String(sub.proposta_texto).trim());

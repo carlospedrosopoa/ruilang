@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, FileText, Home, Loader2, Paperclip, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { ClipboardList, ExternalLink, FileText, Home, Loader2, Paperclip, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { criarImovelVazio, Imovel } from "@/types/contract";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { fileToVisionBase64Images } from "@/lib/imageUtils";
+import { useNavigate } from "react-router-dom";
 
 type ImovelRow = {
   id: string;
@@ -55,6 +56,19 @@ function criarVendedorVazio(): VendedorForm {
   };
 }
 
+type VendedorEntry = VendedorForm & {
+  key: string;
+  cliente_id: string | null;
+};
+
+function criarVendedorEntryVazio(): VendedorEntry {
+  return {
+    key: crypto.randomUUID(),
+    cliente_id: null,
+    ...criarVendedorVazio(),
+  };
+}
+
 function safeImovelFromRow(row: ImovelRow): Imovel {
   const raw = row?.dados;
   if (raw && typeof raw === "object") return raw as Imovel;
@@ -65,6 +79,49 @@ function safeImovelFromRow(row: ImovelRow): Imovel {
     } catch {}
   }
   return criarImovelVazio();
+}
+
+function safeRawDadosFromRow(row: ImovelRow): any {
+  const raw = row?.dados;
+  if (raw && typeof raw === "object") return raw;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function safeVendedoresFromRow(row: ImovelRow): VendedorEntry[] {
+  const raw = safeRawDadosFromRow(row);
+  const list = (raw as any)?.vendedores;
+  if (Array.isArray(list) && list.length > 0) {
+    return list.map((v: any) => {
+      const base = criarVendedorEntryVazio();
+      return {
+        ...base,
+        cliente_id: typeof v?.cliente_id === "string" ? v.cliente_id : null,
+        nome_completo: typeof v?.nome_completo === "string" ? v.nome_completo : "",
+        cpf: typeof v?.cpf === "string" ? v.cpf : "",
+        documento_tipo: typeof v?.documento_tipo === "string" ? v.documento_tipo : "",
+        documento_numero: typeof v?.documento_numero === "string" ? v.documento_numero : "",
+        email: typeof v?.email === "string" ? v.email : "",
+        telefone: typeof v?.telefone === "string" ? v.telefone : "",
+        endereco: typeof v?.endereco === "string" ? v.endereco : "",
+        bairro: typeof v?.bairro === "string" ? v.bairro : "",
+        cidade: typeof v?.cidade === "string" ? v.cidade : "",
+        estado: typeof v?.estado === "string" ? v.estado : "",
+        cep: typeof v?.cep === "string" ? v.cep : "",
+      };
+    });
+  }
+
+  const fallbackId = row.vendedor_cliente_id || null;
+  const one = criarVendedorEntryVazio();
+  one.cliente_id = fallbackId;
+  return [one];
 }
 
 function extractCityUf(imovel: any) {
@@ -119,12 +176,14 @@ type DocContext = "imovel" | "vendedor";
 type StagedDoc = {
   id: string;
   context: DocContext;
+  vendedorKey?: string | null;
   title: string;
   file: File;
 };
 
 const ImoveisPage = () => {
   const { activeTenantId } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [imoveis, setImoveis] = useState<ImovelRow[]>([]);
 
@@ -134,8 +193,8 @@ const ImoveisPage = () => {
   const [titulo, setTitulo] = useState("");
   const [imovel, setImovel] = useState<Imovel>(criarImovelVazio());
   const [ativo, setAtivo] = useState(true);
-  const [vendedor, setVendedor] = useState<VendedorForm>(criarVendedorVazio());
-  const [vendedorClienteId, setVendedorClienteId] = useState<string | null>(null);
+  const [vendedores, setVendedores] = useState<VendedorEntry[]>(() => [criarVendedorEntryVazio()]);
+  const [vendedorAtivoKey, setVendedorAtivoKey] = useState<string>("");
 
   const [documentos, setDocumentos] = useState<ImovelDocumentoRow[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
@@ -152,6 +211,20 @@ const ImoveisPage = () => {
   const [quickDocsImovel, setQuickDocsImovel] = useState<{ id: string; titulo: string } | null>(null);
   const [quickDocs, setQuickDocs] = useState<ImovelDocumentoRow[]>([]);
   const [quickDocsLoading, setQuickDocsLoading] = useState(false);
+  const [docVendedorKey, setDocVendedorKey] = useState<string | null>(null);
+
+  const vendedorAtivo = useMemo(() => {
+    if (!vendedores.length) return null;
+    const found = vendedores.find((v) => v.key === vendedorAtivoKey);
+    return found || vendedores[0] || null;
+  }, [vendedorAtivoKey, vendedores]);
+
+  useEffect(() => {
+    if (!vendedores.length) return;
+    if (!vendedorAtivoKey || !vendedores.some((v) => v.key === vendedorAtivoKey)) {
+      setVendedorAtivoKey(vendedores[0].key);
+    }
+  }, [vendedorAtivoKey, vendedores]);
 
   const uploadDocumentoToImovelAndMaybeCliente = async (args: {
     imovelId: string;
@@ -257,9 +330,11 @@ const ImoveisPage = () => {
     loadQuickDocs(row.id);
   };
 
-  const loadVendedor = async (clienteId: string | null) => {
+  const loadVendedor = async (clienteId: string | null, vendedorKey: string) => {
     if (!clienteId) {
-      setVendedor(criarVendedorVazio());
+      setVendedores((prev) =>
+        prev.map((v) => (v.key === vendedorKey ? { ...v, cliente_id: null, ...criarVendedorVazio() } : v)),
+      );
       return;
     }
     const { data, error } = await supabase
@@ -268,22 +343,32 @@ const ImoveisPage = () => {
       .eq("id", clienteId)
       .single();
     if (error || !data) {
-      setVendedor(criarVendedorVazio());
+      setVendedores((prev) =>
+        prev.map((v) => (v.key === vendedorKey ? { ...v, cliente_id: clienteId, ...criarVendedorVazio() } : v)),
+      );
       return;
     }
-    setVendedor({
-      nome_completo: data.nome_completo || "",
-      cpf: data.cpf || "",
-      documento_tipo: data.documento_tipo || "",
-      documento_numero: data.documento_numero || "",
-      email: data.email || "",
-      telefone: data.telefone || "",
-      endereco: data.endereco || "",
-      bairro: data.bairro || "",
-      cidade: data.cidade || "",
-      estado: data.estado || "",
-      cep: data.cep || "",
-    });
+    setVendedores((prev) =>
+      prev.map((v) =>
+        v.key === vendedorKey
+          ? {
+              ...v,
+              cliente_id: clienteId,
+              nome_completo: data.nome_completo || "",
+              cpf: data.cpf || "",
+              documento_tipo: data.documento_tipo || "",
+              documento_numero: data.documento_numero || "",
+              email: data.email || "",
+              telefone: data.telefone || "",
+              endereco: data.endereco || "",
+              bairro: data.bairro || "",
+              cidade: data.cidade || "",
+              estado: data.estado || "",
+              cep: data.cep || "",
+            }
+          : v,
+      ),
+    );
   };
 
   const loadVendedorDocs = async (clienteId: string | null) => {
@@ -312,8 +397,9 @@ const ImoveisPage = () => {
     setImovel(criarImovelVazio());
     setAtivo(true);
     setDocumentos([]);
-    setVendedor(criarVendedorVazio());
-    setVendedorClienteId(null);
+    const one = criarVendedorEntryVazio();
+    setVendedores([one]);
+    setVendedorAtivoKey(one.key);
     setVendedorDocs([]);
     setStagedDocs([]);
     setDialogOpen(true);
@@ -325,61 +411,100 @@ const ImoveisPage = () => {
     setImovel(safeImovelFromRow(row));
     setAtivo(Boolean(row.ativo));
     loadDocs(row.id);
-    const clienteId = row.vendedor_cliente_id || null;
-    setVendedorClienteId(clienteId);
-    loadVendedor(clienteId);
-    loadVendedorDocs(clienteId);
+    const list = safeVendedoresFromRow(row);
+    setVendedores(list);
+    const firstKey = list[0]?.key || "";
+    setVendedorAtivoKey(firstKey);
+    const clienteId = list[0]?.cliente_id || null;
+    if (clienteId) loadVendedorDocs(clienteId);
+    if (list.length > 0) {
+      for (const v of list) {
+        if (v.cliente_id && !v.nome_completo.trim()) {
+          loadVendedor(v.cliente_id, v.key);
+        }
+      }
+    }
     setStagedDocs([]);
     setDialogOpen(true);
   };
 
-  const upsertVendedorCliente = async () => {
+  const updateVendedorField = (key: string, field: keyof VendedorForm, value: string) => {
+    setVendedores((prev) => prev.map((v) => (v.key === key ? { ...v, [field]: value } : v)));
+  };
+
+  const addVendedor = () => {
+    const novo = criarVendedorEntryVazio();
+    setVendedores((prev) => [...prev, novo]);
+    setVendedorAtivoKey(novo.key);
+    setVendedorDocs([]);
+  };
+
+  const removeVendedor = (key: string) => {
+    const remaining = vendedores.filter((v) => v.key !== key);
+    if (remaining.length === 0) return;
+    setVendedores(remaining);
+    setStagedDocs((prev) => prev.filter((d) => d.context !== "vendedor" || d.vendedorKey !== key));
+    setVendedorDocs([]);
+    if (vendedorAtivoKey === key) {
+      const nextActiveKey = remaining[0]?.key || "";
+      setVendedorAtivoKey(nextActiveKey);
+      loadVendedorDocs(remaining[0]?.cliente_id || null);
+    }
+  };
+
+  const selectVendedor = (key: string) => {
+    setVendedorAtivoKey(key);
+    const v = vendedores.find((x) => x.key === key) || null;
+    loadVendedorDocs(v?.cliente_id || null);
+  };
+
+  const upsertVendedorCliente = async (v: VendedorEntry) => {
     if (!activeTenantId) throw new Error("Selecione uma imobiliária.");
-    const nome = vendedor.nome_completo.trim();
+    const nome = v.nome_completo.trim();
     if (!nome) throw new Error("Informe o nome do vendedor.");
 
     const payload = {
       vendedor: {
         nome_completo: nome,
-        cpf: vendedor.cpf.trim(),
-        documento_tipo: vendedor.documento_tipo.trim(),
-        documento_numero: vendedor.documento_numero.trim(),
-        email: vendedor.email.trim(),
-        telefone: vendedor.telefone.trim(),
-        endereco: vendedor.endereco.trim(),
-        bairro: vendedor.bairro.trim(),
-        cidade: vendedor.cidade.trim(),
-        estado: vendedor.estado.trim(),
-        cep: vendedor.cep.trim(),
+        cpf: v.cpf.trim(),
+        documento_tipo: v.documento_tipo.trim(),
+        documento_numero: v.documento_numero.trim(),
+        email: v.email.trim(),
+        telefone: v.telefone.trim(),
+        endereco: v.endereco.trim(),
+        bairro: v.bairro.trim(),
+        cidade: v.cidade.trim(),
+        estado: v.estado.trim(),
+        cep: v.cep.trim(),
       },
     };
 
-    if (vendedorClienteId) {
+    if (v.cliente_id) {
       const { data, error } = await supabase
         .from("clientes")
         .update({
           nome_completo: nome,
-          cpf: vendedor.cpf.trim() || null,
-          documento_tipo: vendedor.documento_tipo.trim() || null,
-          documento_numero: vendedor.documento_numero.trim() || null,
-          email: vendedor.email.trim() || null,
-          telefone: vendedor.telefone.trim() || null,
-          endereco: vendedor.endereco.trim() || null,
-          bairro: vendedor.bairro.trim() || null,
-          cidade: vendedor.cidade.trim() || null,
-          estado: vendedor.estado.trim() || null,
-          cep: vendedor.cep.trim() || null,
+          cpf: v.cpf.trim() || null,
+          documento_tipo: v.documento_tipo.trim() || null,
+          documento_numero: v.documento_numero.trim() || null,
+          email: v.email.trim() || null,
+          telefone: v.telefone.trim() || null,
+          endereco: v.endereco.trim() || null,
+          bairro: v.bairro.trim() || null,
+          cidade: v.cidade.trim() || null,
+          estado: v.estado.trim() || null,
+          cep: v.cep.trim() || null,
           payload: payload as any,
           updated_at: new Date().toISOString(),
         } as any)
-        .eq("id", vendedorClienteId)
+        .eq("id", v.cliente_id)
         .select("id")
         .single();
       if (error) throw error;
       return data.id as string;
     }
 
-    const cpf = vendedor.cpf.trim();
+    const cpf = v.cpf.trim();
     if (cpf) {
       const { data } = await supabase
         .from("clientes")
@@ -393,19 +518,18 @@ const ImoveisPage = () => {
           .from("clientes")
           .update({
             nome_completo: nome,
-            email: vendedor.email.trim() || null,
-            telefone: vendedor.telefone.trim() || null,
-            endereco: vendedor.endereco.trim() || null,
-            bairro: vendedor.bairro.trim() || null,
-            cidade: vendedor.cidade.trim() || null,
-            estado: vendedor.estado.trim() || null,
-            cep: vendedor.cep.trim() || null,
+            email: v.email.trim() || null,
+            telefone: v.telefone.trim() || null,
+            endereco: v.endereco.trim() || null,
+            bairro: v.bairro.trim() || null,
+            cidade: v.cidade.trim() || null,
+            estado: v.estado.trim() || null,
+            cep: v.cep.trim() || null,
             payload: payload as any,
             updated_at: new Date().toISOString(),
           } as any)
           .eq("id", existingId);
         if (error) throw error;
-        setVendedorClienteId(existingId);
         return existingId;
       }
     }
@@ -416,16 +540,16 @@ const ImoveisPage = () => {
         imobiliaria_id: activeTenantId,
         tipo_pessoa: "vendedor",
         nome_completo: nome,
-        cpf: vendedor.cpf.trim() || null,
-        documento_tipo: vendedor.documento_tipo.trim() || null,
-        documento_numero: vendedor.documento_numero.trim() || null,
-        email: vendedor.email.trim() || null,
-        telefone: vendedor.telefone.trim() || null,
-        endereco: vendedor.endereco.trim() || null,
-        bairro: vendedor.bairro.trim() || null,
-        cidade: vendedor.cidade.trim() || null,
-        estado: vendedor.estado.trim() || null,
-        cep: vendedor.cep.trim() || null,
+        cpf: v.cpf.trim() || null,
+        documento_tipo: v.documento_tipo.trim() || null,
+        documento_numero: v.documento_numero.trim() || null,
+        email: v.email.trim() || null,
+        telefone: v.telefone.trim() || null,
+        endereco: v.endereco.trim() || null,
+        bairro: v.bairro.trim() || null,
+        cidade: v.cidade.trim() || null,
+        estado: v.estado.trim() || null,
+        cep: v.cep.trim() || null,
         payload: payload as any,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -433,7 +557,6 @@ const ImoveisPage = () => {
       .select("id")
       .single();
     if (error) throw error;
-    setVendedorClienteId(data.id);
     return data.id as string;
   };
 
@@ -451,39 +574,79 @@ const ImoveisPage = () => {
     try {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData?.user?.id || null;
-      const clienteId = await upsertVendedorCliente();
+      const vendedoresValidos = vendedores.filter((v) => v.nome_completo.trim());
+      if (vendedoresValidos.length === 0) {
+        toast.error("Informe pelo menos um vendedor.");
+        return;
+      }
+
+      const clienteIdByKey = new Map<string, string>();
+      for (const v of vendedoresValidos) {
+        const id = await upsertVendedorCliente(v);
+        clienteIdByKey.set(v.key, id);
+      }
+
+      const vendedoresSalvos: VendedorEntry[] = vendedoresValidos.map((v) => ({
+        ...v,
+        cliente_id: clienteIdByKey.get(v.key) || null,
+      }));
+
+      setVendedores(vendedoresSalvos);
+      const vendedorPrincipalId = clienteIdByKey.get(vendedoresValidos[0].key) as string;
+
+      const dadosToSave = {
+        ...(imovel as any),
+        vendedores: vendedoresSalvos.map((v) => ({
+          cliente_id: v.cliente_id,
+          nome_completo: v.nome_completo,
+          cpf: v.cpf,
+          documento_tipo: v.documento_tipo,
+          documento_numero: v.documento_numero,
+          email: v.email,
+          telefone: v.telefone,
+          endereco: v.endereco,
+          bairro: v.bairro,
+          cidade: v.cidade,
+          estado: v.estado,
+          cep: v.cep,
+        })),
+      };
 
       if (editingId) {
         const { data, error } = await supabase
           .from("imoveis")
           .update({
             titulo: titulo.trim(),
-            dados: imovel as any,
+            dados: dadosToSave as any,
             ativo,
             updated_at: new Date().toISOString(),
             updated_by: userId,
-            vendedor_cliente_id: clienteId,
+            vendedor_cliente_id: vendedorPrincipalId,
           } as any)
           .eq("id", editingId)
           .select("id, imobiliaria_id, titulo, dados, ativo, vendedor_cliente_id, created_at, updated_at")
           .single();
         if (error) throw error;
         setImoveis((prev) => prev.map((i) => (i.id === editingId ? (data as any) : i)));
-        setVendedorClienteId(clienteId);
         if (stagedDocs.length > 0) {
           for (const doc of stagedDocs) {
+            const clienteIdToLink =
+              doc.context === "vendedor"
+                ? (doc.vendedorKey ? clienteIdByKey.get(doc.vendedorKey) : null) || vendedorPrincipalId
+                : null;
             await uploadDocumentoToImovelAndMaybeCliente({
               imovelId: editingId,
               title: doc.title,
               file: doc.file,
               userId,
-              clienteIdToLink: doc.context === "vendedor" ? clienteId : null,
+              clienteIdToLink,
             });
           }
           setStagedDocs([]);
           await loadDocs(editingId);
         }
-        await loadVendedorDocs(clienteId);
+        const activeClienteId = (vendedorAtivoKey ? clienteIdByKey.get(vendedorAtivoKey) : null) || vendedorPrincipalId;
+        await loadVendedorDocs(activeClienteId);
         toast.success("Imóvel atualizado!");
       } else {
         const { data, error } = await supabase
@@ -491,32 +654,36 @@ const ImoveisPage = () => {
           .insert({
             imobiliaria_id: activeTenantId,
             titulo: titulo.trim(),
-            dados: imovel as any,
+            dados: dadosToSave as any,
             ativo,
             created_by: userId,
             updated_by: userId,
-            vendedor_cliente_id: clienteId,
+            vendedor_cliente_id: vendedorPrincipalId,
           } as any)
           .select("id, imobiliaria_id, titulo, dados, ativo, vendedor_cliente_id, created_at, updated_at")
           .single();
         if (error) throw error;
         setImoveis((prev) => [data as any, ...prev]);
         setEditingId(data.id);
-        setVendedorClienteId(clienteId);
         if (stagedDocs.length > 0) {
           for (const doc of stagedDocs) {
+            const clienteIdToLink =
+              doc.context === "vendedor"
+                ? (doc.vendedorKey ? clienteIdByKey.get(doc.vendedorKey) : null) || vendedorPrincipalId
+                : null;
             await uploadDocumentoToImovelAndMaybeCliente({
               imovelId: data.id,
               title: doc.title,
               file: doc.file,
               userId,
-              clienteIdToLink: doc.context === "vendedor" ? clienteId : null,
+              clienteIdToLink,
             });
           }
           setStagedDocs([]);
         }
         await loadDocs(data.id);
-        await loadVendedorDocs(clienteId);
+        const activeClienteId = (vendedorAtivoKey ? clienteIdByKey.get(vendedorAtivoKey) : null) || vendedorPrincipalId;
+        await loadVendedorDocs(activeClienteId);
         toast.success("Imóvel cadastrado!");
       }
     } catch (e: any) {
@@ -528,6 +695,7 @@ const ImoveisPage = () => {
 
   const openAddDocumento = (context: DocContext) => {
     setDocContext(context);
+    setDocVendedorKey(context === "vendedor" ? (vendedorAtivo?.key || null) : null);
     docFileInputRef.current?.click();
   };
 
@@ -540,31 +708,34 @@ const ImoveisPage = () => {
     if (docFileInputRef.current) docFileInputRef.current.value = "";
   };
 
-  const mergeVendedorFromExtract = (dados: any) => {
+  const mergeVendedorFromExtract = (dados: any, vendedorKey: string) => {
     if (!dados || typeof dados !== "object") return;
-    setVendedor((prev) => {
-      const next = { ...prev };
-      const map: Record<string, keyof VendedorForm> = {
-        nome: "nome_completo",
-        cpf: "cpf",
-        documentoTipo: "documento_tipo",
-        documentoNumero: "documento_numero",
-        email: "email",
-        telefone: "telefone",
-        endereco: "endereco",
-        bairro: "bairro",
-        cidade: "cidade",
-        estado: "estado",
-        cep: "cep",
-      };
-      for (const [k, v] of Object.entries(map)) {
-        const raw = (dados as any)[k];
-        if (typeof raw === "string" && raw.trim()) {
-          (next as any)[v] = raw.trim();
+    setVendedores((prev) =>
+      prev.map((v) => {
+        if (v.key !== vendedorKey) return v;
+        const next = { ...v };
+        const map: Record<string, keyof VendedorForm> = {
+          nome: "nome_completo",
+          cpf: "cpf",
+          documentoTipo: "documento_tipo",
+          documentoNumero: "documento_numero",
+          email: "email",
+          telefone: "telefone",
+          endereco: "endereco",
+          bairro: "bairro",
+          cidade: "cidade",
+          estado: "estado",
+          cep: "cep",
+        };
+        for (const [k, field] of Object.entries(map)) {
+          const raw = (dados as any)[k];
+          if (typeof raw === "string" && raw.trim()) {
+            (next as any)[field] = raw.trim();
+          }
         }
-      }
-      return next;
-    });
+        return next;
+      }),
+    );
   };
 
   const uploadCurrentDocumento = async () => {
@@ -580,8 +751,13 @@ const ImoveisPage = () => {
     try {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData?.user?.id || null;
+      const targetVendedorKey = docContext === "vendedor" ? docVendedorKey : null;
 
       if (docContext === "vendedor") {
+        if (!targetVendedorKey) {
+          toast.error("Selecione um vendedor para anexar o documento.");
+          return;
+        }
         try {
           const images = await fileToVisionBase64Images(file);
           const { data, error } = await supabase.functions.invoke("extract-document", {
@@ -589,7 +765,7 @@ const ImoveisPage = () => {
           });
           if (error) throw error;
           if (data?.error) throw new Error(data.error);
-          mergeVendedorFromExtract(data.dados);
+          mergeVendedorFromExtract(data.dados, targetVendedorKey);
           toast.success("Dados do vendedor extraídos. Verifique e complete os campos.");
         } catch (err: any) {
           let message = err?.message;
@@ -607,29 +783,40 @@ const ImoveisPage = () => {
       if (!editingId) {
         setStagedDocs((prev) => [
           ...prev,
-          { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, context: docContext, title, file },
+          { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, context: docContext, vendedorKey: targetVendedorKey, title, file },
         ]);
         toast.success("Documento adicionado. Salve o imóvel para enviar.");
       } else {
-        if (docContext === "vendedor" && !vendedorClienteId) {
-          setStagedDocs((prev) => [
-            ...prev,
-            { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, context: docContext, title, file },
-          ]);
-          toast.success("Documento do vendedor adicionado. Salve o imóvel para vincular o vendedor e enviar.");
-        } else {
-          await uploadDocumentoToImovelAndMaybeCliente({
-            imovelId: editingId,
-            title,
-            file,
-            userId,
-            clienteIdToLink: docContext === "vendedor" ? vendedorClienteId : null,
-          });
-          toast.success("Documento anexado ao imóvel.");
-          await loadDocs(editingId);
-          if (docContext === "vendedor") {
-            await loadVendedorDocs(vendedorClienteId);
+        let clienteIdToLink: string | null = null;
+        if (docContext === "vendedor") {
+          if (!targetVendedorKey) {
+            toast.error("Selecione um vendedor para anexar o documento.");
+            return;
           }
+          const v = vendedores.find((x) => x.key === targetVendedorKey) || null;
+          if (!v) {
+            toast.error("Selecione um vendedor para anexar o documento.");
+            return;
+          }
+          clienteIdToLink = v.cliente_id;
+          if (!clienteIdToLink) {
+            const newId = await upsertVendedorCliente(v);
+            clienteIdToLink = newId;
+            setVendedores((prev) => prev.map((x) => (x.key === targetVendedorKey ? { ...x, cliente_id: newId } : x)));
+          }
+        }
+
+        await uploadDocumentoToImovelAndMaybeCliente({
+          imovelId: editingId,
+          title,
+          file,
+          userId,
+          clienteIdToLink,
+        });
+        toast.success("Documento anexado ao imóvel.");
+        await loadDocs(editingId);
+        if (docContext === "vendedor") {
+          await loadVendedorDocs(clienteIdToLink);
         }
       }
 
@@ -775,6 +962,13 @@ const ImoveisPage = () => {
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(r)}>
                           <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => navigate(`/painel?create=1&imovelId=${encodeURIComponent(r.id)}`)}
+                        >
+                          <ClipboardList className="w-4 h-4" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => openQuickDocs(r)}>
                           <Paperclip className="w-4 h-4" />
@@ -1007,215 +1201,287 @@ const ImoveisPage = () => {
             <div className="border border-border rounded-xl p-4 bg-card space-y-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <div className="font-semibold text-foreground">Vendedor do imóvel</div>
+                  <div className="font-semibold text-foreground">Vendedores do imóvel</div>
                   <div className="text-xs text-muted-foreground">
-                    Este vendedor será cadastrado como cliente e vinculado ao imóvel. Os anexos do vendedor também ficam disponíveis no imóvel.
+                    Cada vendedor será cadastrado como cliente e poderá ter anexos vinculados ao imóvel.
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openAddDocumento("vendedor")}
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Documento do vendedor (IA)
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2">
-                  <Label>Nome do vendedor *</Label>
-                  <Input value={vendedor.nome_completo} onChange={(e) => setVendedor((p) => ({ ...p, nome_completo: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>CPF</Label>
-                  <Input value={vendedor.cpf} onChange={(e) => setVendedor((p) => ({ ...p, cpf: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>Documento (tipo)</Label>
-                  <Input value={vendedor.documento_tipo} onChange={(e) => setVendedor((p) => ({ ...p, documento_tipo: e.target.value }))} placeholder="RG/CNH" />
-                </div>
-                <div>
-                  <Label>Documento (nº)</Label>
-                  <Input value={vendedor.documento_numero} onChange={(e) => setVendedor((p) => ({ ...p, documento_numero: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>Telefone</Label>
-                  <Input value={vendedor.telefone} onChange={(e) => setVendedor((p) => ({ ...p, telefone: e.target.value }))} />
-                </div>
-                <div className="md:col-span-2">
-                  <Label>E-mail</Label>
-                  <Input value={vendedor.email} onChange={(e) => setVendedor((p) => ({ ...p, email: e.target.value }))} />
-                </div>
-                <div className="md:col-span-3">
-                  <Label>Endereço</Label>
-                  <Input value={vendedor.endereco} onChange={(e) => setVendedor((p) => ({ ...p, endereco: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>Bairro</Label>
-                  <Input value={vendedor.bairro} onChange={(e) => setVendedor((p) => ({ ...p, bairro: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>Cidade</Label>
-                  <Input value={vendedor.cidade} onChange={(e) => setVendedor((p) => ({ ...p, cidade: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>UF</Label>
-                  <Input value={vendedor.estado} onChange={(e) => setVendedor((p) => ({ ...p, estado: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>CEP</Label>
-                  <Input value={vendedor.cep} onChange={(e) => setVendedor((p) => ({ ...p, cep: e.target.value }))} />
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={addVendedor}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Adicionar vendedor
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openAddDocumento("vendedor")}
+                    disabled={!vendedorAtivo}
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Documento (IA)
+                  </Button>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="text-sm font-semibold text-foreground">Anexos do vendedor</div>
-
-                {!editingId ? (
-                  stagedDocs.filter((d) => d.context === "vendedor").length === 0 ? (
-                    <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-3">
-                      Nenhum anexo do vendedor ainda. Você pode anexar agora e ele será enviado quando salvar o imóvel.
-                    </div>
-                  ) : (
-                    <div className="border border-border rounded-lg overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Título</TableHead>
-                            <TableHead>Arquivo</TableHead>
-                            <TableHead className="text-right w-[120px]">Ações</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {stagedDocs
-                            .filter((d) => d.context === "vendedor")
-                            .map((d) => (
-                              <TableRow key={d.id}>
-                                <TableCell className="font-medium text-foreground">{d.title}</TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                  <div className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4" />
-                                    <span className="truncate max-w-[360px]">{d.file.name}</span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center justify-end gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => setStagedDocs((prev) => prev.filter((x) => x.id !== d.id))}
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )
-                ) : !vendedorClienteId ? (
-                  stagedDocs.filter((d) => d.context === "vendedor").length === 0 ? (
-                    <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-3">
-                      Nenhum anexo do vendedor ainda. Você pode anexar agora, e ele será enviado quando salvar o imóvel.
-                    </div>
-                  ) : (
-                    <div className="border border-border rounded-lg overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Título</TableHead>
-                            <TableHead>Arquivo</TableHead>
-                            <TableHead className="text-right w-[120px]">Ações</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {stagedDocs
-                            .filter((d) => d.context === "vendedor")
-                            .map((d) => (
-                              <TableRow key={d.id}>
-                                <TableCell className="font-medium text-foreground">{d.title}</TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                  <div className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4" />
-                                    <span className="truncate max-w-[360px]">{d.file.name}</span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center justify-end gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => setStagedDocs((prev) => prev.filter((x) => x.id !== d.id))}
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )
-                ) : vendedorDocsLoading ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                  </div>
-                ) : vendedorDocs.length === 0 ? (
-                  <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-3">Nenhum anexo do vendedor ainda.</div>
-                ) : (
-                  <div className="border border-border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Título</TableHead>
-                          <TableHead>Arquivo</TableHead>
-                          <TableHead className="whitespace-nowrap">Enviado em</TableHead>
-                          <TableHead className="text-right w-[140px]">Ações</TableHead>
+              {vendedores.length === 0 ? (
+                <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-3">
+                  Nenhum vendedor cadastrado ainda.
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[110px]">Vendedor</TableHead>
+                        <TableHead>Nome</TableHead>
+                        <TableHead className="w-[160px]">CPF</TableHead>
+                        <TableHead className="w-[160px]">Telefone</TableHead>
+                        <TableHead>E-mail</TableHead>
+                        <TableHead className="text-right w-[120px]">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {vendedores.map((v, idx) => (
+                        <TableRow key={v.key} className={v.key === vendedorAtivoKey ? "bg-muted/40" : ""}>
+                          <TableCell className="font-medium text-foreground">
+                            <div className="flex items-center gap-2">
+                              <span>#{idx + 1}</span>
+                              {v.key === vendedorAtivoKey ? <Badge variant="secondary">Selecionado</Badge> : null}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-foreground">{v.nome_completo || "—"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{v.cpf || "—"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{v.telefone || "—"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{v.email || "—"}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => selectVendedor(v.key)}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                disabled={vendedores.length <= 1}
+                                onClick={() => {
+                                  const ok = window.confirm("Remover este vendedor?");
+                                  if (!ok) return;
+                                  removeVendedor(v.key);
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {vendedorDocs.map((d) => (
-                          <TableRow key={d.id}>
-                            <TableCell className="font-medium text-foreground">{d.nome}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              <div className="flex items-center gap-2">
-                                <FileText className="w-4 h-4" />
-                                <span className="truncate max-w-[360px]">{displayFileFromUrl(d.url)}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                              {d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString("pt-BR") : "—"}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center justify-end gap-1">
-                                <Button variant="ghost" size="icon" asChild>
-                                  <a href={d.url} target="_blank" rel="noreferrer">
-                                    <ExternalLink className="w-4 h-4" />
-                                  </a>
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                  onClick={() => removeVendedorDocumento(d)}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {vendedorAtivo ? (
+                <div className="space-y-4 pt-2">
+                  <div className="text-sm font-semibold text-foreground">Dados do vendedor selecionado</div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2">
+                      <Label>Nome do vendedor *</Label>
+                      <Input value={vendedorAtivo.nome_completo} onChange={(e) => updateVendedorField(vendedorAtivo.key, "nome_completo", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>CPF</Label>
+                      <Input value={vendedorAtivo.cpf} onChange={(e) => updateVendedorField(vendedorAtivo.key, "cpf", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Documento (tipo)</Label>
+                      <Input value={vendedorAtivo.documento_tipo} onChange={(e) => updateVendedorField(vendedorAtivo.key, "documento_tipo", e.target.value)} placeholder="RG/CNH" />
+                    </div>
+                    <div>
+                      <Label>Documento (nº)</Label>
+                      <Input value={vendedorAtivo.documento_numero} onChange={(e) => updateVendedorField(vendedorAtivo.key, "documento_numero", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Telefone</Label>
+                      <Input value={vendedorAtivo.telefone} onChange={(e) => updateVendedorField(vendedorAtivo.key, "telefone", e.target.value)} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>E-mail</Label>
+                      <Input value={vendedorAtivo.email} onChange={(e) => updateVendedorField(vendedorAtivo.key, "email", e.target.value)} />
+                    </div>
+                    <div className="md:col-span-3">
+                      <Label>Endereço</Label>
+                      <Input value={vendedorAtivo.endereco} onChange={(e) => updateVendedorField(vendedorAtivo.key, "endereco", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Bairro</Label>
+                      <Input value={vendedorAtivo.bairro} onChange={(e) => updateVendedorField(vendedorAtivo.key, "bairro", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Cidade</Label>
+                      <Input value={vendedorAtivo.cidade} onChange={(e) => updateVendedorField(vendedorAtivo.key, "cidade", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>UF</Label>
+                      <Input value={vendedorAtivo.estado} onChange={(e) => updateVendedorField(vendedorAtivo.key, "estado", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>CEP</Label>
+                      <Input value={vendedorAtivo.cep} onChange={(e) => updateVendedorField(vendedorAtivo.key, "cep", e.target.value)} />
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-foreground">Anexos do vendedor selecionado</div>
+
+                    {!editingId ? (
+                      stagedDocs.filter((d) => d.context === "vendedor" && d.vendedorKey === vendedorAtivo.key).length === 0 ? (
+                        <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-3">
+                          Nenhum anexo do vendedor ainda. Você pode anexar agora e ele será enviado quando salvar o imóvel.
+                        </div>
+                      ) : (
+                        <div className="border border-border rounded-lg overflow-hidden">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Título</TableHead>
+                                <TableHead>Arquivo</TableHead>
+                                <TableHead className="text-right w-[120px]">Ações</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {stagedDocs
+                                .filter((d) => d.context === "vendedor" && d.vendedorKey === vendedorAtivo.key)
+                                .map((d) => (
+                                  <TableRow key={d.id}>
+                                    <TableCell className="font-medium text-foreground">{d.title}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                      <div className="flex items-center gap-2">
+                                        <FileText className="w-4 h-4" />
+                                        <span className="truncate max-w-[360px]">{d.file.name}</span>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="flex items-center justify-end gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => setStagedDocs((prev) => prev.filter((x) => x.id !== d.id))}
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )
+                    ) : !vendedorAtivo.cliente_id ? (
+                      stagedDocs.filter((d) => d.context === "vendedor" && d.vendedorKey === vendedorAtivo.key).length === 0 ? (
+                        <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-3">
+                          Nenhum anexo do vendedor ainda. Você pode anexar agora, e ele será enviado quando salvar o imóvel.
+                        </div>
+                      ) : (
+                        <div className="border border-border rounded-lg overflow-hidden">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Título</TableHead>
+                                <TableHead>Arquivo</TableHead>
+                                <TableHead className="text-right w-[120px]">Ações</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {stagedDocs
+                                .filter((d) => d.context === "vendedor" && d.vendedorKey === vendedorAtivo.key)
+                                .map((d) => (
+                                  <TableRow key={d.id}>
+                                    <TableCell className="font-medium text-foreground">{d.title}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                      <div className="flex items-center gap-2">
+                                        <FileText className="w-4 h-4" />
+                                        <span className="truncate max-w-[360px]">{d.file.name}</span>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="flex items-center justify-end gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => setStagedDocs((prev) => prev.filter((x) => x.id !== d.id))}
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )
+                    ) : vendedorDocsLoading ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                      </div>
+                    ) : vendedorDocs.length === 0 ? (
+                      <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-3">
+                        Nenhum anexo do vendedor ainda.
+                      </div>
+                    ) : (
+                      <div className="border border-border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Título</TableHead>
+                              <TableHead>Arquivo</TableHead>
+                              <TableHead className="whitespace-nowrap">Enviado em</TableHead>
+                              <TableHead className="text-right w-[140px]">Ações</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {vendedorDocs.map((d) => (
+                              <TableRow key={d.id}>
+                                <TableCell className="font-medium text-foreground">{d.nome}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4" />
+                                    <span className="truncate max-w-[360px]">{displayFileFromUrl(d.url)}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                  {d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString("pt-BR") : "—"}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button variant="ghost" size="icon" asChild>
+                                      <a href={d.url} target="_blank" rel="noreferrer">
+                                        <ExternalLink className="w-4 h-4" />
+                                      </a>
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => removeVendedorDocumento(d)}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 

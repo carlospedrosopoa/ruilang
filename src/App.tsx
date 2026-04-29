@@ -19,6 +19,7 @@ import CorretoresPage from "./pages/CorretoresPage.tsx";
 import DashboardFluxoPage from "./pages/DashboardFluxoPage.tsx";
 import ContratosGeradosPage from "./pages/ContratosGeradosPage.tsx";
 import ImoveisPage from "./pages/ImoveisPage.tsx";
+import TiposContratoPage from "./pages/TiposContratoPage.tsx";
 import TiposPropostaPage from "./pages/TiposPropostaPage.tsx";
 import ImobiliariaSettingsPage from "./pages/ImobiliariaSettingsPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -42,14 +43,6 @@ const App = () => (
                 </RequireAuth>
               }
             />
-            <Route
-              path="/contrato/:tipo"
-              element={
-                <RequireAuth>
-                  <ContratoPage />
-                </RequireAuth>
-              }
-            />
             <Route path="/coleta/:token" element={<ColetaPage />} />
             <Route
               path="/imobiliarias"
@@ -68,12 +61,14 @@ const App = () => (
               }
             >
               <Route path="/painel" element={<PainelSubmissoes />} />
-              <Route path="/contratos" element={<ContratosGeradosPage />} />
               <Route path="/imoveis" element={<ImoveisPage />} />
               <Route path="/dashboard" element={<DashboardFluxoPage />} />
               <Route path="/clientes" element={<ClientesPage />} />
               <Route path="/corretores" element={<CorretoresPage />} />
+              <Route path="/tipos-contrato" element={<TiposContratoPage />} />
               <Route path="/tipos-proposta" element={<TiposPropostaPage />} />
+              <Route path="/contratos" element={<ContratosGeradosPage />} />
+              <Route path="/contrato/:tipo" element={<ContratoPage />} />
               <Route path="/configuracoes-imobiliaria" element={<ImobiliariaSettingsPage />} />
               <Route path="/relatorios" element={<RelatoriosPage />} />
             </Route>

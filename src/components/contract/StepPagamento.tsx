@@ -19,6 +19,14 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
     onChange({ ...pagamento, [field]: value });
   };
 
+  const formatMoneyInput = (input: string) => {
+    const digits = String(input || "").replace(/\D/g, "");
+    if (!digits) return "";
+    const cents = Number.parseInt(digits, 10);
+    if (!Number.isFinite(cents)) return "";
+    return (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   const addParcela = () => {
     const novaParcela: Parcela = {
       id: crypto.randomUUID(),
@@ -78,8 +86,18 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
             <Label>Valor Total do Imóvel (R$)</Label>
             <Input
               value={pagamento.valorTotal}
-              onChange={(e) => update("valorTotal", e.target.value)}
+              onChange={(e) => update("valorTotal", formatMoneyInput(e.target.value))}
               placeholder="Ex: 105.000,00"
+              inputMode="numeric"
+            />
+          </div>
+          <div>
+            <Label>Valor de Honorários (R$)</Label>
+            <Input
+              value={pagamento.valorHonorarios || ""}
+              onChange={(e) => update("valorHonorarios", formatMoneyInput(e.target.value))}
+              placeholder="Ex: 2.500,00"
+              inputMode="numeric"
             />
           </div>
         </div>
@@ -117,7 +135,12 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
                 </div>
                 <div>
                   <Label className="text-xs">Valor (R$)</Label>
-                  <Input value={parcela.valor} onChange={(e) => updateParcela(index, "valor", e.target.value)} placeholder="0,00" />
+                  <Input
+                    value={parcela.valor}
+                    onChange={(e) => updateParcela(index, "valor", formatMoneyInput(e.target.value))}
+                    placeholder="0,00"
+                    inputMode="numeric"
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">Quantidade</Label>
