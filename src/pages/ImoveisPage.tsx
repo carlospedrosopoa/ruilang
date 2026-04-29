@@ -219,6 +219,61 @@ const ImoveisPage = () => {
     return found || vendedores[0] || null;
   }, [vendedorAtivoKey, vendedores]);
 
+  const draftKey = useMemo(() => (activeTenantId ? `imoveis_edit_draft:${activeTenantId}` : null), [activeTenantId]);
+
+  useEffect(() => {
+    if (!draftKey) return;
+    const raw = sessionStorage.getItem(draftKey);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as any;
+      if (typeof parsed?.dialogOpen !== "boolean" || !parsed.dialogOpen) return;
+
+      setEditingId(typeof parsed?.editingId === "string" ? parsed.editingId : null);
+      setTitulo(typeof parsed?.titulo === "string" ? parsed.titulo : "");
+      setAtivo(Boolean(parsed?.ativo));
+      setImovel(parsed?.imovel && typeof parsed.imovel === "object" ? (parsed.imovel as Imovel) : criarImovelVazio());
+      setVendedores(Array.isArray(parsed?.vendedores) && parsed.vendedores.length ? (parsed.vendedores as VendedorEntry[]) : [criarVendedorEntryVazio()]);
+      setVendedorAtivoKey(typeof parsed?.vendedorAtivoKey === "string" ? parsed.vendedorAtivoKey : "");
+      setDocumentos([]);
+      setVendedorDocs([]);
+      setStagedDocs([]);
+      setDocUploadOpen(false);
+      setPendingFiles([]);
+      setDialogOpen(true);
+
+      const idToLoad = typeof parsed?.editingId === "string" ? parsed.editingId : null;
+      if (idToLoad) {
+        loadDocs(idToLoad);
+      }
+    } catch {
+      sessionStorage.removeItem(draftKey);
+    }
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftKey) return;
+    if (!dialogOpen) return;
+    const handle = window.setTimeout(() => {
+      try {
+        sessionStorage.setItem(
+          draftKey,
+          JSON.stringify({
+            ts: Date.now(),
+            dialogOpen,
+            editingId,
+            titulo,
+            ativo,
+            imovel,
+            vendedores,
+            vendedorAtivoKey,
+          }),
+        );
+      } catch {}
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [draftKey, dialogOpen, editingId, titulo, ativo, imovel, vendedores, vendedorAtivoKey]);
+
   useEffect(() => {
     if (!vendedores.length) return;
     if (!vendedorAtivoKey || !vendedores.some((v) => v.key === vendedorAtivoKey)) {
@@ -1061,7 +1116,15 @@ const ImoveisPage = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(o) => {
+          setDialogOpen(o);
+          if (!o && draftKey) {
+            sessionStorage.removeItem(draftKey);
+          }
+        }}
+      >
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar Imóvel" : "Novo Imóvel"}</DialogTitle>

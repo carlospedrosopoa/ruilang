@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -26,23 +26,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
+  const activeTenantIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    userIdRef.current = session?.user?.id || null;
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    activeTenantIdRef.current = activeTenantId;
+  }, [activeTenantId]);
 
   useEffect(() => {
     let isMounted = true;
 
     const load = async (nextSession: Session | null) => {
       if (!isMounted) return;
-      setSession(nextSession);
-      setIsPlatformAdmin(false);
-      setMemberships([]);
-      setActiveTenantId(null);
+      const nextUserId = nextSession?.user?.id || null;
+      const prevUserId = userIdRef.current;
+      const sameUser = Boolean(nextUserId && prevUserId && nextUserId === prevUserId);
 
-      if (!nextSession?.user) {
+      setSession(nextSession);
+
+      if (!nextUserId) {
+        setIsPlatformAdmin(false);
+        setMemberships([]);
+        setActiveTenantId(null);
         setLoading(false);
         return;
       }
 
-      const userId = nextSession.user.id;
+      if (!sameUser) {
+        setLoading(true);
+        setIsPlatformAdmin(false);
+        setMemberships([]);
+        setActiveTenantId(null);
+      }
+
+      const userId = nextUserId;
 
       const [{ data: adminRow }, { data: memberRows }] = await Promise.all([
         supabase.from("platform_admins").select("user_id").eq("user_id", userId).maybeSingle(),
@@ -65,7 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })) || [];
 
       setMemberships(mapped);
-      setActiveTenantId(mapped[0]?.tenantId || null);
+      const prevActive = activeTenantIdRef.current;
+      const keepPrev = prevActive && mapped.some((m) => m.tenantId === prevActive);
+      setActiveTenantId(keepPrev ? prevActive : mapped[0]?.tenantId || null);
       setLoading(false);
     };
 
