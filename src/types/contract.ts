@@ -77,6 +77,7 @@ export interface Pessoa {
   documentoNumero: string;
   documentoOrgao: string;
   cpf: string;
+  cnpj: string;
   filiacaoPai: string;
   filiacaoMae: string;
   endereco: string;
@@ -231,6 +232,7 @@ export function criarPessoaVazia(): Pessoa {
     documentoNumero: "",
     documentoOrgao: "",
     cpf: "",
+    cnpj: "",
     filiacaoPai: "",
     filiacaoMae: "",
     endereco: "",

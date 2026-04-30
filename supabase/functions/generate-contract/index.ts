@@ -381,6 +381,7 @@ function buildPartiesSpec(contrato: any) {
     const lines: string[] = [];
     const nome = String(p.nome || "").trim();
     const cpf = String(p.cpf || "").trim();
+    const cnpj = String(p.cnpj || "").trim();
     const docTipo = String(p.documentoTipo || "").toUpperCase();
     const docNum = String(p.documentoNumero || "").trim();
     const docOrg = String(p.documentoOrgao || "").trim();
@@ -396,6 +397,7 @@ function buildPartiesSpec(contrato: any) {
 
     if (nome) lines.push(`NOME: ${nome}`);
     if (cpf) lines.push(`CPF: ${cpf}`);
+    if (cnpj) lines.push(`CNPJ: ${cnpj}`);
     if (docTipo || docNum || docOrg) lines.push(`DOCUMENTO: ${[docTipo, docNum, docOrg].filter(Boolean).join(" ")}`.trim());
     if (nac) lines.push(`NACIONALIDADE: ${nac}`);
     if (prof) lines.push(`PROFISSÃO: ${prof}`);
@@ -547,13 +549,23 @@ function getFirstPartyNeedles(contrato: any) {
   const comprador = Array.isArray(contrato?.compradores) ? contrato.compradores[0] : null;
   const vendedorNome = typeof vendedor?.nome === "string" ? vendedor.nome.trim() : "";
   const compradorNome = typeof comprador?.nome === "string" ? comprador.nome.trim() : "";
-  const vendedorCpf = typeof vendedor?.cpf === "string" ? extractDigits(vendedor.cpf) : "";
-  const compradorCpf = typeof comprador?.cpf === "string" ? extractDigits(comprador.cpf) : "";
+  const vendedorDoc =
+    typeof vendedor?.cnpj === "string" && vendedor.cnpj.trim()
+      ? extractDigits(vendedor.cnpj)
+      : typeof vendedor?.cpf === "string"
+        ? extractDigits(vendedor.cpf)
+        : "";
+  const compradorDoc =
+    typeof comprador?.cnpj === "string" && comprador.cnpj.trim()
+      ? extractDigits(comprador.cnpj)
+      : typeof comprador?.cpf === "string"
+        ? extractDigits(comprador.cpf)
+        : "";
   return {
     vendedorNome,
     compradorNome,
-    vendedorCpf,
-    compradorCpf,
+    vendedorDoc,
+    compradorDoc,
   };
 }
 
@@ -565,8 +577,8 @@ function hasCriticalDataFromForm(text: string, contrato: any) {
   const mustHave: Array<{ ok: boolean; label: string }> = [];
   if (needles.vendedorNome) mustHave.push({ ok: norm.includes(normalizeForMatch(needles.vendedorNome)), label: "vendedorNome" });
   if (needles.compradorNome) mustHave.push({ ok: norm.includes(normalizeForMatch(needles.compradorNome)), label: "compradorNome" });
-  if (needles.vendedorCpf) mustHave.push({ ok: digitText.includes(needles.vendedorCpf), label: "vendedorCpf" });
-  if (needles.compradorCpf) mustHave.push({ ok: digitText.includes(needles.compradorCpf), label: "compradorCpf" });
+  if (needles.vendedorDoc) mustHave.push({ ok: digitText.includes(needles.vendedorDoc), label: "vendedorDoc" });
+  if (needles.compradorDoc) mustHave.push({ ok: digitText.includes(needles.compradorDoc), label: "compradorDoc" });
   const missing = mustHave.filter((x) => !x.ok).map((x) => x.label);
   return { ok: missing.length === 0, missing, needles };
 }
@@ -1118,11 +1130,11 @@ serve(async (req: Request) => {
         if (!byId.error && byId.data?.nome) data = byId.data;
       }
 
-      if (!data && imobiliariaId) {
+      if (!data && templateImobiliariaId) {
         const tipoRow = await admin
           .from("tipos_contrato")
           .select("id")
-          .eq("imobiliaria_id", imobiliariaId)
+          .eq("imobiliaria_id", templateImobiliariaId)
           .eq("codigo", contrato.tipoContrato)
           .maybeSingle();
 
@@ -1131,7 +1143,7 @@ serve(async (req: Request) => {
           const byCodigo = await admin
             .from("perfis_contrato")
             .select("nome, instructions_ia")
-            .eq("imobiliaria_id", imobiliariaId)
+            .eq("imobiliaria_id", templateImobiliariaId)
             .eq("tipo_contrato_id", tipoId)
             .eq("codigo", perfilSelecionado)
             .maybeSingle();
@@ -1157,7 +1169,7 @@ ${clausulasTipo}
 REGRAS GERAIS DE REDAÇÃO:
 - Linguagem jurídica formal brasileira, precisa e sem ambiguidades
 - Usar terminologia técnica correta (promitente vendedor/comprador, cedente/cessionário, locador/locatário)
-- Qualificar COMPLETAMENTE todas as partes com TODOS os dados fornecidos (nome, nacionalidade, profissão, estado civil, regime de bens se casado, RG/CNH, CPF, filiação, endereço completo)
+- Qualificar COMPLETAMENTE todas as partes com TODOS os dados fornecidos (nome, nacionalidade, profissão, estado civil, regime de bens se casado, RG/CNH, CPF ou CNPJ, filiação, endereço completo)
 - Se houver cônjuge, qualificá-lo como interveniente-anuente
 - Numerar as cláusulas: CLÁUSULA PRIMEIRA, CLÁUSULA SEGUNDA, etc.
 - Subdividir parágrafos: Parágrafo Primeiro, Parágrafo Segundo ou §1º, §2º
@@ -1599,8 +1611,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
           "O texto final DEVE conter (em qualquer lugar):",
           check.needles.vendedorNome ? `- VENDEDOR: ${check.needles.vendedorNome}` : null,
           check.needles.compradorNome ? `- COMPRADOR: ${check.needles.compradorNome}` : null,
-          check.needles.vendedorCpf ? `- CPF VENDEDOR: ${check.needles.vendedorCpf}` : null,
-          check.needles.compradorCpf ? `- CPF COMPRADOR: ${check.needles.compradorCpf}` : null,
+          check.needles.vendedorDoc ? `- DOCUMENTO VENDEDOR (CPF/CNPJ): ${check.needles.vendedorDoc}` : null,
+          check.needles.compradorDoc ? `- DOCUMENTO COMPRADOR (CPF/CNPJ): ${check.needles.compradorDoc}` : null,
           "Não altere cláusulas que não sejam de partes, imóvel e pagamento/locação.",
         ]
           .filter(Boolean)

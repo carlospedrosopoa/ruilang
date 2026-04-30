@@ -19,6 +19,7 @@ type ClienteRow = {
   id: string;
   nome_completo: string;
   cpf: string | null;
+  cnpj?: string | null;
   documento_tipo: string | null;
   documento_numero: string | null;
   telefone: string | null;
@@ -114,6 +115,7 @@ export default function ClientesPage() {
       return (
         c.nome_completo.toLowerCase().includes(q) ||
         (c.cpf || "").toLowerCase().includes(q) ||
+        (c.cnpj || "").toLowerCase().includes(q) ||
         (c.email || "").toLowerCase().includes(q) ||
         (c.telefone || "").toLowerCase().includes(q)
       );
@@ -132,6 +134,7 @@ export default function ClientesPage() {
       const patch = {
         nome_completo: editing.nome_completo,
         cpf: editing.cpf,
+        cnpj: (editing as any).cnpj ?? null,
         documento_tipo: editing.documento_tipo,
         documento_numero: editing.documento_numero,
         telefone: editing.telefone,
@@ -262,7 +265,9 @@ export default function ClientesPage() {
                     <TableCell>
                       <div className="space-y-1">
                         <p className="font-semibold text-foreground">{c.nome_completo}</p>
-                        <p className="text-xs text-muted-foreground">{c.cpf ? `CPF ${c.cpf}` : "CPF não informado"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {c.cpf ? `CPF ${c.cpf}` : c.cnpj ? `CNPJ ${c.cnpj}` : "CPF/CNPJ não informado"}
+                        </p>
                         <p className="text-[11px] text-muted-foreground">
                           Criado em {new Date(c.created_at).toLocaleDateString("pt-BR")}
                         </p>
@@ -408,6 +413,10 @@ export default function ClientesPage() {
                   <Label>CPF</Label>
                   <Input value={editing.cpf || ""} onChange={(e) => setEditing({ ...editing, cpf: e.target.value || null })} />
                 </div>
+              <div>
+                <Label>CNPJ</Label>
+                <Input value={editing.cnpj || ""} onChange={(e) => setEditing({ ...editing, cnpj: e.target.value || null })} />
+              </div>
                 <div>
                   <Label>Telefone</Label>
                   <Input value={editing.telefone || ""} onChange={(e) => setEditing({ ...editing, telefone: e.target.value || null })} />

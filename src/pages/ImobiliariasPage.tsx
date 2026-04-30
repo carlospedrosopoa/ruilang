@@ -271,7 +271,7 @@ const ImobiliariasPage = () => {
     if (!confirm("Deseja herdar Tipos de Contrato, Perfis de Contrato, Tipos de Proposta e Modelos Base da imobiliária modelo?")) return;
     setSeedingTenantId(tenantId);
     try {
-      const { error } = await supabase.rpc("seed_imobiliaria_from_defaults", { target_imobiliaria_id: tenantId } as any);
+      const { error } = await (supabase as any).rpc("seed_imobiliaria_from_defaults", { target_imobiliaria_id: tenantId } as any);
       if (error) throw error;
       toast.success("Padrões herdados com sucesso.");
     } catch (e: any) {

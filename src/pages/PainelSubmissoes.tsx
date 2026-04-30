@@ -158,7 +158,7 @@ const PainelSubmissoes = () => {
     }
 
     const [subRes] = await Promise.all([subQuery]);
-    setSubmissions((subRes.data as Submission[]) || []);
+    setSubmissions(((subRes.data as unknown) as Submission[]) || []);
     setLoading(false);
   };
 
@@ -481,6 +481,7 @@ const PainelSubmissoes = () => {
             const v = criarPessoaVazia();
             v.nome = String(r?.nome || r?.nome_completo || "").trim();
             v.cpf = String(r?.cpf || "").trim();
+          v.cnpj = String(r?.cnpj || "").trim();
             v.email = String(r?.email || "").trim() || undefined;
             v.telefone = String(r?.telefone || "").trim() || undefined;
             v.endereco = String(r?.endereco || "").trim();
@@ -504,7 +505,7 @@ const PainelSubmissoes = () => {
         const { data: imovelExtra, error: imovelExtraError } = await supabase
           .from("imoveis")
           .select(
-            "vendedor_cliente_id, clientes(id, nome_completo, cpf, email, telefone, endereco, bairro, cidade, estado, cep, documento_tipo, documento_numero)",
+            "vendedor_cliente_id, clientes(id, nome_completo, cpf, cnpj, email, telefone, endereco, bairro, cidade, estado, cep, documento_tipo, documento_numero)",
           )
           .eq("id", imovelRef.id)
           .maybeSingle();
@@ -516,6 +517,7 @@ const PainelSubmissoes = () => {
           const v = criarPessoaVazia();
           v.nome = String(cliente?.nome_completo || "").trim();
           v.cpf = String(cliente?.cpf || "").trim();
+        v.cnpj = String((cliente as any)?.cnpj || "").trim();
           v.email = String(cliente?.email || "").trim() || undefined;
           v.telefone = String(cliente?.telefone || "").trim() || undefined;
           v.endereco = String(cliente?.endereco || "").trim();

@@ -374,9 +374,16 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
         </div>
 
         <div>
-          <Label>CPF *</Label>
+          <Label>CPF</Label>
           <Input value={pessoa.cpf} onChange={(e) => update("cpf", e.target.value)} placeholder="000.000.000-00" />
         </div>
+
+        {!isConjuge && (
+          <div>
+            <Label>CNPJ</Label>
+            <Input value={pessoa.cnpj} onChange={(e) => update("cnpj", e.target.value)} placeholder="00.000.000/0000-00" />
+          </div>
+        )}
 
         <div>
           <Label>Filiação — Pai</Label>

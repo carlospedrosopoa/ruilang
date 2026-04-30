@@ -109,6 +109,7 @@ export type Database = {
           bairro: string | null
           cep: string | null
           cidade: string | null
+          cnpj: string | null
           cpf: string | null
           created_at: string
           documento_numero: string | null
@@ -129,6 +130,7 @@ export type Database = {
           bairro?: string | null
           cep?: string | null
           cidade?: string | null
+          cnpj?: string | null
           cpf?: string | null
           created_at?: string
           documento_numero?: string | null
@@ -149,6 +151,7 @@ export type Database = {
           bairro?: string | null
           cep?: string | null
           cidade?: string | null
+          cnpj?: string | null
           cpf?: string | null
           created_at?: string
           documento_numero?: string | null

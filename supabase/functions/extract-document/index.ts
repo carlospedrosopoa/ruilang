@@ -17,6 +17,7 @@ const extractionSchema = {
     documentoNumero: { type: "string" },
     documentoOrgao: { type: "string" },
     cpf: { type: "string" },
+    cnpj: { type: "string" },
     filiacaoPai: { type: "string" },
     filiacaoMae: { type: "string" },
     endereco: { type: "string" },
@@ -37,6 +38,7 @@ const extractionSchema = {
     "documentoNumero",
     "documentoOrgao",
     "cpf",
+    "cnpj",
     "filiacaoPai",
     "filiacaoMae",
     "endereco",
@@ -60,6 +62,7 @@ const emptyExtraction = {
   documentoNumero: "",
   documentoOrgao: "",
   cpf: "",
+  cnpj: "",
   filiacaoPai: "",
   filiacaoMae: "",
   endereco: "",
@@ -281,6 +284,7 @@ Extraia todos os dados pessoais encontrados e chame obrigatoriamente a ferrament
 
 REGRAS:
 - Para CPF, formate como 000.000.000-00
+- Para CNPJ, formate como 00.000.000/0000-00
 - Para estado civil, use: Solteiro(a), Casado(a), Divorciado(a), Viúvo(a), Separado(a) consensualmente, Separado(a) judicialmente, União Estável
 - Para documentoTipo, use apenas "rg" ou "cnh"
 - Para estado, use a sigla (SP, RJ, RS, etc.)

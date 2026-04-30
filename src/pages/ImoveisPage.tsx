@@ -394,7 +394,7 @@ const ImoveisPage = () => {
     }
     const { data, error } = await supabase
       .from("clientes")
-      .select("id, nome_completo, cpf, documento_tipo, documento_numero, email, telefone, endereco, bairro, cidade, estado, cep")
+      .select("id, nome_completo, cpf, cnpj, documento_tipo, documento_numero, email, telefone, endereco, bairro, cidade, estado, cep")
       .eq("id", clienteId)
       .single();
     if (error || !data) {

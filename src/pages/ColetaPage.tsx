@@ -216,6 +216,7 @@ const ColetaPage = () => {
             const v = criarPessoaVazia();
             v.nome = String(r?.nome || r?.nome_completo || "").trim();
             v.cpf = String(r?.cpf || "").trim();
+            v.cnpj = String(r?.cnpj || "").trim();
             v.email = String(r?.email || "").trim() || undefined;
             v.telefone = String(r?.telefone || "").trim() || undefined;
             v.endereco = String(r?.endereco || "").trim();
@@ -240,6 +241,7 @@ const ColetaPage = () => {
         const v = criarPessoaVazia();
         v.nome = String(cliente?.nome_completo || "").trim();
         v.cpf = String(cliente?.cpf || "").trim();
+        v.cnpj = String((cliente as any)?.cnpj || "").trim();
         v.email = String(cliente?.email || "").trim() || undefined;
         v.telefone = String(cliente?.telefone || "").trim() || undefined;
         v.endereco = String(cliente?.endereco || "").trim();
