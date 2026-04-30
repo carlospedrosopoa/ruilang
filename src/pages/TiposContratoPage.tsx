@@ -11,6 +11,16 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter as AlertDialogFooterUI,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type TipoContratoRow = {
   id: string;
@@ -70,6 +80,10 @@ export default function TiposContratoPage() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateText, setTemplateText] = useState("");
   const [templateInstructions, setTemplateInstructions] = useState("");
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<TipoContratoRow | null>(null);
+  const [deletingTipo, setDeletingTipo] = useState(false);
 
   const canLoad = Boolean(activeTenantId);
 
@@ -235,6 +249,59 @@ export default function TiposContratoPage() {
       setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, ativo: next } : r)));
     } catch (e: any) {
       toast.error(e?.message || "Erro ao atualizar status.");
+    }
+  };
+
+  const openDeleteTipo = (row: TipoContratoRow) => {
+    setDeleteTarget(row);
+    setDeleteOpen(true);
+  };
+
+  const confirmDeleteTipo = async () => {
+    if (!activeTenantId) {
+      toast.error("Selecione uma imobiliária.");
+      return;
+    }
+    if (!deleteTarget) return;
+
+    setDeletingTipo(true);
+    try {
+      const { count, error: countErr } = await supabase
+        .from("submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("imobiliaria_id", activeTenantId)
+        .eq("tipo_contrato", deleteTarget.codigo);
+      if (countErr) throw countErr;
+      if ((count || 0) > 0) {
+        toast.error(`Não é possível excluir: há ${count} contrato(s)/coleta(s) usando este tipo. Desative o tipo em vez disso.`);
+        setDeleteOpen(false);
+        return;
+      }
+
+      const { error: tplErr } = await supabase
+        .from("contract_templates")
+        .delete()
+        .eq("imobiliaria_id", activeTenantId)
+        .eq("tipo_contrato", deleteTarget.codigo);
+      if (tplErr) throw tplErr;
+
+      const { error: delErr } = await supabase.from("tipos_contrato").delete().eq("id", deleteTarget.id);
+      if (delErr) throw delErr;
+
+      setRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      if (editingId === deleteTarget.id) {
+        setDialogOpen(false);
+        setEditingId(null);
+        setEditingCodigo(null);
+        setPerfis([]);
+        setConfiguredPerfis(new Set());
+      }
+      toast.success("Tipo de contrato excluído.");
+      setDeleteOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao excluir tipo de contrato.");
+    } finally {
+      setDeletingTipo(false);
     }
   };
 
@@ -485,9 +552,14 @@ export default function TiposContratoPage() {
                 {rows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="whitespace-nowrap">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(r)}>
-                        <Pencil className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(r)} aria-label="Editar tipo">
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => openDeleteTipo(r)} aria-label="Excluir tipo">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="font-medium text-foreground">{r.nome}</TableCell>
                     <TableCell>
@@ -500,6 +572,29 @@ export default function TiposContratoPage() {
           </div>
         </div>
       )}
+
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(o) => {
+          setDeleteOpen(o);
+          if (!o) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir tipo de contrato?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação remove o tipo e todos os perfis de blindagem vinculados a ele.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooterUI>
+            <AlertDialogCancel disabled={deletingTipo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteTipo} disabled={deletingTipo}>
+              {deletingTipo ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooterUI>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
