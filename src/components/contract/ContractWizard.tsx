@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2, Check } from "lucide-react";
 import StepIndicator from "./StepIndicator";
 import StepVendedores from "./StepVendedores";
@@ -162,6 +163,7 @@ const ContractWizard = () => {
   const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const didLoadSubmissionRef = useRef(false);
   const didSyncTipoFromSubmissionRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
@@ -463,6 +465,7 @@ const ContractWizard = () => {
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setGenerateError(null);
 
     try {
       const contrato = {
@@ -496,7 +499,7 @@ const ContractWizard = () => {
           if (typeof body?.error === "string" && body.error.trim()) message = body.error;
         } catch {}
       }
-      toast.error(message);
+      setGenerateError(message);
     } finally {
       setIsGenerating(false);
     }
@@ -821,6 +824,36 @@ const ContractWizard = () => {
             </div>
           </div>
         </div>
+
+        {generateError ? (
+          <div className="mt-6">
+            <Alert variant="destructive">
+              <AlertTitle>Erro ao gerar contrato</AlertTitle>
+              <AlertDescription>
+                <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs text-destructive/90">
+                  {generateError}
+                </div>
+                <div className="mt-4 flex gap-2 flex-wrap">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(generateError);
+                      toast.success("Erro copiado.");
+                    }}
+                  >
+                    <Copy className="w-4 h-4 mr-1.5" />
+                    Copiar erro
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setGenerateError(null)}>
+                    Limpar
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          </div>
+        ) : null}
 
         <div
           key={stepKey}
