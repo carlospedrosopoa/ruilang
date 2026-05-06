@@ -213,11 +213,21 @@ const ContractWizard = () => {
         return;
       }
 
-      const custom = ((data as any[]) || []).map((t) => ({ codigo: String(t.codigo), nome: String(t.nome) }));
-      const merged = new Map<string, { codigo: string; nome: string }>();
-      for (const t of builtins) merged.set(t.codigo, t);
-      for (const t of custom) merged.set(t.codigo, t);
-      setTipoOptions(Array.from(merged.values()));
+      const rows = ((data as any[]) || [])
+        .map((t) => ({ codigo: String(t.codigo || "").trim(), nome: String(t.nome || "").trim() }))
+        .filter((t) => Boolean(t.codigo && t.nome));
+
+      if (!rows.length) {
+        setTipoOptions(builtins);
+        return;
+      }
+
+      const dedup = new Map<string, { codigo: string; nome: string }>();
+      for (const t of rows) {
+        const key = t.codigo.toLowerCase();
+        if (!dedup.has(key)) dedup.set(key, t);
+      }
+      setTipoOptions(Array.from(dedup.values()));
     };
     loadTipos();
   }, [imobiliariaId]);
