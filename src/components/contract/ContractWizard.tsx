@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2, Check } from "lucide-react";
 import StepIndicator from "./StepIndicator";
 import StepVendedores from "./StepVendedores";
@@ -154,11 +156,23 @@ const ContractWizard = () => {
   const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
   const [imobiliariaId, setImobiliariaId] = useState<string | null>(null);
   const [customPerfis, setCustomPerfis] = useState<Array<{ id: string; nome: string }>>([]);
+  const [tipoOptions, setTipoOptions] = useState<Array<{ codigo: string; nome: string }>>(
+    () => tiposContrato.map((t) => ({ codigo: String(t.id), nome: t.nome })),
+  );
   const [peculiaridades, setPeculiaridades] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
   const didLoadSubmissionRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
+
+  const tipoNome =
+    tipoInfo?.nome ||
+    tipoOptions.find((t) => t.codigo === tipo)?.nome ||
+    String(tipo);
+
+  useEffect(() => {
+    if (currentStep > totalSteps) setCurrentStep(totalSteps);
+  }, [currentStep, totalSteps]);
 
   useEffect(() => {
     const loadTipo = async () => {
@@ -179,6 +193,34 @@ const ContractWizard = () => {
     };
     loadTipo();
   }, [imobiliariaId, tipo]);
+
+  useEffect(() => {
+    const loadTipos = async () => {
+      const builtins = tiposContrato.map((t) => ({ codigo: String(t.id), nome: t.nome }));
+      if (!imobiliariaId) {
+        setTipoOptions(builtins);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("tipos_contrato")
+        .select("codigo, nome, ativo")
+        .eq("imobiliaria_id", imobiliariaId)
+        .eq("ativo", true)
+        .order("created_at", { ascending: true });
+      if (error) {
+        setTipoOptions(builtins);
+        return;
+      }
+
+      const custom = ((data as any[]) || []).map((t) => ({ codigo: String(t.codigo), nome: String(t.nome) }));
+      const merged = new Map<string, { codigo: string; nome: string }>();
+      for (const t of builtins) merged.set(t.codigo, t);
+      for (const t of custom) merged.set(t.codigo, t);
+      setTipoOptions(Array.from(merged.values()));
+    };
+    loadTipos();
+  }, [imobiliariaId]);
 
   useEffect(() => {
     if (!submissionId) return;
@@ -277,12 +319,12 @@ const ContractWizard = () => {
         vendedores,
         compradores,
         imovel,
+        imovelPermuta,
+        pagamento,
+        locacao,
         perfilContrato,
         peculiaridades,
       };
-      if (tipo === "promessa_compra_venda_permuta") dados.imovelPermuta = imovelPermuta;
-      if (tipo === "locacao") dados.locacao = locacao;
-      else dados.pagamento = pagamento;
 
       if (!hasMeaningfulDraftData(dados)) return;
 
@@ -350,13 +392,51 @@ const ContractWizard = () => {
     setCurrentStep(step);
   };
 
+  const handleTipoChange = async (nextTipo: string) => {
+    const novoTipo = String(nextTipo || "").trim();
+    if (!novoTipo || novoTipo === tipo) return;
+
+    try {
+      if (submissionId) {
+        if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+
+        const dados: any = {
+          vendedores,
+          compradores,
+          imovel,
+          imovelPermuta,
+          pagamento,
+          locacao,
+          perfilContrato,
+          peculiaridades,
+        };
+
+        const { error } = await supabase
+          .from("submissions")
+          .update({ tipo_contrato: novoTipo, contract_texto: null, dados } as any)
+          .eq("id", submissionId);
+        if (error) throw error;
+      }
+
+      setMinuta(null);
+
+      const nextParams = new URLSearchParams(searchParams);
+      const url = `/contrato/${encodeURIComponent(novoTipo)}${nextParams.toString() ? `?${nextParams.toString()}` : ""}`;
+      navigate(url);
+      toast.success("Tipo de contrato alterado. Revise os dados e gere novamente.");
+    } catch (err: any) {
+      toast.error(err?.message || "Não foi possível alterar o tipo de contrato.");
+    }
+  };
+
   const handleGenerate = async () => {
     setIsGenerating(true);
 
     try {
       const contrato = {
         tipoContrato: tipo,
-        tipoContratoNome: tipoInfo?.nome || null,
+        tipoContratoNome: tipoNome || null,
         perfilContrato,
         peculiaridades: peculiaridades.trim() || undefined,
         vendedores,
@@ -417,7 +497,7 @@ const ContractWizard = () => {
     setIsExportingDocx(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-docx", {
-        body: { minuta, tipoContrato: tipo, tipoContratoNome: tipoInfo?.nome || null, format: "visual_law" },
+        body: { minuta, tipoContrato: tipo, tipoContratoNome: tipoNome || null, format: "visual_law" },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -481,7 +561,7 @@ const ContractWizard = () => {
         if (imovelId) {
           const { error: imErr } = await supabase.from("imovel_documentos").insert({
             imovel_id: imovelId,
-            titulo: `Contrato - ${tipoInfo?.nome || tipo}`.slice(0, 180),
+            titulo: `Contrato - ${tipoNome || tipo}`.slice(0, 180),
             nome_arquivo: downloadName,
             storage_path: storagePath,
             tipo: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -665,7 +745,7 @@ const ContractWizard = () => {
             <img src="/images/logo-pactadoc.png" alt="PactaDoc" className="h-8 w-auto" />
             <div>
               <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">PactaDoc</h1>
-              <p className="text-[10px] text-primary-foreground/50 font-medium uppercase tracking-wider">{tipoInfo?.nome || "Contrato"}</p>
+              <p className="text-[10px] text-primary-foreground/50 font-medium uppercase tracking-wider">{tipoNome || "Contrato"}</p>
               {submissionId ? (
                 <button
                   type="button"
@@ -687,6 +767,29 @@ const ContractWizard = () => {
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <StepIndicator steps={steps} currentStep={currentStep} onStepChange={goToStep} />
+
+        <div className="mt-8 border border-border rounded-xl p-4 bg-card shadow-card">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+            <div>
+              <Label>Tipo de contrato</Label>
+              <Select value={tipo} onValueChange={handleTipoChange}>
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {tipoOptions.map((t) => (
+                    <SelectItem key={t.codigo} value={t.codigo}>
+                      {t.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Ao alterar o tipo, o contrato anterior é descartado e você deve gerar novamente após revisar os dados.
+              </p>
+            </div>
+          </div>
+        </div>
 
         <div
           key={stepKey}
