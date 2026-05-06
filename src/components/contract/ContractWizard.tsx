@@ -492,12 +492,53 @@ const ContractWizard = () => {
     } catch (err: any) {
       console.error("Error generating contract:", err);
       let message = err?.message || "Erro ao gerar contrato. Tente novamente.";
-      const ctx = err?.context;
-      if (ctx && typeof ctx.json === "function") {
+
+      const status =
+        err?.status ??
+        err?.context?.status ??
+        err?.context?.response?.status ??
+        err?.context?.res?.status ??
+        null;
+
+      const tryReadBody = async (resp: any) => {
         try {
-          const body = await ctx.json();
+          if (!resp || typeof resp !== "object") return null;
+          const clone = typeof resp.clone === "function" ? resp.clone() : resp;
+          if (typeof clone.json === "function") {
+            try {
+              return await clone.json();
+            } catch {}
+          }
+          if (typeof clone.text === "function") {
+            const t = await clone.text();
+            if (!t || !String(t).trim()) return null;
+            try {
+              return JSON.parse(t);
+            } catch {
+              return { error: String(t).trim() };
+            }
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      };
+
+      const ctx = err?.context;
+      if (ctx) {
+        if (typeof ctx.json === "function") {
+          try {
+            const body = await ctx.json();
+            if (typeof body?.error === "string" && body.error.trim()) message = body.error;
+          } catch {}
+        } else if (ctx.response) {
+          const body = await tryReadBody(ctx.response);
           if (typeof body?.error === "string" && body.error.trim()) message = body.error;
-        } catch {}
+        }
+      }
+
+      if (status && !message.includes(String(status))) {
+        message = `HTTP ${status} — ${message}`;
       }
       setGenerateError(message);
     } finally {

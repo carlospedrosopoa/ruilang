@@ -324,6 +324,7 @@ async function renderContractFromTemplate(params: {
   instructionsIa?: string | null;
 }) {
   const paymentSpec = buildPaymentSpec(params.contrato);
+  const peculiaridades = typeof params.contrato?.peculiaridades === "string" ? params.contrato.peculiaridades.trim() : "";
   const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
 
 TAREFA:
@@ -335,6 +336,7 @@ REGRAS OBRIGATÓRIAS:
 - Não invente dados. Se um dado não foi fornecido, omita ou ajuste a redação de forma segura, sem placeholders.
 - Mantenha a redação e a estrutura do modelo base o máximo possível, alterando apenas o necessário para refletir os dados corretos.
 - Garanta coerência total entre todas as cláusulas (valores, prazos, identificação das partes e do imóvel).
+- Se houver PECULIARIDADES, você DEVE incorporá-las como cláusula(s) adicional(is) com redação jurídica, com título "CLÁUSULA ADICIONAL ..." e inserir antes de "LOCAL E DATA" / assinaturas.
 - NÃO use markdown. Gere apenas texto simples pronto para assinatura.`;
 
   const extraInstructions = typeof params.instructionsIa === "string" && params.instructionsIa.trim()
@@ -349,6 +351,7 @@ ${JSON.stringify(params.contrato, null, 2)}
 
 DADOS OFICIAIS DE VALOR/PAGAMENTO (OBRIGATÓRIO):
 ${paymentSpec}
+${peculiaridades ? `\n\nPECULIARIDADES (OBRIGATÓRIO incluir como CLÁUSULA ADICIONAL):\n${peculiaridades}\n` : ""}
 ${extraInstructions}
 
 Gere a minuta final completa usando a estrutura do modelo base, com todos os dados substituídos pelos oficiais.`;
@@ -1250,11 +1253,13 @@ REGRAS DE QUALIDADE E SEGURANÇA:
     const perfil = normalizePerfil(contrato.perfilContrato);
     const contratoSemPeculiaridades = { ...contrato };
     delete (contratoSemPeculiaridades as any).peculiaridades;
+    const peculiaridadesInput = typeof contrato.peculiaridades === "string" ? contrato.peculiaridades.trim() : "";
 
     const userPromptBase = `Gere um ${tipoLabel} completo e profissional com os seguintes dados:
 
 DADOS DO CONTRATO:
 ${JSON.stringify(contratoSemPeculiaridades, null, 2)}
+${peculiaridadesInput ? `\n\nPECULIARIDADES (OBRIGATÓRIO incluir como CLÁUSULA ADICIONAL):\n${peculiaridadesInput}\n` : ""}
 
 Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instruções, qualificação detalhada das partes com todos os dados fornecidos, e espaço para assinaturas e testemunhas.`;
 
@@ -1329,8 +1334,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
             const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
             if (!key) throw new Error("GEMINI_API_KEY is not configured");
             const models = [
-              Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
-              Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
             ];
             let geminiError: unknown = null;
             for (const model of models) {
@@ -1392,7 +1397,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   model,
                   tipoLabel,
                   templateText: minutaBase,
-                  contrato: contratoSemPeculiaridades,
+                  contrato,
                   instructionsIa: templateInstructionsIa,
                 });
                 renderProvider = "openai";
@@ -1410,8 +1415,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
             const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
             if (!key) throw new Error("GEMINI_API_KEY is not configured");
             const models = [
-              Deno.env.get("GEMINI_MODEL_CONTRACT_RENDER") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
-              Deno.env.get("GEMINI_MODEL_CONTRACT_RENDER_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_RENDER") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_RENDER_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
             ];
             let geminiError: unknown = null;
             for (const model of models) {
@@ -1422,7 +1427,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   model,
                   tipoLabel,
                   templateText: minutaBase,
-                  contrato: contratoSemPeculiaridades,
+                  contrato,
                   instructionsIa: templateInstructionsIa,
                 });
                 renderProvider = "gemini";
@@ -1452,7 +1457,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
 
       baseContrato = rendered.replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "");
 
-      if (renderProvider) {
+      const needsCoreFix = !hasCriticalDataFromForm(baseContrato, contratoSemPeculiaridades).ok;
+      if (renderProvider && needsCoreFix) {
         const tryOrderFix: AiProvider[] = renderProvider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
         let fixed: string | null = null;
         let lastFixErr: unknown = null;
@@ -1490,8 +1496,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
               const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
               if (!key) throw new Error("GEMINI_API_KEY is not configured");
               const models = [
-                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
-                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_PAYMENT_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
               ];
               let geminiError: unknown = null;
               for (const model of models) {
@@ -1545,7 +1551,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
 
     let minutaFinal = baseContrato;
     const peculiaridades = typeof contrato.peculiaridades === "string" ? contrato.peculiaridades.trim() : "";
-    if (peculiaridades) {
+    const hasPecInText = (text: string) => /\bCL[ÁA]USULA\s+ADICIONAL\b/i.test(text || "");
+    if (peculiaridades && !hasPecInText(baseContrato)) {
       const providerForPec = usedModel ? usedProvider : provider;
       const failover = isFailoverEnabled();
       const tryOrder: AiProvider[] = providerForPec === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
@@ -1587,8 +1594,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
             const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
             if (!key) throw new Error("GEMINI_API_KEY is not configured");
             const models = [
-              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
-              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+              Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
             ];
             for (const model of models) {
               try {
@@ -1689,8 +1696,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
               const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
               if (!key) throw new Error("GEMINI_API_KEY is not configured");
               const models = [
-                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-pro",
-                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-flash",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_CORE_FIX_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
               ];
               let geminiError: unknown = null;
               for (const model of models) {
