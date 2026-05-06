@@ -1597,7 +1597,83 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       if (integratedOk) {
         minutaFinal = cleanedIntegrated;
       } else {
-        throw new Error("Não foi possível integrar as peculiaridades no corpo do contrato. Ajuste as peculiaridades ou tente novamente.");
+        let clausesText: string | null = null;
+        let lastClauseError: unknown = null;
+        for (const p of tryOrder) {
+          try {
+            if (p === "openai") {
+              const key = Deno.env.get("OPENAI_API_KEY");
+              if (!key) throw new Error("OPENAI_API_KEY is not configured");
+              const models = [
+                Deno.env.get("OPENAI_MODEL_CONTRACT_PEC") || Deno.env.get("OPENAI_MODEL_CONTRACT") || "gpt-4o-mini",
+                Deno.env.get("OPENAI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("OPENAI_MODEL_CONTRACT_FALLBACK") || "gpt-4o",
+              ];
+              let openAiError: unknown = null;
+              for (const model of models) {
+                try {
+                  clausesText = await generatePeculiaridadesText({
+                    provider: "openai",
+                    apiKey: key,
+                    model,
+                    tipoLabel,
+                    baseTemplate: baseContrato,
+                    contrato: contratoSemPeculiaridades,
+                    peculiaridades,
+                    instructionsIa: templateInstructionsIa,
+                  });
+                  break;
+                } catch (e) {
+                  openAiError = e;
+                  const status = (e as any)?.status;
+                  if (status === 429) continue;
+                  throw e;
+                }
+              }
+              if (clausesText === null && openAiError) throw openAiError;
+            } else {
+              const key = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+              if (!key) throw new Error("GEMINI_API_KEY is not configured");
+              const models = [
+                Deno.env.get("GEMINI_MODEL_CONTRACT_PEC") || Deno.env.get("GEMINI_MODEL_CONTRACT") || "gemini-1.5-flash",
+                Deno.env.get("GEMINI_MODEL_CONTRACT_PEC_FALLBACK") || Deno.env.get("GEMINI_MODEL_CONTRACT_FALLBACK") || "gemini-1.5-pro",
+              ];
+              let geminiError: unknown = null;
+              for (const model of models) {
+                try {
+                  clausesText = await generatePeculiaridadesText({
+                    provider: "gemini",
+                    apiKey: key,
+                    model,
+                    tipoLabel,
+                    baseTemplate: baseContrato,
+                    contrato: contratoSemPeculiaridades,
+                    peculiaridades,
+                    instructionsIa: templateInstructionsIa,
+                  });
+                  break;
+                } catch (e) {
+                  geminiError = e;
+                  const status = (e as any)?.status;
+                  if (status === 429 || status === 404) continue;
+                  throw e;
+                }
+              }
+              if (clausesText === null && geminiError) throw geminiError;
+            }
+            break;
+          } catch (e) {
+            lastClauseError = e;
+            const status = (e as any)?.status;
+            const shouldForceFallback = status === 404;
+            if (!failover && !shouldForceFallback) break;
+          }
+        }
+
+        const cleanedClauses = (clausesText || "").replace(/\*\*/g, "").replace(/^#{1,6}\s*/gm, "").replace(/^-{3,}$/gm, "").replace(/`/g, "").trim();
+        if (!cleanedClauses) {
+          throw lastClauseError instanceof Error ? lastClauseError : new Error("Não foi possível gerar cláusulas para as peculiaridades.");
+        }
+        minutaFinal = insertBeforeSignatureBlock(baseContrato, cleanedClauses);
       }
     }
 
