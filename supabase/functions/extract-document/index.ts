@@ -296,6 +296,8 @@ REGRAS ESPECÍFICAS PARA CNH DIGITAL/FÍSICA:
 - Para CNH, priorize:
   - documentoNumero: campo "Nº REGISTRO" (ou número principal da habilitação).
   - documentoOrgao: órgão emissor/UF visível no documento (ex.: Detran + UF, quando disponível).
+- Para CNH, o campo do titular é "NOME" (ou "NOME COMPLETO") e deve preencher "nome".
+- Nunca use o conteúdo do bloco "FILIAÇÃO" como nome do titular (FILIAÇÃO são os pais).
 - No bloco "FILIAÇÃO" da CNH, normalmente há duas linhas:
   - primeira linha = filiacaoPai
   - segunda linha = filiacaoMae

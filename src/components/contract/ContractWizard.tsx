@@ -163,6 +163,7 @@ const ContractWizard = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [minuta, setMinuta] = useState<string | null>(null);
   const didLoadSubmissionRef = useRef(false);
+  const didSyncTipoFromSubmissionRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
 
   const tipoNome =
@@ -235,8 +236,8 @@ const ContractWizard = () => {
   useEffect(() => {
     if (!submissionId) return;
     const loadSubmission = async () => {
-      const selectFull = "dados, imobiliaria_id, contract_texto";
-      const selectFallback = "dados, imobiliaria_id";
+      const selectFull = "dados, imobiliaria_id, tipo_contrato, contract_texto";
+      const selectFallback = "dados, imobiliaria_id, tipo_contrato";
 
       let data: any = null;
       let error: any = null;
@@ -260,6 +261,26 @@ const ContractWizard = () => {
         toast.error(error.message || "Não foi possível carregar os dados do contrato.");
         didLoadSubmissionRef.current = true;
         return;
+      }
+
+      {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const rawTipo = typeof data?.tipo_contrato === "string" ? data.tipo_contrato.trim() : "";
+        const imobId = typeof data?.imobiliaria_id === "string" ? data.imobiliaria_id : null;
+        let resolvedTipo = rawTipo;
+        if (resolvedTipo && uuidRegex.test(resolvedTipo) && imobId) {
+          const res = await supabase.from("tipos_contrato").select("codigo").eq("imobiliaria_id", imobId).eq("id", resolvedTipo).maybeSingle();
+          const codigo = (res.data as any)?.codigo;
+          if (typeof codigo === "string" && codigo.trim()) resolvedTipo = codigo.trim();
+        }
+
+        if (resolvedTipo && resolvedTipo !== tipo && !didSyncTipoFromSubmissionRef.current) {
+          didSyncTipoFromSubmissionRef.current = true;
+          const nextParams = new URLSearchParams(searchParams);
+          const url = `/contrato/${encodeURIComponent(resolvedTipo)}${nextParams.toString() ? `?${nextParams.toString()}` : ""}`;
+          navigate(url, { replace: true });
+          return;
+        }
       }
 
       if (data?.dados) {

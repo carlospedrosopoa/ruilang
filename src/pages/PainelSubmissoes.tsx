@@ -1131,40 +1131,28 @@ const PainelSubmissoes = () => {
                               </DropdownMenuItem>
 
                               {sub.status === "enviado" ? (
-                                <>
-                                  <DropdownMenuItem onClick={() => generateProposalForSubmission(sub)}>
-                                    <Sparkles className="w-4 h-4 mr-2" />
-                                    Gerar proposta
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleGenerateContract(sub)}>
-                                    <FileText className="w-4 h-4 mr-2" />
-                                    Gerar contrato
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => openUploadEscritura(sub)}
-                                    disabled={escrituraUploadingForId === sub.id}
-                                  >
-                                    {escrituraUploadingForId === sub.id ? (
-                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    ) : (
-                                      <ScrollText className="w-4 h-4 mr-2" />
-                                    )}
-                                    Anexar escritura
-                                  </DropdownMenuItem>
-                                </>
-                              ) : (
-                                <DropdownMenuItem
-                                  onClick={() => openUploadEscritura(sub)}
-                                  disabled={escrituraUploadingForId === sub.id}
-                                >
-                                  {escrituraUploadingForId === sub.id ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  ) : (
-                                    <ScrollText className="w-4 h-4 mr-2" />
-                                  )}
-                                  Anexar escritura
+                                <DropdownMenuItem onClick={() => generateProposalForSubmission(sub)}>
+                                  <Sparkles className="w-4 h-4 mr-2" />
+                                  Gerar proposta
                                 </DropdownMenuItem>
-                              )}
+                              ) : null}
+
+                              <DropdownMenuItem onClick={() => handleGenerateContract(sub)}>
+                                <FileText className="w-4 h-4 mr-2" />
+                                Gerar contrato
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={() => openUploadEscritura(sub)}
+                                disabled={escrituraUploadingForId === sub.id}
+                              >
+                                {escrituraUploadingForId === sub.id ? (
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                  <ScrollText className="w-4 h-4 mr-2" />
+                                )}
+                                Anexar escritura
+                              </DropdownMenuItem>
 
                               <DropdownMenuSeparator />
 
