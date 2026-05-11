@@ -537,10 +537,6 @@ const PainelSubmissoes = () => {
       toast.error("Selecione uma imobiliária/tenant para criar links.");
       return;
     }
-    if (!selectedImovelId) {
-      toast.error("Selecione um imóvel para gerar a coleta.");
-      return;
-    }
     if (!novoPerfil || !novoPerfil.trim()) {
       toast.error("Selecione o perfil de blindagem.");
       return;
@@ -548,19 +544,17 @@ const PainelSubmissoes = () => {
     setCreating(true);
     try {
       const corretor = corretores.find((c) => c.id === selectedCorretorId) || null;
-      const imovelRef = imoveis.find((i) => i.id === selectedImovelId) || null;
-      if (!imovelRef) {
-        toast.error("Imóvel não encontrado. Recarregue a página e tente novamente.");
-        return;
-      }
-      let imovelDados: any = imovelRef.dados;
-      if (typeof imovelDados === "string") {
+      const imovelRef = selectedImovelId ? imoveis.find((i) => i.id === selectedImovelId) || null : null;
+
+      let imovelDados: any = imovelRef ? imovelRef.dados : criarImovelVazio();
+      if (imovelRef && typeof imovelDados === "string") {
         try {
           imovelDados = JSON.parse(imovelDados);
         } catch {}
       }
 
       const vendedoresFromImovel = (() => {
+        if (!imovelRef) return null;
         const raw = (imovelDados as any)?.vendedores;
         const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
         if (!list.length) return null;
@@ -591,6 +585,8 @@ const PainelSubmissoes = () => {
 
       let vendedoresPrefill = vendedoresFromImovel;
       if (!vendedoresPrefill) {
+        if (!imovelRef) vendedoresPrefill = null;
+        else {
         const { data: imovelExtra, error: imovelExtraError } = await supabase
           .from("imoveis")
           .select(
@@ -619,6 +615,7 @@ const PainelSubmissoes = () => {
           v.documentoNumero = String(cliente?.documento_numero || "").trim();
           return [v];
         })();
+        }
       }
 
       const { data, error } = await supabase
@@ -629,7 +626,7 @@ const PainelSubmissoes = () => {
           corretor_id: corretor?.id || null,
           corretor_nome: corretor?.nome || null,
           corretor_telefone: corretor?.telefone || null,
-          imovel_id: imovelRef.id,
+          imovel_id: imovelRef?.id || null,
           dados: {
             imovel: imovelDados || {},
             ...(vendedoresPrefill ? { vendedores: vendedoresPrefill } : {}),
@@ -984,7 +981,7 @@ const PainelSubmissoes = () => {
               <DialogHeader><DialogTitle>Criar Coleta</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-4">
                 <div>
-                  <Label>Imóvel *</Label>
+                  <Label>Imóvel (opcional)</Label>
                   {showCreateImovel ? (
                     <div className="mt-2 border border-border rounded-lg p-4 space-y-4">
                       <div className="text-sm text-muted-foreground">
@@ -1033,7 +1030,7 @@ const PainelSubmissoes = () => {
                     </div>
                   ) : imoveis.length === 0 ? (
                     <div className="mt-2 border border-dashed border-border rounded-lg p-3 text-sm text-muted-foreground">
-                      Nenhum imóvel cadastrado. Cadastre um imóvel para gerar coletas.
+                      Nenhum imóvel cadastrado. Você pode cadastrar agora ou gerar a coleta e preencher o imóvel direto no formulário.
                       <div className="mt-3">
                         <div className="flex flex-wrap gap-2">
                           <Button variant="outline" size="sm" onClick={openInlineImovelForm}>
@@ -1102,6 +1099,9 @@ const PainelSubmissoes = () => {
                           Cadastrar Novo Imóvel
                         </Button>
                       </div>
+                      <div className="text-xs text-muted-foreground">
+                        Dica: se você não selecionar nenhum imóvel, a coleta será criada e o imóvel poderá ser preenchido direto no formulário.
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1156,7 +1156,7 @@ const PainelSubmissoes = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button onClick={handleCreateLink} disabled={creating || !selectedImovelId} className="w-full">
+                <Button onClick={handleCreateLink} disabled={creating} className="w-full">
                   {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
                   Criar e Copiar Link
                 </Button>
