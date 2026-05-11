@@ -22,13 +22,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Sparkles, Download, MoreHorizontal, ScrollText, Paperclip } from "lucide-react";
-import { criarImovelVazio, criarPessoaVazia, Imovel, tiposContrato, TipoContrato } from "@/types/contract";
+import { criarImovelVazio, criarPessoaVazia, Imovel, Pessoa, tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import StepObjeto from "@/components/contract/StepObjeto";
+import StepVendedores from "@/components/contract/StepVendedores";
 
 type SubmissionDocumento = {
   id: string;
@@ -133,9 +134,7 @@ const PainelSubmissoes = () => {
   const [showCreateImovel, setShowCreateImovel] = useState(false);
   const [novoImovelTitulo, setNovoImovelTitulo] = useState("");
   const [novoImovelDados, setNovoImovelDados] = useState<Imovel>(() => criarImovelVazio());
-  const [novoImovelVendedorNome, setNovoImovelVendedorNome] = useState("");
-  const [novoImovelVendedorCpf, setNovoImovelVendedorCpf] = useState("");
-  const [novoImovelVendedorCnpj, setNovoImovelVendedorCnpj] = useState("");
+  const [novoImovelVendedores, setNovoImovelVendedores] = useState<Pessoa[]>(() => [criarPessoaVazia()]);
   const [savingImovelInline, setSavingImovelInline] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
   const [proposalLoading, setProposalLoading] = useState(false);
@@ -226,9 +225,7 @@ const PainelSubmissoes = () => {
   const resetInlineImovelForm = () => {
     setNovoImovelTitulo("");
     setNovoImovelDados(criarImovelVazio());
-    setNovoImovelVendedorNome("");
-    setNovoImovelVendedorCpf("");
-    setNovoImovelVendedorCnpj("");
+    setNovoImovelVendedores([criarPessoaVazia()]);
   };
 
   const openInlineImovelForm = () => {
@@ -249,29 +246,29 @@ const PainelSubmissoes = () => {
       toast.error("Preencha pelo menos Localização, Município e Estado.");
       return;
     }
+    const vendedoresValidos = novoImovelVendedores.filter((v) => !v.conjugeDeId && String(v.nome || "").trim());
+    if (vendedoresValidos.length === 0) {
+      toast.error("Informe pelo menos um vendedor.");
+      return;
+    }
 
     setSavingImovelInline(true);
     try {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData?.user?.id || null;
 
-      const vendedorNome = novoImovelVendedorNome.trim();
-      const vendedorCpf = novoImovelVendedorCpf.trim();
-      const vendedorCnpj = novoImovelVendedorCnpj.trim();
+      const vendedoresToSave = novoImovelVendedores.filter((v) => {
+        const hasAny =
+          String(v.nome || "").trim() ||
+          String(v.cpf || "").trim() ||
+          String(v.cnpj || "").trim() ||
+          String(v.documentoNumero || "").trim();
+        return Boolean(hasAny);
+      });
 
       const dadosToSave: any = {
         ...(novoImovelDados as any),
-        ...(vendedorNome
-          ? {
-              vendedores: [
-                {
-                  nome_completo: vendedorNome,
-                  cpf: vendedorCpf || null,
-                  cnpj: vendedorCnpj || null,
-                },
-              ],
-            }
-          : {}),
+        vendedores: vendedoresToSave,
       };
 
       const { data, error } = await supabase
@@ -997,26 +994,12 @@ const PainelSubmissoes = () => {
 
                       <StepObjeto imovel={novoImovelDados} onChange={setNovoImovelDados} />
 
-                      <div className="border border-border rounded-lg p-4">
-                        <div className="font-medium text-foreground">Vendedor (opcional)</div>
-                        <div className="text-xs text-muted-foreground">
-                          Se informar aqui, o vendedor já vem pré-preenchido na coleta. Se preferir, você pode preencher depois no formulário.
-                        </div>
-                        <div className="mt-3 grid sm:grid-cols-3 gap-2">
-                          <div className="sm:col-span-3">
-                            <Label>Nome</Label>
-                            <Input value={novoImovelVendedorNome} onChange={(e) => setNovoImovelVendedorNome(e.target.value)} placeholder="Nome do vendedor" />
-                          </div>
-                          <div>
-                            <Label>CPF</Label>
-                            <Input value={novoImovelVendedorCpf} onChange={(e) => setNovoImovelVendedorCpf(e.target.value)} placeholder="Somente números" />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <Label>CNPJ</Label>
-                            <Input value={novoImovelVendedorCnpj} onChange={(e) => setNovoImovelVendedorCnpj(e.target.value)} placeholder="Somente números" />
-                          </div>
-                        </div>
-                      </div>
+                      <StepVendedores
+                        vendedores={novoImovelVendedores}
+                        onChange={setNovoImovelVendedores}
+                        titulo="Vendedor"
+                        tituloPlural="Vendedor(es)"
+                      />
 
                       <div className="flex flex-wrap gap-2 justify-end">
                         <Button type="button" variant="ghost" onClick={() => setShowCreateImovel(false)} disabled={savingImovelInline}>
