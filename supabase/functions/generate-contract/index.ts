@@ -80,6 +80,136 @@ function buildLiteralPeculiaridadesClause(peculiaridades: string) {
   return `CLÁUSULA ADICIONAL PRIMEIRA - PECULIARIDADES\n\nAs partes ajustam que:\n${body}`.trim();
 }
 
+function normalizeForMatch(input: string) {
+  return String(input || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+const ordinaisClausula = [
+  "PRIMEIRA",
+  "SEGUNDA",
+  "TERCEIRA",
+  "QUARTA",
+  "QUINTA",
+  "SEXTA",
+  "SÉTIMA",
+  "OITAVA",
+  "NONA",
+  "DÉCIMA",
+  "DÉCIMA PRIMEIRA",
+  "DÉCIMA SEGUNDA",
+  "DÉCIMA TERCEIRA",
+  "DÉCIMA QUARTA",
+  "DÉCIMA QUINTA",
+  "DÉCIMA SEXTA",
+  "DÉCIMA SÉTIMA",
+  "DÉCIMA OITAVA",
+  "DÉCIMA NONA",
+  "VIGÉSIMA",
+  "VIGÉSIMA PRIMEIRA",
+  "VIGÉSIMA SEGUNDA",
+  "VIGÉSIMA TERCEIRA",
+  "VIGÉSIMA QUARTA",
+  "VIGÉSIMA QUINTA",
+  "VIGÉSIMA SEXTA",
+  "VIGÉSIMA SÉTIMA",
+  "VIGÉSIMA OITAVA",
+  "VIGÉSIMA NONA",
+  "TRIGÉSIMA",
+];
+
+const ordinaisClausulaNormToNum = new Map<string, number>(
+  ordinaisClausula.map((o, idx) => [normalizeForMatch(o), idx + 1]),
+);
+
+function ordinalByNumber(num: number) {
+  if (num < 1) return null;
+  return ordinaisClausula[num - 1] || null;
+}
+
+function numberByOrdinal(raw: string) {
+  const key = normalizeForMatch(raw);
+  return ordinaisClausulaNormToNum.get(key) || null;
+}
+
+function detectClauseStyle(text: string): "numeric" | "ordinal" | "unknown" {
+  const numericRe = /^\s*CL[ÁA]USULA\s+\d+(?:ª|A)?\b/im;
+  const ordinalRe = /^\s*CL[ÁA]USULA\s+[A-ZÀ-ÿ]+(?:\s+[A-ZÀ-ÿ]+){0,2}\b/im;
+  const n = numericRe.exec(text);
+  const o = ordinalRe.exec(text);
+  if (n && o) return n.index <= o.index ? "numeric" : "ordinal";
+  if (n) return "numeric";
+  if (o) return "ordinal";
+  return "unknown";
+}
+
+function findInsertBeforeClauseIndex(text: string) {
+  const linesRe = /^\s*CL[ÁA]USULA[^\n]*$/gim;
+  const matches: Array<{ index: number; line: string; number: number | null; style: "numeric" | "ordinal" | "unknown" }> = [];
+  for (const m of text.matchAll(linesRe)) {
+    const line = m[0];
+    const idx = m.index ?? -1;
+    if (idx < 0) continue;
+    const numeric = line.match(/CL[ÁA]USULA\s+(\d+)(?:ª|A)?\b/i)?.[1];
+    const ordinalRaw = line.match(/CL[ÁA]USULA\s+([A-ZÀ-ÿ]+(?:\s+[A-ZÀ-ÿ]+){0,2})\b/i)?.[1] || "";
+    const ordNum = ordinalRaw ? numberByOrdinal(ordinalRaw) : null;
+    const num = numeric ? Number(numeric) : ordNum;
+    const style = numeric ? "numeric" : ordNum ? "ordinal" : "unknown";
+    matches.push({ index: idx, line, number: Number.isFinite(num as any) ? (num as any) : null, style });
+  }
+  if (matches.length === 0) return null;
+
+  const pickByKeyword = (kw: string) => {
+    const k = normalizeForMatch(kw);
+    return matches.find((m) => normalizeForMatch(m.line).includes(k)) || null;
+  };
+
+  return (
+    pickByKeyword("FORO") ||
+    pickByKeyword("DISPOSIÇÕES FINAIS") ||
+    pickByKeyword("DISPOSICOES FINAIS") ||
+    pickByKeyword("DISPOSIÇÕES GERAIS") ||
+    pickByKeyword("DISPOSICOES GERAIS") ||
+    pickByKeyword("LGPD") ||
+    null
+  );
+}
+
+function renumberClauses(text: string, startNumber: number, delta: number) {
+  if (!startNumber || !Number.isFinite(startNumber) || delta === 0) return text;
+  const style = detectClauseStyle(text);
+  if (style === "numeric") {
+    return text.replace(/^(\s*CL[ÁA]USULA\s+)(\d+)(ª|A)?/gim, (_m, p1, p2, p3) => {
+      const n = Number(p2);
+      if (!Number.isFinite(n) || n < startNumber) return `${p1}${p2}${p3 || ""}`;
+      return `${p1}${n + delta}${p3 || ""}`;
+    });
+  }
+  if (style === "ordinal") {
+    return text.replace(/^(\s*CL[ÁA]USULA\s+)([A-ZÀ-ÿ]+(?:\s+[A-ZÀ-ÿ]+){0,2})\b/gim, (m, p1, p2) => {
+      const n = numberByOrdinal(p2);
+      if (!n || n < startNumber) return m;
+      const next = ordinalByNumber(n + delta);
+      if (!next) return m;
+      return `${p1}${next}`;
+    });
+  }
+  return text;
+}
+
+function buildPeculiaridadesClauseTitle(text: string, clauseNumber: number | null) {
+  const style = detectClauseStyle(text);
+  const title = "PECULIARIDADES E CONDIÇÕES ESPECIAIS";
+  if (style === "numeric" && clauseNumber) return `CLÁUSULA ${clauseNumber}ª – ${title}`;
+  if (style === "ordinal" && clauseNumber) {
+    const ord = ordinalByNumber(clauseNumber);
+    if (ord) return `CLÁUSULA ${ord} – ${title}`;
+  }
+  return `CLÁUSULA – ${title}`;
+}
+
 function buildContratoPreviewForPec(contratoText: string) {
   const text = String(contratoText || "").trim();
   if (!text) return "";
@@ -229,14 +359,15 @@ async function generatePeculiaridadesText(params: {
   const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
 
 TAREFA:
-Gerar APENAS cláusulas adicionais (texto simples) para incorporar PECULIARIDADES em um contrato já existente.
+Redigir APENAS o conteúdo de UMA cláusula (texto simples) para incorporar PECULIARIDADES em um contrato já existente.
 
 REGRAS:
 - NÃO reescreva o contrato base.
 - NÃO repita cláusulas já existentes.
-- Escreva cláusulas "CLÁUSULA ADICIONAL PRIMEIRA", "CLÁUSULA ADICIONAL SEGUNDA", etc.
+- NÃO escreva o título da cláusula e NÃO escreva "CLÁUSULA ..." no início (o sistema colocará o título e a numeração).
+- Escreva o caput e, se necessário, parágrafos e itens.
 - Use linguagem jurídica formal e consistente com o contrato base.
-- Gere APENAS o texto das cláusulas adicionais (sem explicações, sem markdown).`;
+- Gere APENAS o texto da cláusula (sem explicações, sem markdown).`;
 
   const extraInstructions = typeof params.instructionsIa === "string" && params.instructionsIa.trim()
     ? `\n\nINSTRUÇÕES ADICIONAIS (OBRIGATÓRIAS):\n${params.instructionsIa.trim()}\n`
@@ -260,7 +391,7 @@ PECULIARIDADES A INCORPORAR:
 ${params.peculiaridades}
 ${extraInstructions}
 
-Gere somente as cláusulas adicionais.`;
+Gere somente o texto da cláusula (sem título e sem numeração de cláusula).`;
 
   if (params.provider === "openai") {
     return await callOpenAiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
@@ -324,7 +455,6 @@ async function renderContractFromTemplate(params: {
   instructionsIa?: string | null;
 }) {
   const paymentSpec = buildPaymentSpec(params.contrato);
-  const peculiaridades = typeof params.contrato?.peculiaridades === "string" ? params.contrato.peculiaridades.trim() : "";
   const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro.
 
 TAREFA:
@@ -336,7 +466,6 @@ REGRAS OBRIGATÓRIAS:
 - Não invente dados. Se um dado não foi fornecido, omita ou ajuste a redação de forma segura, sem placeholders.
 - Mantenha a redação e a estrutura do modelo base o máximo possível, alterando apenas o necessário para refletir os dados corretos.
 - Garanta coerência total entre todas as cláusulas (valores, prazos, identificação das partes e do imóvel).
-- Se houver PECULIARIDADES, você DEVE incorporá-las como cláusula(s) adicional(is) com redação jurídica, com título "CLÁUSULA ADICIONAL ..." e inserir antes de "LOCAL E DATA" / assinaturas.
 - NÃO use markdown. Gere apenas texto simples pronto para assinatura.`;
 
   const extraInstructions = typeof params.instructionsIa === "string" && params.instructionsIa.trim()
@@ -351,7 +480,6 @@ ${JSON.stringify(params.contrato, null, 2)}
 
 DADOS OFICIAIS DE VALOR/PAGAMENTO (OBRIGATÓRIO):
 ${paymentSpec}
-${peculiaridades ? `\n\nPECULIARIDADES (OBRIGATÓRIO incluir como CLÁUSULA ADICIONAL):\n${peculiaridades}\n` : ""}
 ${extraInstructions}
 
 Gere a minuta final completa usando a estrutura do modelo base, com todos os dados substituídos pelos oficiais.`;
@@ -1253,13 +1381,10 @@ REGRAS DE QUALIDADE E SEGURANÇA:
     const perfil = normalizePerfil(contrato.perfilContrato);
     const contratoSemPeculiaridades = { ...contrato };
     delete (contratoSemPeculiaridades as any).peculiaridades;
-    const peculiaridadesInput = typeof contrato.peculiaridades === "string" ? contrato.peculiaridades.trim() : "";
-
     const userPromptBase = `Gere um ${tipoLabel} completo e profissional com os seguintes dados:
 
 DADOS DO CONTRATO:
 ${JSON.stringify(contratoSemPeculiaridades, null, 2)}
-${peculiaridadesInput ? `\n\nPECULIARIDADES (OBRIGATÓRIO incluir como CLÁUSULA ADICIONAL):\n${peculiaridadesInput}\n` : ""}
 
 Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instruções, qualificação detalhada das partes com todos os dados fornecidos, e espaço para assinaturas e testemunhas.`;
 
@@ -1397,7 +1522,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   model,
                   tipoLabel,
                   templateText: minutaBase,
-                  contrato,
+                  contrato: contratoSemPeculiaridades,
                   instructionsIa: templateInstructionsIa,
                 });
                 renderProvider = "openai";
@@ -1427,7 +1552,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
                   model,
                   tipoLabel,
                   templateText: minutaBase,
-                  contrato,
+                  contrato: contratoSemPeculiaridades,
                   instructionsIa: templateInstructionsIa,
                 });
                 renderProvider = "gemini";
@@ -1551,14 +1676,13 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
 
     let minutaFinal = baseContrato;
     const peculiaridades = typeof contrato.peculiaridades === "string" ? contrato.peculiaridades.trim() : "";
-    const hasPecInText = (text: string) => /\bCL[ÁA]USULA\s+ADICIONAL\b/i.test(text || "");
-    if (peculiaridades && !hasPecInText(baseContrato)) {
+    if (peculiaridades) {
       const providerForPec = usedModel ? usedProvider : provider;
       const failover = isFailoverEnabled();
       const tryOrder: AiProvider[] = providerForPec === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
 
       const preview = buildContratoPreviewForPec(baseContrato);
-      let clausesText: string | null = null;
+      let clauseBody: string | null = null;
       let lastClauseError: unknown = null;
 
       for (const p of tryOrder) {
@@ -1572,7 +1696,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
             ];
             for (const model of models) {
               try {
-                clausesText = await generatePeculiaridadesText({
+                clauseBody = await generatePeculiaridadesText({
                   provider: "openai",
                   apiKey: key,
                   model,
@@ -1599,7 +1723,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
             ];
             for (const model of models) {
               try {
-                clausesText = await generatePeculiaridadesText({
+                clauseBody = await generatePeculiaridadesText({
                   provider: "gemini",
                   apiKey: key,
                   model,
@@ -1627,20 +1751,31 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
         }
       }
 
-      const cleanedClauses = (clausesText || "")
+      const cleanedBody = (clauseBody || "")
         .replace(/\*\*/g, "")
         .replace(/^#{1,6}\s*/gm, "")
         .replace(/^-{3,}$/gm, "")
         .replace(/`/g, "")
+        .replace(/^\s*CL[ÁA]USULA[^\n]*\n?/gim, "")
         .trim();
 
-      const hasClauseMarker = /\bCL[ÁA]USULA\b/i.test(cleanedClauses);
-      if (!cleanedClauses || !hasClauseMarker) {
-        throw lastClauseError instanceof Error
-          ? lastClauseError
-          : new Error("Não foi possível gerar cláusulas para as peculiaridades. Ajuste o texto e tente novamente.");
+      if (!cleanedBody) {
+        throw lastClauseError instanceof Error ? lastClauseError : new Error("Não foi possível redigir a cláusula das peculiaridades.");
       }
-      minutaFinal = insertBeforeSignatureBlock(baseContrato, cleanedClauses);
+
+      const target = findInsertBeforeClauseIndex(baseContrato);
+      const insertionNumber = target?.number || null;
+      const clauseTitle = buildPeculiaridadesClauseTitle(baseContrato, insertionNumber);
+      const block = `${clauseTitle}\n\n${cleanedBody}`.trim();
+
+      if (target && insertionNumber) {
+        const renumbered = renumberClauses(baseContrato, insertionNumber, 1);
+        const refreshedTarget = findInsertBeforeClauseIndex(renumbered);
+        const insertAt = refreshedTarget?.index ?? target.index;
+        minutaFinal = `${renumbered.slice(0, insertAt).trimEnd()}\n\n${block}\n\n${renumbered.slice(insertAt).trimStart()}`;
+      } else {
+        minutaFinal = insertBeforeSignatureBlock(baseContrato, block);
+      }
     }
 
     if (baseSource !== "ai") {
