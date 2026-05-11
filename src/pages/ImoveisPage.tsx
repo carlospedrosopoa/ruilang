@@ -785,7 +785,8 @@ const ImoveisPage = () => {
         for (const [k, field] of Object.entries(map)) {
           const raw = (dados as any)[k];
           if (typeof raw === "string" && raw.trim()) {
-            (next as any)[field] = raw.trim();
+            const value = raw.trim();
+            (next as any)[field] = field === "nome_completo" ? value.toUpperCase() : value;
           }
         }
         return next;

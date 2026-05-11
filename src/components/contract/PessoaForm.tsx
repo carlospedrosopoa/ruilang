@@ -216,7 +216,10 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
       for (const [key, value] of Object.entries(dados)) {
         if (value && typeof value === "string" && value.trim() !== "") {
           const pessoaKey = key as keyof Pessoa;
-          if (pessoaKey in merged) (merged as any)[pessoaKey] = value.trim();
+          if (pessoaKey in merged) {
+            const nextValue = value.trim();
+            (merged as any)[pessoaKey] = pessoaKey === "nome" ? nextValue.toUpperCase() : nextValue;
+          }
         }
       }
 
@@ -272,7 +275,10 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
       for (const [key, value] of Object.entries(dados)) {
         if (value && typeof value === "string" && value.trim() !== "") {
           const pessoaKey = key as keyof Pessoa;
-          if (pessoaKey in merged) (merged as any)[pessoaKey] = value.trim();
+          if (pessoaKey in merged) {
+            const nextValue = value.trim();
+            (merged as any)[pessoaKey] = pessoaKey === "nome" ? nextValue.toUpperCase() : nextValue;
+          }
         }
       }
 
