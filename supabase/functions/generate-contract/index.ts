@@ -736,7 +736,7 @@ Retorne o contrato completo com as seções/cláusulas de partes, imóvel e paga
   return await callGeminiText({ apiKey: params.apiKey, model: params.model, systemPrompt, userPrompt });
 }
 
-function normalizeForMatch(input: string) {
+function normalizeForLooseMatch(input: string) {
   return input
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -775,12 +775,12 @@ function getFirstPartyNeedles(contrato: any) {
 
 function hasCriticalDataFromForm(text: string, contrato: any) {
   const needles = getFirstPartyNeedles(contrato);
-  const norm = normalizeForMatch(text);
+  const norm = normalizeForLooseMatch(text);
   const digitText = extractDigits(text);
 
   const mustHave: Array<{ ok: boolean; label: string }> = [];
-  if (needles.vendedorNome) mustHave.push({ ok: norm.includes(normalizeForMatch(needles.vendedorNome)), label: "vendedorNome" });
-  if (needles.compradorNome) mustHave.push({ ok: norm.includes(normalizeForMatch(needles.compradorNome)), label: "compradorNome" });
+  if (needles.vendedorNome) mustHave.push({ ok: norm.includes(normalizeForLooseMatch(needles.vendedorNome)), label: "vendedorNome" });
+  if (needles.compradorNome) mustHave.push({ ok: norm.includes(normalizeForLooseMatch(needles.compradorNome)), label: "compradorNome" });
   if (needles.vendedorDoc) mustHave.push({ ok: digitText.includes(needles.vendedorDoc), label: "vendedorDoc" });
   if (needles.compradorDoc) mustHave.push({ ok: digitText.includes(needles.compradorDoc), label: "compradorDoc" });
   const missing = mustHave.filter((x) => !x.ok).map((x) => x.label);
