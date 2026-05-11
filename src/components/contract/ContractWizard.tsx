@@ -567,12 +567,40 @@ const ContractWizard = () => {
 
   const [isExportingDocx, setIsExportingDocx] = useState(false);
 
+  const isLikelyNetworkEdgeError = (err: any) => {
+    const msg = String(err?.message || "").toLowerCase();
+    if (msg.includes("failed to send a request to the edge function")) return true;
+    if (msg.includes("failed to fetch")) return true;
+    if (msg.includes("networkerror")) return true;
+    const name = String(err?.name || "").toLowerCase();
+    if (name.includes("functionsfetcherror")) return true;
+    return false;
+  };
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const invokeWithRetry = async <T,>(functionName: string, body: any, maxRetries: number) => {
+    let lastErr: any = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await supabase.functions.invoke(functionName, { body });
+        return res as any as { data: T; error: any };
+      } catch (e: any) {
+        lastErr = e;
+        if (!isLikelyNetworkEdgeError(e) || attempt === maxRetries) throw e;
+        await sleep(600 + attempt * 800);
+      }
+    }
+    throw lastErr;
+  };
+
   const handleDownloadDocx = async () => {
     if (!minuta) return;
     setIsExportingDocx(true);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-docx", {
-        body: {
+      const { data, error } = await invokeWithRetry<{ docx: string; error?: string }>(
+        "generate-docx",
+        {
           minuta,
           tipoContrato: tipo,
           tipoContratoNome: tipoNome || null,
@@ -583,7 +611,8 @@ const ContractWizard = () => {
             conjugeComprador: compradores.some((c) => Boolean((c as any)?.conjugeDeId)),
           },
         },
-      });
+        2,
+      );
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
@@ -659,7 +688,23 @@ const ContractWizard = () => {
       }
     } catch (err: any) {
       console.error("Error exporting DOCX:", err);
-      toast.error("Erro ao exportar DOCX. Tente novamente.");
+      let message = err?.message || "Erro ao exportar DOCX.";
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json();
+          if (body?.error) message = body.error;
+        } catch {}
+      }
+      if (isLikelyNetworkEdgeError(err)) {
+        message = [
+          message,
+          "",
+          "Possíveis causas: bloqueio/intermitência de rede (adblock/firewall/proxy/DNS) ou instabilidade do Supabase.",
+          "Tente novamente ou teste em outra rede/navegador.",
+        ].join("\n");
+      }
+      setGenerateError(message);
     } finally {
       setIsExportingDocx(false);
     }
