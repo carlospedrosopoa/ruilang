@@ -22,12 +22,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { FileText, Plus, Copy, ExternalLink, Loader2, Clock, CheckCircle, FileCheck, Send, Trash2, Sparkles, Download, MoreHorizontal, ScrollText, Paperclip } from "lucide-react";
-import { tiposContrato, TipoContrato, criarPessoaVazia } from "@/types/contract";
+import { criarImovelVazio, criarPessoaVazia, Imovel, tiposContrato, TipoContrato } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import StepObjeto from "@/components/contract/StepObjeto";
 
 type SubmissionDocumento = {
   id: string;
@@ -129,6 +130,13 @@ const PainelSubmissoes = () => {
   const [selectedImovelId, setSelectedImovelId] = useState<string | null>(null);
   const [imovelSearch, setImovelSearch] = useState("");
   const [imovelVendedorSearch, setImovelVendedorSearch] = useState("");
+  const [showCreateImovel, setShowCreateImovel] = useState(false);
+  const [novoImovelTitulo, setNovoImovelTitulo] = useState("");
+  const [novoImovelDados, setNovoImovelDados] = useState<Imovel>(() => criarImovelVazio());
+  const [novoImovelVendedorNome, setNovoImovelVendedorNome] = useState("");
+  const [novoImovelVendedorCpf, setNovoImovelVendedorCpf] = useState("");
+  const [novoImovelVendedorCnpj, setNovoImovelVendedorCnpj] = useState("");
+  const [savingImovelInline, setSavingImovelInline] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
   const [proposalLoading, setProposalLoading] = useState(false);
   const [proposalSubmissionId, setProposalSubmissionId] = useState<string | null>(null);
@@ -163,6 +171,10 @@ const PainelSubmissoes = () => {
   };
 
   useEffect(() => { loadData(); }, [activeTenantId, isPlatformAdmin]);
+
+  useEffect(() => {
+    if (!dialogOpen) setShowCreateImovel(false);
+  }, [dialogOpen]);
 
   useEffect(() => {
     const loadCorretores = async () => {
@@ -210,6 +222,83 @@ const PainelSubmissoes = () => {
     };
     loadImoveis();
   }, [activeTenantId]);
+
+  const resetInlineImovelForm = () => {
+    setNovoImovelTitulo("");
+    setNovoImovelDados(criarImovelVazio());
+    setNovoImovelVendedorNome("");
+    setNovoImovelVendedorCpf("");
+    setNovoImovelVendedorCnpj("");
+  };
+
+  const openInlineImovelForm = () => {
+    resetInlineImovelForm();
+    setShowCreateImovel(true);
+  };
+
+  const handleCreateImovelInline = async () => {
+    if (!activeTenantId) {
+      toast.error("Selecione uma imobiliária.");
+      return;
+    }
+    if (!novoImovelTitulo.trim()) {
+      toast.error("Informe um título para o imóvel.");
+      return;
+    }
+    if (!novoImovelDados.localizacao.trim() || !novoImovelDados.municipio.trim() || !novoImovelDados.estadoImovel.trim()) {
+      toast.error("Preencha pelo menos Localização, Município e Estado.");
+      return;
+    }
+
+    setSavingImovelInline(true);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id || null;
+
+      const vendedorNome = novoImovelVendedorNome.trim();
+      const vendedorCpf = novoImovelVendedorCpf.trim();
+      const vendedorCnpj = novoImovelVendedorCnpj.trim();
+
+      const dadosToSave: any = {
+        ...(novoImovelDados as any),
+        ...(vendedorNome
+          ? {
+              vendedores: [
+                {
+                  nome_completo: vendedorNome,
+                  cpf: vendedorCpf || null,
+                  cnpj: vendedorCnpj || null,
+                },
+              ],
+            }
+          : {}),
+      };
+
+      const { data, error } = await supabase
+        .from("imoveis")
+        .insert({
+          imobiliaria_id: activeTenantId,
+          titulo: novoImovelTitulo.trim(),
+          dados: dadosToSave,
+          ativo: true,
+          created_by: userId,
+          updated_by: userId,
+        } as any)
+        .select("id, titulo, dados, ativo")
+        .single();
+      if (error) throw error;
+
+      const created = data as ImovelRef;
+      setImoveis((prev) => [created, ...prev]);
+      setSelectedImovelId(created.id);
+      setShowCreateImovel(false);
+      toast.success("Imóvel cadastrado!");
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao cadastrar imóvel.");
+    } finally {
+      setSavingImovelInline(false);
+    }
+  };
 
   const imoveisView = useMemo(() => {
     const parseDados = (raw: any) => {
@@ -896,21 +985,72 @@ const PainelSubmissoes = () => {
               <div className="space-y-4 pt-4">
                 <div>
                   <Label>Imóvel *</Label>
-                  {imoveis.length === 0 ? (
+                  {showCreateImovel ? (
+                    <div className="mt-2 border border-border rounded-lg p-4 space-y-4">
+                      <div className="text-sm text-muted-foreground">
+                        Cadastre o imóvel agora e ele ficará selecionado automaticamente para criar a coleta.
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <Label>Título do Imóvel *</Label>
+                          <Input value={novoImovelTitulo} onChange={(e) => setNovoImovelTitulo(e.target.value)} placeholder="Ex: Casa na Rua X" />
+                        </div>
+                      </div>
+
+                      <StepObjeto imovel={novoImovelDados} onChange={setNovoImovelDados} />
+
+                      <div className="border border-border rounded-lg p-4">
+                        <div className="font-medium text-foreground">Vendedor (opcional)</div>
+                        <div className="text-xs text-muted-foreground">
+                          Se informar aqui, o vendedor já vem pré-preenchido na coleta. Se preferir, você pode preencher depois no formulário.
+                        </div>
+                        <div className="mt-3 grid sm:grid-cols-3 gap-2">
+                          <div className="sm:col-span-3">
+                            <Label>Nome</Label>
+                            <Input value={novoImovelVendedorNome} onChange={(e) => setNovoImovelVendedorNome(e.target.value)} placeholder="Nome do vendedor" />
+                          </div>
+                          <div>
+                            <Label>CPF</Label>
+                            <Input value={novoImovelVendedorCpf} onChange={(e) => setNovoImovelVendedorCpf(e.target.value)} placeholder="Somente números" />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <Label>CNPJ</Label>
+                            <Input value={novoImovelVendedorCnpj} onChange={(e) => setNovoImovelVendedorCnpj(e.target.value)} placeholder="Somente números" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <Button type="button" variant="ghost" onClick={() => setShowCreateImovel(false)} disabled={savingImovelInline}>
+                          Voltar para lista
+                        </Button>
+                        <Button type="button" onClick={handleCreateImovelInline} disabled={savingImovelInline}>
+                          {savingImovelInline ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                          Salvar Imóvel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : imoveis.length === 0 ? (
                     <div className="mt-2 border border-dashed border-border rounded-lg p-3 text-sm text-muted-foreground">
                       Nenhum imóvel cadastrado. Cadastre um imóvel para gerar coletas.
                       <div className="mt-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setDialogOpen(false);
-                            navigate("/imoveis");
-                          }}
-                        >
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={openInlineImovelForm}>
                           <Plus className="w-4 h-4 mr-2" />
-                          Cadastrar Imóvel
-                        </Button>
+                          Cadastrar Aqui
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setDialogOpen(false);
+                              navigate("/imoveis");
+                            }}
+                          >
+                            Ir para Imóveis
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -955,6 +1095,12 @@ const PainelSubmissoes = () => {
                             </TableBody>
                           </Table>
                         </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button type="button" variant="outline" size="sm" onClick={openInlineImovelForm}>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Cadastrar Novo Imóvel
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -1010,7 +1156,7 @@ const PainelSubmissoes = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button onClick={handleCreateLink} disabled={creating || imoveis.length === 0} className="w-full">
+                <Button onClick={handleCreateLink} disabled={creating || !selectedImovelId} className="w-full">
                   {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
                   Criar e Copiar Link
                 </Button>
