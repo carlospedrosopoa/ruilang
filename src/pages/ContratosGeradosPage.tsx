@@ -262,7 +262,7 @@ const ContratosGeradosPage = () => {
       }
 
       const { data, error } = await supabase.functions.invoke("generate-docx", {
-        body: { minuta: minutaText, tipoContrato: editing.tipo_contrato, tipoContratoNome, format: "visual_law" },
+        body: { minuta: minutaText, tipoContrato: editing.tipo_contrato, tipoContratoNome, format: "visual_law", imobiliariaId: editing.imobiliaria_id },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);

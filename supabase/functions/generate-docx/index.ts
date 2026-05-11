@@ -6,6 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
   Document,
   Packer,
@@ -24,6 +25,7 @@ import {
   WidthType,
   ShadingType,
   VerticalAlign,
+  ImageRun,
 } from "https://esm.sh/docx@9.5.0";
 
 // ═══════════════════════════════════════════════════════
@@ -87,7 +89,92 @@ function getTipoLabel(tipo?: string): string {
   return labels[tipo || ""] || "MINUTA CONTRATUAL";
 }
 
-function buildDocxAbnt(minuta: string, tipoContrato?: string) {
+type DocBranding = {
+  logoBytes?: Uint8Array;
+  logoContentType?: string;
+  footerAddress?: string;
+};
+
+function isSupportedImageContentType(contentType: string) {
+  const ct = String(contentType || "").toLowerCase();
+  return ct.includes("png") || ct.includes("jpeg") || ct.includes("jpg") || ct.includes("gif") || ct.includes("webp");
+}
+
+async function fetchLogo(logoUrl: string) {
+  const url = String(logoUrl || "").trim();
+  if (!url) return null;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const contentType = res.headers.get("content-type") || "";
+  if (!isSupportedImageContentType(contentType)) return null;
+  const ab = await res.arrayBuffer();
+  const bytes = new Uint8Array(ab);
+  if (!bytes.length) return null;
+  return { bytes, contentType };
+}
+
+function buildFooterAddress(row: any) {
+  const endereco = String(row?.endereco || "").trim();
+  const numero = String(row?.numero || "").trim();
+  const bairro = String(row?.bairro || "").trim();
+  const cidade = String(row?.cidade || "").trim();
+  const estado = String(row?.estado || "").trim();
+
+  const left = [endereco, numero ? `nº ${numero}` : ""].filter(Boolean).join(", ");
+  const mid = bairro ? ` - ${bairro}` : "";
+  const right = [cidade, estado].filter(Boolean).join("/");
+  const tail = right ? ` — ${right}` : "";
+  const full = `${left}${mid}${tail}`.trim();
+  return full || null;
+}
+
+function buildBrandHeader(branding?: DocBranding) {
+  if (!branding?.logoBytes) return null;
+  return new Header({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 0, after: 120 },
+        children: [
+          new ImageRun({
+            data: branding.logoBytes,
+            transformation: { width: 140, height: 48 },
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+function buildBrandFooter(branding?: DocBranding, font: string = FONT, size: number = FOOTER_SIZE, lineColor = "CCCCCC") {
+  const address = String(branding?.footerAddress || "").trim();
+  if (!address) return null;
+  return new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        border: {
+          top: {
+            style: BorderStyle.SINGLE,
+            size: 1,
+            color: lineColor,
+            space: 4,
+          },
+        },
+        children: [
+          new TextRun({
+            text: address,
+            size,
+            font,
+            color: "666666",
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBranding) {
   const cleaned = stripMarkdown(minuta);
   const lines = cleaned.split("\n");
   const children: any[] = [];
@@ -286,70 +373,74 @@ function buildDocxAbnt(minuta: string, tipoContrato?: string) {
           },
         },
         headers: {
-          default: new Header({
-            children: [
-              new Paragraph({
-                tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
-                children: [
-                  new TextRun({
-                    text: headerLabel,
-                    size: HEADER_SIZE,
-                    font: FONT,
-                    color: "888888",
-                    italics: true,
-                  }),
-                  new TextRun({
-                    text: "\t",
-                  }),
-                  new TextRun({
-                    text: "ABNT NBR 14724",
-                    size: HEADER_SIZE,
-                    font: FONT,
-                    color: "BBBBBB",
-                    italics: true,
-                  }),
-                ],
-              }),
-            ],
-          }),
+          default:
+            buildBrandHeader(branding) ||
+            new Header({
+              children: [
+                new Paragraph({
+                  tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+                  children: [
+                    new TextRun({
+                      text: headerLabel,
+                      size: HEADER_SIZE,
+                      font: FONT,
+                      color: "888888",
+                      italics: true,
+                    }),
+                    new TextRun({
+                      text: "\t",
+                    }),
+                    new TextRun({
+                      text: "ABNT NBR 14724",
+                      size: HEADER_SIZE,
+                      font: FONT,
+                      color: "BBBBBB",
+                      italics: true,
+                    }),
+                  ],
+                }),
+              ],
+            }),
         },
         footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                border: {
-                  top: {
-                    style: BorderStyle.SINGLE,
-                    size: 1,
-                    color: "CCCCCC",
-                    space: 4,
+          default:
+            buildBrandFooter(branding, FONT, FOOTER_SIZE, "CCCCCC") ||
+            new Footer({
+              children: [
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  border: {
+                    top: {
+                      style: BorderStyle.SINGLE,
+                      size: 1,
+                      color: "CCCCCC",
+                      space: 4,
+                    },
                   },
-                },
-                children: [
-                  new TextRun({
-                    text: "Página ",
-                    size: FOOTER_SIZE,
-                    font: FONT,
-                    color: "888888",
-                  }),
-                  new TextRun({
-                    children: [PageNumber.CURRENT],
-                    size: FOOTER_SIZE,
-                    font: FONT,
-                    color: "888888",
-                  }),
-                  new TextRun({
-                    text: " — Documento gerado eletronicamente",
-                    size: FOOTER_SIZE,
-                    font: FONT,
-                    color: "BBBBBB",
-                    italics: true,
-                  }),
-                ],
-              }),
-            ],
-          }),
+                  children: [
+                    new TextRun({
+                      text: "Página ",
+                      size: FOOTER_SIZE,
+                      font: FONT,
+                      color: "888888",
+                    }),
+                    new TextRun({
+                      children: [PageNumber.CURRENT],
+                      size: FOOTER_SIZE,
+                      font: FONT,
+                      color: "888888",
+                    }),
+                    new TextRun({
+                      text: " — Documento gerado eletronicamente",
+                      size: FOOTER_SIZE,
+                      font: FONT,
+                      color: "BBBBBB",
+                      italics: true,
+                    }),
+                  ],
+                }),
+              ],
+            }),
         },
         children,
       },
@@ -485,7 +576,7 @@ function normalizeTipoTitle(input: string) {
   return upper;
 }
 
-function buildDocxVisualLaw(minuta: string, tipoContrato?: string, tipoContratoNome?: string | null) {
+function buildDocxVisualLaw(minuta: string, tipoContrato?: string, tipoContratoNome?: string | null, branding?: DocBranding) {
   const cleaned = stripMarkdown(minuta);
   const lines = cleaned.split("\n");
   const children: any[] = [];
@@ -750,6 +841,7 @@ function buildDocxVisualLaw(minuta: string, tipoContrato?: string, tipoContratoN
   );
 
   const currentYear = new Date().getFullYear();
+  const brandHeader = buildBrandHeader(branding);
   const doc = new Document({
     styles: {
       default: {
@@ -767,23 +859,26 @@ function buildDocxVisualLaw(minuta: string, tipoContrato?: string, tipoContratoN
             margin: { top: VL_MARGIN_TOP, right: VL_MARGIN_RIGHT, bottom: VL_MARGIN_BOTTOM, left: VL_MARGIN_LEFT },
           },
         },
+        ...(brandHeader ? { headers: { default: brandHeader } } : {}),
         footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
-                border: {
-                  top: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE, space: 4 },
-                },
-                children: [
-                  new TextRun({ text: `© ${currentYear} — Documento de uso restrito`, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
-                  new TextRun({ text: "\t" }),
-                  new TextRun({ text: "Página ", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
-                  new TextRun({ children: [PageNumber.CURRENT], size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
-                ],
-              }),
-            ],
-          }),
+          default:
+            buildBrandFooter(branding, VL_FONT, VL_SMALL_SIZE, VL_BLUE) ||
+            new Footer({
+              children: [
+                new Paragraph({
+                  tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+                  border: {
+                    top: { style: BorderStyle.SINGLE, size: 6, color: VL_BLUE, space: 4 },
+                  },
+                  children: [
+                    new TextRun({ text: `© ${currentYear} — Documento de uso restrito`, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
+                    new TextRun({ text: "\t" }),
+                    new TextRun({ text: "Página ", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
+                    new TextRun({ children: [PageNumber.CURRENT], size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY }),
+                  ],
+                }),
+              ],
+            }),
         },
         children,
       },
@@ -799,7 +894,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { minuta, tipoContrato, tipoContratoNome, format } = await req.json();
+    const { minuta, tipoContrato, tipoContratoNome, format, imobiliariaId } = await req.json();
 
     if (!minuta) {
       return new Response(
@@ -808,7 +903,41 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const doc = format === "visual_law" ? buildDocxVisualLaw(minuta, tipoContrato, tipoContratoNome) : buildDocxAbnt(minuta, tipoContrato);
+    let branding: DocBranding | undefined = undefined;
+    const tenantId = typeof imobiliariaId === "string" && imobiliariaId.trim() ? imobiliariaId.trim() : null;
+    if (tenantId) {
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+      const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (SUPABASE_URL && SERVICE_ROLE) {
+        try {
+          const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+          const { data } = await admin
+            .from("imobiliarias")
+            .select("logo_url, endereco, numero, bairro, cidade, estado")
+            .eq("id", tenantId)
+            .maybeSingle();
+          const footerAddress = buildFooterAddress(data);
+          let logoBytes: Uint8Array | undefined = undefined;
+          let logoContentType: string | undefined = undefined;
+          const logoUrl = String((data as any)?.logo_url || "").trim();
+          if (logoUrl) {
+            const fetched = await fetchLogo(logoUrl);
+            if (fetched) {
+              logoBytes = fetched.bytes;
+              logoContentType = fetched.contentType;
+            }
+          }
+          if (footerAddress || logoBytes) {
+            branding = { footerAddress: footerAddress || undefined, logoBytes, logoContentType };
+          }
+        } catch {}
+      }
+    }
+
+    const doc =
+      format === "visual_law"
+        ? buildDocxVisualLaw(minuta, tipoContrato, tipoContratoNome, branding)
+        : buildDocxAbnt(minuta, tipoContrato, branding);
     const buffer = await Packer.toBuffer(doc);
 
     const uint8 = new Uint8Array(buffer);

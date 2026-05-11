@@ -572,7 +572,7 @@ const ContractWizard = () => {
     setIsExportingDocx(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-docx", {
-        body: { minuta, tipoContrato: tipo, tipoContratoNome: tipoNome || null, format: "visual_law" },
+        body: { minuta, tipoContrato: tipo, tipoContratoNome: tipoNome || null, format: "visual_law", imobiliariaId },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
