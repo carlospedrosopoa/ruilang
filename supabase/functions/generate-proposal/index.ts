@@ -259,19 +259,43 @@ serve(async (req) => {
     const locacao = (dados as any)?.locacao || null;
 
     const pick = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+    const hasPessoaData = (p: any) => {
+      const nome = pick(p?.nome) || pick(p?.nome_completo) || pick(p?.nomeCompleto);
+      const cpf = pick(p?.cpf);
+      const cnpj = pick(p?.cnpj);
+      const docNum = pick(p?.documentoNumero) || pick(p?.documento_numero);
+      return Boolean(nome || cpf || cnpj || docNum);
+    };
+
+    const compradoresList = compradores.filter(hasPessoaData);
+    const vendedoresList = vendedores.filter(hasPessoaData);
+    const compradoresPrincipais = compradoresList.filter((p) => !pick(p?.conjugeDeId));
+    const vendedoresPrincipais = vendedoresList.filter((p) => !pick(p?.conjugeDeId));
+    const proponentes = compradoresPrincipais.length ? compradoresPrincipais : compradoresList;
+
+    if (proponentes.length === 0) {
+      throw new Error(`Informe ao menos um ${roles.proponente} com nome/CPF/CNPJ/documento antes de gerar a proposta.`);
+    }
+
     const pessoaResumo = (p: any) => {
       const nome = pick(p?.nome) || pick(p?.nome_completo) || pick(p?.nomeCompleto);
       const cpf = pick(p?.cpf);
+      const cnpj = pick(p?.cnpj);
       const estadoCivil = pick(p?.estadoCivil);
-      const rg = pick(p?.rg);
+      const regimeBens = pick(p?.regimeBens);
+      const docTipo = pick(p?.documentoTipo) || pick(p?.documento_tipo);
+      const docNum = pick(p?.documentoNumero) || pick(p?.documento_numero);
+      const docOrgao = pick(p?.documentoOrgao) || pick(p?.documento_orgao);
       const email = pick(p?.email);
       const tel = pick(p?.telefone);
       const end = [pick(p?.endereco), pick(p?.bairro), pick(p?.cidade), pick(p?.estado), pick(p?.cep)].filter(Boolean).join(" • ");
       const parts = [
         nome ? `Nome: ${nome}` : "",
         cpf ? `CPF: ${cpf}` : "",
-        rg ? `RG: ${rg}` : "",
+        cnpj ? `CNPJ: ${cnpj}` : "",
+        docTipo || docNum || docOrgao ? `Documento: ${[docTipo, docNum, docOrgao].filter(Boolean).join(" ")}` : "",
         estadoCivil ? `Estado civil: ${estadoCivil}` : "",
+        regimeBens ? `Regime de bens: ${regimeBens}` : "",
         end ? `Endereço: ${end}` : "",
         tel ? `Telefone: ${tel}` : "",
         email ? `E-mail: ${email}` : "",
@@ -308,12 +332,19 @@ serve(async (req) => {
       return out.length ? out.join("\n") : "- (sem dados)";
     };
 
+    const proponentePrincipal = proponentes[0] || null;
+    const proponentePrincipalNome = pick(proponentePrincipal?.nome) || pick(proponentePrincipal?.nome_completo) || pick(proponentePrincipal?.nomeCompleto);
+    const proponentePrincipalDoc = pick(proponentePrincipal?.cpf) || pick(proponentePrincipal?.cnpj) || pick(proponentePrincipal?.documentoNumero) || pick(proponentePrincipal?.documento_numero);
+
     const resumoEstruturado = `RESUMO ESTRUTURADO (use para preencher o modelo):
+PROONENTE PRINCIPAL (use para preencher [NOME DO COMPRADOR] / [CPF] no modelo):
+- Nome: ${proponentePrincipalNome || "________"} | Documento: ${proponentePrincipalDoc || "________"}
+
 ${roles.proponente}:
-${compradores.length ? compradores.map(pessoaResumo).join("\n") : "- (sem dados)"}
+${proponentes.length ? proponentes.map(pessoaResumo).join("\n") : "- (sem dados)"}
 
 ${roles.alienante}:
-${vendedores.length ? vendedores.map(pessoaResumo).join("\n") : "- (sem dados)"}
+${vendedoresPrincipais.length ? vendedoresPrincipais.map(pessoaResumo).join("\n") : vendedoresList.length ? vendedoresList.map(pessoaResumo).join("\n") : "- (sem dados)"}
 
 Imóvel:
 ${imovelResumo()}
@@ -334,6 +365,7 @@ REGRAS GERAIS (OBRIGATÓRIAS):
 - Use valores monetários com "R$" e escreva o valor por extenso entre parênteses.
 - Adapte os termos conforme o tipo de contrato: locação usa "Locador/Locatário"; cessão usa "Cedente/Cessionário"; permuta menciona imóvel em permuta e torna.
 - Na seção "Local e Data", use a cidade/UF mais adequada (preferencialmente do imóvel) e a data do dia (dia/mês por extenso/ano).
+- É OBRIGATÓRIO preencher o campo do PROONENTE/PROPONENTE PRINCIPAL com base no "PROONENTE PRINCIPAL" enviado.
 
 MODELO BASE (ESTRUTURA OBRIGATÓRIA):
 
