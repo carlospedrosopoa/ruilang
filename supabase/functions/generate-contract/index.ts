@@ -67,6 +67,46 @@ function insertBeforeSignatureBlock(base: string, addition: string) {
   return `${base.slice(0, bestIdx).trimEnd()}\n\n${addition}\n\n${base.slice(bestIdx).trimStart()}`;
 }
 
+function hasConjugeForRole(list: any[]) {
+  const arr = Array.isArray(list) ? list : [];
+  return arr.some((p) => Boolean((p as any)?.conjugeDeId) || Boolean((p as any)?.conjuge));
+}
+
+function stripUnusedConjugeSignatures(text: string, opts: { vendedor: boolean; comprador: boolean }) {
+  const lines = String(text || "").split(/\r?\n/);
+  const isUnderline = (s: string) => /^\s*_{5,}\s*$/.test(s);
+  const isCpfLine = (s: string) => /^\s*CPF\s*:?/i.test(s);
+  const isBlank = (s: string) => !String(s || "").trim();
+
+  const vendRe = /(C[ÔO]NJUGE|COMPANHEIR[OA]).{0,40}(VENDEDOR|PROMITENTE\s+VENDEDOR|CEDENTE|LOCADOR)/i;
+  const compRe = /(C[ÔO]NJUGE|COMPANHEIR[OA]).{0,40}(COMPRADOR|PROMITENTE\s+COMPRADOR|CESSION[ÁA]RIO|LOCAT[ÁA]RIO)/i;
+
+  const shouldRemoveLine = (line: string) => {
+    if (opts.vendedor && vendRe.test(line)) return true;
+    if (opts.comprador && compRe.test(line)) return true;
+    return false;
+  };
+
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!shouldRemoveLine(line)) {
+      out.push(line);
+      continue;
+    }
+
+    if (out.length > 0 && isUnderline(out[out.length - 1])) out.pop();
+
+    const next = lines[i + 1];
+    if (typeof next === "string" && isCpfLine(next)) i += 1;
+
+    while (out.length > 0 && isBlank(out[out.length - 1])) out.pop();
+    while (typeof lines[i + 1] === "string" && isBlank(lines[i + 1])) i += 1;
+  }
+
+  return out.join("\n");
+}
+
 function buildLiteralPeculiaridadesClause(peculiaridades: string) {
   const raw = String(peculiaridades || "").trim();
   if (!raw) return "";
@@ -1879,6 +1919,10 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
         }
       }
     }
+
+    const hasVendedorConjuge = hasConjugeForRole((contrato as any)?.vendedores);
+    const hasCompradorConjuge = hasConjugeForRole((contrato as any)?.compradores);
+    minutaFinal = stripUnusedConjugeSignatures(minutaFinal, { vendedor: !hasVendedorConjuge, comprador: !hasCompradorConjuge });
 
     minutaFinal = fixLocalEDataInContractText(minutaFinal, contratoSemPeculiaridades);
 

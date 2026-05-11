@@ -261,8 +261,21 @@ const ContratosGeradosPage = () => {
         if (nm) tipoContratoNome = nm;
       }
 
+      const dados = (editing as any)?.dados || {};
+      const conjugeVendedor =
+        Array.isArray((dados as any)?.vendedores) && (dados as any).vendedores.some((v: any) => Boolean(v?.conjugeDeId));
+      const conjugeComprador =
+        Array.isArray((dados as any)?.compradores) && (dados as any).compradores.some((c: any) => Boolean(c?.conjugeDeId));
+
       const { data, error } = await supabase.functions.invoke("generate-docx", {
-        body: { minuta: minutaText, tipoContrato: editing.tipo_contrato, tipoContratoNome, format: "visual_law", imobiliariaId: editing.imobiliaria_id },
+        body: {
+          minuta: minutaText,
+          tipoContrato: editing.tipo_contrato,
+          tipoContratoNome,
+          format: "visual_law",
+          imobiliariaId: editing.imobiliaria_id,
+          signatures: { conjugeVendedor, conjugeComprador },
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);

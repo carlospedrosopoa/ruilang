@@ -95,6 +95,11 @@ type DocBranding = {
   footerAddress?: string;
 };
 
+type SignatureOptions = {
+  conjugeVendedor?: boolean;
+  conjugeComprador?: boolean;
+};
+
 function isSupportedImageContentType(contentType: string) {
   const ct = String(contentType || "").toLowerCase();
   return ct.includes("png") || ct.includes("jpeg") || ct.includes("jpg") || ct.includes("gif") || ct.includes("webp");
@@ -171,6 +176,12 @@ function buildBrandFooter(branding?: DocBranding, font: string = FONT, size: num
         ],
       }),
     ],
+  });
+}
+
+function makeEmptySignatureCell() {
+  return new TableCell({
+    children: [new Paragraph({ children: [new TextRun({ text: " ", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY_LIGHT })] })],
   });
 }
 
@@ -576,7 +587,13 @@ function normalizeTipoTitle(input: string) {
   return upper;
 }
 
-function buildDocxVisualLaw(minuta: string, tipoContrato?: string, tipoContratoNome?: string | null, branding?: DocBranding) {
+function buildDocxVisualLaw(
+  minuta: string,
+  tipoContrato?: string,
+  tipoContratoNome?: string | null,
+  branding?: DocBranding,
+  signatures?: SignatureOptions,
+) {
   const cleaned = stripMarkdown(minuta);
   const lines = cleaned.split("\n");
   const children: any[] = [];
@@ -795,17 +812,29 @@ function buildDocxVisualLaw(minuta: string, tipoContrato?: string, tipoContratoN
   }
 
   children.push(new Paragraph({ spacing: { before: 360 } }));
+  const signatureRows: TableRow[] = [
+    new TableRow({
+      children: [makeVisualSignatureCell("VENDEDOR(A)"), makeVisualSignatureCell("COMPRADOR(A)")],
+    }),
+  ];
+
+  const hasConjugeVendedor = Boolean(signatures?.conjugeVendedor);
+  const hasConjugeComprador = Boolean(signatures?.conjugeComprador);
+  if (hasConjugeVendedor || hasConjugeComprador) {
+    signatureRows.push(
+      new TableRow({
+        children: [
+          hasConjugeVendedor ? makeVisualSignatureCell("CÔNJUGE/COMP. DO VENDEDOR") : makeEmptySignatureCell(),
+          hasConjugeComprador ? makeVisualSignatureCell("CÔNJUGE/COMP. DO COMPRADOR") : makeEmptySignatureCell(),
+        ],
+      }),
+    );
+  }
+
   children.push(
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({
-          children: [makeVisualSignatureCell("VENDEDOR(A)"), makeVisualSignatureCell("COMPRADOR(A)")],
-        }),
-        new TableRow({
-          children: [makeVisualSignatureCell("CÔNJUGE/COMP. DO VENDEDOR"), makeVisualSignatureCell("CÔNJUGE/COMP. DO COMPRADOR")],
-        }),
-      ],
+      rows: signatureRows,
     })
   );
 
@@ -894,7 +923,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { minuta, tipoContrato, tipoContratoNome, format, imobiliariaId } = await req.json();
+    const { minuta, tipoContrato, tipoContratoNome, format, imobiliariaId, signatures } = await req.json();
 
     if (!minuta) {
       return new Response(
@@ -936,7 +965,7 @@ Deno.serve(async (req: Request) => {
 
     const doc =
       format === "visual_law"
-        ? buildDocxVisualLaw(minuta, tipoContrato, tipoContratoNome, branding)
+        ? buildDocxVisualLaw(minuta, tipoContrato, tipoContratoNome, branding, signatures)
         : buildDocxAbnt(minuta, tipoContrato, branding);
     const buffer = await Packer.toBuffer(doc);
 
