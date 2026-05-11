@@ -29,6 +29,18 @@ function cleanAddressValue(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function digitsOnly(value: string) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function guessLogradouroFromEndereco(endereco: string) {
+  const text = cleanAddressValue(endereco);
+  if (!text) return "";
+  const beforeComma = text.split(",")[0] || text;
+  const withoutNumber = beforeComma.replace(/\b\d{1,6}\b/g, " ").replace(/\s+/g, " ").trim();
+  return withoutNumber;
+}
+
 function parseAddressParts(fullAddress: string) {
   const text = cleanAddressValue(fullAddress);
   if (!text) return { bairro: "", cidade: "", estado: "", cep: "" };
@@ -51,6 +63,31 @@ function parseAddressParts(fullAddress: string) {
   return { bairro, cidade, estado, cep };
 }
 
+async function viaCepByCep(cep: string) {
+  const c = digitsOnly(cep);
+  if (c.length !== 8) return null;
+  const res = await fetch(`https://viacep.com.br/ws/${c}/json/`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data || data.erro) return null;
+  return data as { logradouro?: string; bairro?: string; localidade?: string; uf?: string; cep?: string };
+}
+
+async function viaCepByAddress(uf: string, cidade: string, logradouro: string) {
+  const u = String(uf || "").trim().toUpperCase();
+  const c = String(cidade || "").trim();
+  const l = String(logradouro || "").trim();
+  if (!u || !c || !l) return null;
+  const url = `https://viacep.com.br/ws/${encodeURIComponent(u)}/${encodeURIComponent(c)}/${encodeURIComponent(l)}/json/`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!Array.isArray(data)) return null;
+  const list = data.filter((x) => x && !x.erro);
+  if (list.length === 1) return list[0] as any;
+  return null;
+}
+
 const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil, emailRequired, onExtractFiles }: PessoaFormProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -61,6 +98,71 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
 
   const update = (field: keyof Pessoa, value: string) => {
     onChange({ ...pessoa, [field]: value });
+  };
+
+  const tryEnrichAddress = async (base: Pessoa) => {
+    const next = { ...base };
+
+    const parsed = parseAddressParts(next.endereco || "");
+    if (parsed.bairro && !next.bairro.trim()) next.bairro = parsed.bairro;
+    if (parsed.cidade && !next.cidade.trim()) next.cidade = parsed.cidade;
+    if (parsed.estado && !next.estado.trim()) next.estado = parsed.estado;
+    if (parsed.cep && !next.cep.trim()) next.cep = parsed.cep;
+
+    const cepDigits = digitsOnly(next.cep);
+    if (cepDigits.length === 8) {
+      const data = await viaCepByCep(cepDigits);
+      if (data) {
+        if (!next.estado.trim() && data.uf) next.estado = String(data.uf).trim();
+        if (!next.cidade.trim() && data.localidade) next.cidade = String(data.localidade).trim();
+        if (!next.bairro.trim() && data.bairro) next.bairro = String(data.bairro).trim();
+        if (!next.endereco.trim() && data.logradouro) next.endereco = String(data.logradouro).trim();
+        if (!next.cep.trim() && data.cep) next.cep = String(data.cep).trim();
+      }
+      return next;
+    }
+
+    if (next.estado.trim() && next.cidade.trim() && next.endereco.trim() && (!next.bairro.trim() || !next.cep.trim())) {
+      const logradouro = guessLogradouroFromEndereco(next.endereco);
+      const data = await viaCepByAddress(next.estado, next.cidade, logradouro);
+      if (data) {
+        if (!next.bairro.trim() && data.bairro) next.bairro = String(data.bairro).trim();
+        if (!next.cep.trim() && data.cep) next.cep = String(data.cep).trim();
+      }
+    }
+
+    return next;
+  };
+
+  const handleEnderecoBlur = async () => {
+    try {
+      const enriched = await tryEnrichAddress(pessoa);
+      if (
+        enriched.endereco !== pessoa.endereco ||
+        enriched.bairro !== pessoa.bairro ||
+        enriched.cidade !== pessoa.cidade ||
+        enriched.estado !== pessoa.estado ||
+        enriched.cep !== pessoa.cep
+      ) {
+        onChange(enriched);
+      }
+    } catch {}
+  };
+
+  const handleCepBlur = async () => {
+    try {
+      const cepDigits = digitsOnly(pessoa.cep);
+      if (cepDigits.length !== 8) return;
+      const data = await viaCepByCep(cepDigits);
+      if (!data) return;
+      const enriched = { ...pessoa };
+      if (!enriched.estado.trim() && data.uf) enriched.estado = String(data.uf).trim();
+      if (!enriched.cidade.trim() && data.localidade) enriched.cidade = String(data.localidade).trim();
+      if (!enriched.bairro.trim() && data.bairro) enriched.bairro = String(data.bairro).trim();
+      if (!enriched.endereco.trim() && data.logradouro) enriched.endereco = String(data.logradouro).trim();
+      if (!enriched.cep.trim() && data.cep) enriched.cep = String(data.cep).trim();
+      onChange(enriched);
+    } catch {}
   };
 
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,7 +231,8 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
       if (parsed.estado && !explicitEstado) merged.estado = parsed.estado;
       if (parsed.cep && !explicitCep) merged.cep = parsed.cep;
 
-      onChange(merged);
+      const enriched = await tryEnrichAddress(merged);
+      onChange(enriched);
       toast.success("Dados extraídos com sucesso! Verifique e complete os campos.");
     } catch (err: any) {
       console.error("Extract error:", err);
@@ -184,7 +287,8 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
       if (parsed.estado && !explicitEstado) merged.estado = parsed.estado;
       if (parsed.cep && !explicitCep) merged.cep = parsed.cep;
 
-      onChange(merged);
+      const enriched = await tryEnrichAddress(merged);
+      onChange(enriched);
       toast.success("Dados extraídos com sucesso! Verifique e complete os campos.");
       setTextDialogOpen(false);
     } catch (err: any) {
@@ -397,7 +501,12 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
 
         <div className="md:col-span-2">
           <Label>Endereço Completo *</Label>
-          <Input value={pessoa.endereco} onChange={(e) => update("endereco", e.target.value)} placeholder="Rua, número, complemento" />
+          <Input
+            value={pessoa.endereco}
+            onChange={(e) => update("endereco", e.target.value)}
+            onBlur={handleEnderecoBlur}
+            placeholder="Rua, número, complemento"
+          />
         </div>
 
         <div>
@@ -424,7 +533,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
 
         <div>
           <Label>CEP</Label>
-          <Input value={pessoa.cep} onChange={(e) => update("cep", e.target.value)} placeholder="00000-000" />
+          <Input value={pessoa.cep} onChange={(e) => update("cep", e.target.value)} onBlur={handleCepBlur} placeholder="00000-000" />
         </div>
 
         <div>
