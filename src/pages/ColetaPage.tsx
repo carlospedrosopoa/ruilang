@@ -399,6 +399,105 @@ const ColetaPage = () => {
     }
   };
 
+  const handleDownloadProposalPdf = async () => {
+    if (!proposta) return;
+
+    const imob = imobiliaria || null;
+    const nome = typeof imob?.nome === "string" ? imob.nome.trim() : "";
+    const creci = typeof imob?.creci === "string" ? imob.creci.trim() : "";
+    const logoUrl = typeof imob?.logo_url === "string" ? imob.logo_url.trim() : "";
+    const site = typeof imob?.site_url === "string" ? imob.site_url.trim() : "";
+    const whatsapp = typeof imob?.whatsapp_atendimento === "string" ? imob.whatsapp_atendimento.trim() : "";
+    const endereco = [imob?.endereco, imob?.numero ? `nº ${imob.numero}` : "", imob?.bairro, imob?.cidade && imob?.estado ? `${imob.cidade}/${imob.estado}` : ""]
+      .filter((x: any) => typeof x === "string" && x.trim())
+      .map((x: string) => x.trim())
+      .join(" • ");
+
+    const escapeHtml = (s: string) =>
+      s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    const title = "Proposta de Negócio";
+    const textHtml = escapeHtml(proposta).replace(/\n/g, "<br/>");
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      @page { size: A4; margin: 18mm 16mm; }
+      html, body { padding: 0; margin: 0; background: #ffffff; color: #0b1220; font-family: Inter, Arial, sans-serif; }
+      .header { display: flex; align-items: center; gap: 14px; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 10px; margin-bottom: 16px; }
+      .logo { height: 44px; width: auto; object-fit: contain; }
+      .brand { display: flex; flex-direction: column; gap: 2px; }
+      .brand .name { font-size: 14px; font-weight: 700; letter-spacing: 0.2px; }
+      .brand .meta { font-size: 11px; color: rgba(11,18,32,0.72); line-height: 1.4; }
+      .doc-title { font-size: 15px; font-weight: 800; margin: 0 0 10px 0; }
+      .content { font-size: 12px; line-height: 1.6; white-space: normal; }
+      .content pre { margin: 0; font-family: inherit; white-space: pre-wrap; }
+      .footer { margin-top: 14px; font-size: 10px; color: rgba(11,18,32,0.6); }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      ${logoUrl ? `<img id="pactadocLogo" class="logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(nome || "Logo")}" crossorigin="anonymous" referrerpolicy="no-referrer" />` : ""}
+      <div class="brand">
+        <div class="name">${escapeHtml(nome || "Imobiliária")}${creci ? ` • CRECI ${escapeHtml(creci)}` : ""}</div>
+        <div class="meta">${escapeHtml(endereco || "")}${(site || whatsapp) ? `${endereco ? "<br/>" : ""}${escapeHtml([site ? `Site: ${site}` : "", whatsapp ? `WhatsApp: ${whatsapp}` : ""].filter(Boolean).join(" • "))}` : ""}</div>
+      </div>
+    </div>
+    <h1 class="doc-title">${escapeHtml(title)}</h1>
+    <div class="content"><pre>${textHtml}</pre></div>
+    <div class="footer">Gerado em ${new Date().toLocaleDateString("pt-BR")}.</div>
+    <script>
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const waitLogo = () =>
+        new Promise((resolve) => {
+          const img = document.getElementById("pactadocLogo");
+          if (!img) return resolve();
+          if (img.complete && img.naturalWidth > 0) return resolve();
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+        });
+
+      window.onload = async () => {
+        try {
+          await Promise.race([waitLogo(), sleep(1800)]);
+          if (document.fonts && document.fonts.ready) {
+            await Promise.race([document.fonts.ready, sleep(800)]);
+          }
+          await sleep(150);
+          window.focus();
+          requestAnimationFrame(() => window.print());
+        } catch {
+          window.focus();
+          window.print();
+        }
+      };
+      window.onafterprint = () => {
+        setTimeout(() => window.close(), 200);
+      };
+    </script>
+  </body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast.error("Não foi possível abrir a janela do PDF. Verifique o bloqueador de pop-up.");
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
   const next = async () => {
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
@@ -610,6 +709,9 @@ const ColetaPage = () => {
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleDownloadProposal}>
                       <Download className="w-4 h-4 mr-1" /> Baixar .txt
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleDownloadProposalPdf}>
+                      <Download className="w-4 h-4 mr-1" /> PDF
                     </Button>
                     <Button
                       variant="outline"
