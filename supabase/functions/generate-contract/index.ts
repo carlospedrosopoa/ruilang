@@ -1799,14 +1799,26 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
         .replace(/^\s*CL[ÁA]USULA[^\n]*\n?/gim, "")
         .trim();
 
-      if (!cleanedBody) {
-        throw lastClauseError instanceof Error ? lastClauseError : new Error("Não foi possível redigir a cláusula das peculiaridades.");
+      const finalBody = (() => {
+        if (cleanedBody) return cleanedBody;
+        const raw = String(peculiaridades || "").trim();
+        if (!raw) return "";
+        const parts = raw
+          .split(/\r?\n+/g)
+          .map((x) => x.trim())
+          .filter(Boolean);
+        const body = parts.length ? parts.map((t, i) => `${i + 1}. ${t}`).join("\n") : raw;
+        return `As partes ajustam que:\n${body}`.trim();
+      })();
+
+      if (!finalBody) {
+        throw lastClauseError instanceof Error ? lastClauseError : new Error("Não foi possível inserir a cláusula das peculiaridades.");
       }
 
       const target = findInsertBeforeClauseIndex(baseContrato);
       const insertionNumber = target?.number || null;
       const clauseTitle = buildPeculiaridadesClauseTitle(baseContrato, insertionNumber);
-      const block = `${clauseTitle}\n\n${cleanedBody}`.trim();
+      const block = `${clauseTitle}\n\n${finalBody}`.trim();
 
       if (target && insertionNumber) {
         const renumbered = renumberClauses(baseContrato, insertionNumber, 1);
