@@ -15,9 +15,10 @@ interface StepObjetoProps {
   imovel: Imovel;
   onChange: (imovel: Imovel) => void;
   onExtractFiles?: (files: File[]) => Promise<void> | void;
+  labelObjeto?: string;
 }
 
-const StepObjeto = ({ imovel, onChange, onExtractFiles }: StepObjetoProps) => {
+const StepObjeto = ({ imovel, onChange, onExtractFiles, labelObjeto = "Imóvel" }: StepObjetoProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,10 +107,10 @@ const StepObjeto = ({ imovel, onChange, onExtractFiles }: StepObjetoProps) => {
     <div className="space-y-6">
       <div>
         <h3 className="font-display text-2xl font-bold text-foreground mb-1">
-          Objeto do Contrato
+          {labelObjeto}
         </h3>
         <p className="text-muted-foreground">
-          Descreva o imóvel objeto da transação.
+          Descreva o objeto do contrato.
         </p>
       </div>
 

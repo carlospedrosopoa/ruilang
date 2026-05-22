@@ -10,9 +10,10 @@ import { Switch } from "@/components/ui/switch";
 interface StepPagamentoProps {
   pagamento: Pagamento;
   onChange: (pagamento: Pagamento) => void;
+  labelParteA?: string;
 }
 
-const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
+const StepPagamento = ({ pagamento, onChange, labelParteA = "Vendedor" }: StepPagamentoProps) => {
   const [mostrarBanco, setMostrarBanco] = useState(!!pagamento.dadosBancarios);
 
   const update = (field: keyof Pagamento, value: string) => {
@@ -178,7 +179,7 @@ const StepPagamento = ({ pagamento, onChange }: StepPagamentoProps) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Building2 className="w-5 h-5 text-muted-foreground" />
-              <h4 className="font-display text-lg font-semibold text-foreground">Dados Bancários do Vendedor</h4>
+              <h4 className="font-display text-lg font-semibold text-foreground">Dados Bancários do {labelParteA}</h4>
             </div>
             <Switch checked={mostrarBanco} onCheckedChange={toggleBanco} />
           </div>

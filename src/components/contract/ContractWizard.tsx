@@ -31,17 +31,7 @@ import {
 } from "@/types/contract";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-
-const labelByTipo: Record<string, { vendedor: string; comprador: string }> = {
-  promessa_compra_venda: { vendedor: "Vendedor", comprador: "Comprador" },
-  promessa_compra_venda_permuta: { vendedor: "Vendedor", comprador: "Comprador" },
-  cessao_direitos: { vendedor: "Cedente", comprador: "Cessionário" },
-  locacao: { vendedor: "Locador", comprador: "Locatário" },
-};
-
-function getLabels(tipo: string) {
-  return labelByTipo[tipo] || { vendedor: "Vendedor", comprador: "Comprador" };
-}
+import { useTipoContratoLabels } from "@/hooks/useTipoContratoLabels";
 
 function sanitizeForPath(input: string) {
   return input
@@ -62,11 +52,11 @@ function safeStorageFileName(originalName: string) {
   return `${safeBase}${safeExt}`.slice(0, 120);
 }
 
-function getSteps(tipo: string, labels: { vendedor: string; comprador: string }) {
+function getSteps(tipo: string, labels: { parteAPlural: string; parteBPlural: string; objeto: string }) {
   const steps = [
-    { number: 1, label: `${labels.vendedor}(es)` },
-    { number: 2, label: `${labels.comprador}(es)` },
-    { number: 3, label: "Imóvel" },
+    { number: 1, label: labels.parteAPlural },
+    { number: 2, label: labels.parteBPlural },
+    { number: 3, label: labels.objeto || "Imóvel" },
   ];
 
   let stepNumber = 4;
@@ -135,14 +125,7 @@ const ContractWizard = () => {
   const navigate = useNavigate();
   const tipo = (tipoParam as string) || "promessa_compra_venda";
   const forceStartAtFirst = searchParams.get("new") === "1";
-  const [customTipoInfo, setCustomTipoInfo] = useState<any | null>(null);
-  const [tipoContratoId, setTipoContratoId] = useState<string | null>(null);
-  const tipoInfo = tiposContrato.find((t) => t.id === (tipo as any)) || customTipoInfo;
-  const labels = customTipoInfo
-    ? { vendedor: customTipoInfo.label_vendedor || "Vendedor", comprador: customTipoInfo.label_comprador || "Comprador" }
-    : getLabels(tipo);
-  const steps = useMemo(() => getSteps(tipo, labels), [tipo, labels.vendedor, labels.comprador]);
-  const totalSteps = steps.length;
+  const tipoInfo = tiposContrato.find((t) => t.id === (tipo as any)) || null;
   const submissionId = searchParams.get("submissionId");
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -156,6 +139,12 @@ const ContractWizard = () => {
   const [locacao, setLocacao] = useState<Locacao>(criarLocacaoVazia());
   const [perfilContrato, setPerfilContrato] = useState<PerfilContrato>("equilibrado");
   const [imobiliariaId, setImobiliariaId] = useState<string | null>(null);
+  const labelsInfo = useTipoContratoLabels({ tipoCodigo: tipo, imobiliariaId });
+  const steps = useMemo(
+    () => getSteps(tipo, { parteAPlural: labelsInfo.parteAPlural, parteBPlural: labelsInfo.parteBPlural, objeto: labelsInfo.objeto }),
+    [tipo, labelsInfo.parteAPlural, labelsInfo.parteBPlural, labelsInfo.objeto],
+  );
+  const totalSteps = steps.length;
   const [customPerfis, setCustomPerfis] = useState<Array<{ id: string; nome: string }>>([]);
   const [tipoOptions, setTipoOptions] = useState<Array<{ codigo: string; nome: string }>>(
     () => tiposContrato.map((t) => ({ codigo: String(t.id), nome: t.nome })),
@@ -169,6 +158,7 @@ const ContractWizard = () => {
   const saveTimeoutRef = useRef<number | null>(null);
 
   const tipoNome =
+    labelsInfo.tipoNome ||
     tipoInfo?.nome ||
     tipoOptions.find((t) => t.codigo === tipo)?.nome ||
     String(tipo);
@@ -176,26 +166,6 @@ const ContractWizard = () => {
   useEffect(() => {
     if (currentStep > totalSteps) setCurrentStep(totalSteps);
   }, [currentStep, totalSteps]);
-
-  useEffect(() => {
-    const loadTipo = async () => {
-      if (!imobiliariaId) {
-        setCustomTipoInfo(null);
-        setTipoContratoId(null);
-        return;
-      }
-      const { data } = await supabase
-        .from("tipos_contrato")
-        .select("id, codigo, nome, descricao, label_vendedor, label_comprador")
-        .eq("imobiliaria_id", imobiliariaId)
-        .eq("codigo", tipo)
-        .maybeSingle();
-
-      setCustomTipoInfo(data || null);
-      setTipoContratoId((data as any)?.id || null);
-    };
-    loadTipo();
-  }, [imobiliariaId, tipo]);
 
   useEffect(() => {
     const loadTipos = async () => {
@@ -375,7 +345,7 @@ const ContractWizard = () => {
 
   useEffect(() => {
     const loadPerfis = async () => {
-      if (!imobiliariaId || !tipoContratoId) {
+      if (!imobiliariaId || !labelsInfo.tipoContratoId) {
         setCustomPerfis([]);
         return;
       }
@@ -383,13 +353,13 @@ const ContractWizard = () => {
         .from("perfis_contrato")
         .select("codigo, nome")
         .eq("imobiliaria_id", imobiliariaId)
-        .eq("tipo_contrato_id", tipoContratoId)
+        .eq("tipo_contrato_id", labelsInfo.tipoContratoId)
         .eq("ativo", true)
         .order("created_at", { ascending: true });
       setCustomPerfis(((data as any[]) || []).map((p) => ({ id: p.codigo, nome: p.nome })));
     };
     loadPerfis();
-  }, [imobiliariaId, tipoContratoId]);
+  }, [imobiliariaId, labelsInfo.tipoContratoId]);
 
   useEffect(() => {
     if (!customPerfis.length) return;
@@ -716,8 +686,8 @@ const ContractWizard = () => {
         <StepVendedores
           vendedores={vendedores}
           onChange={setVendedores}
-          titulo={labels.vendedor}
-          tituloPlural={`${labels.vendedor}(es)`}
+          titulo={labelsInfo.parteA}
+          tituloPlural={labelsInfo.parteAPlural}
         />
       );
     }
@@ -726,13 +696,13 @@ const ContractWizard = () => {
         <StepCompradores
           compradores={compradores}
           onChange={setCompradores}
-          titulo={labels.comprador}
-          tituloPlural={`${labels.comprador}(es)`}
+          titulo={labelsInfo.parteB}
+          tituloPlural={labelsInfo.parteBPlural}
         />
       );
     }
     if (currentStep === 3) {
-      return <StepObjeto imovel={imovel} onChange={setImovel} />;
+      return <StepObjeto imovel={imovel} onChange={setImovel} labelObjeto={labelsInfo.objeto} />;
     }
 
     const currentStepObj = steps[currentStep - 1];
@@ -743,13 +713,13 @@ const ContractWizard = () => {
       return <StepLocacao locacao={locacao} onChange={setLocacao} />;
     }
     if (currentStepObj.label === "Pagamento") {
-      return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
+      return <StepPagamento pagamento={pagamento} onChange={setPagamento} labelParteA={labelsInfo.parteA} />;
     }
     if (currentStepObj.label === "Perfil") {
       return (
         <StepPerfil
           tipoContrato={tipo as TipoContrato}
-          tipoContratoId={tipoContratoId}
+          tipoContratoId={labelsInfo.tipoContratoId}
           perfilContrato={perfilContrato}
           onChange={setPerfilContrato}
           peculiaridades={peculiaridades}
@@ -818,11 +788,11 @@ const ContractWizard = () => {
                 </span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{labels.vendedor}(es)</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{labelsInfo.parteAPlural}</span>
                 <span className="text-foreground font-medium">{vendedores.map((v) => v.nome || "—").join(", ")}</span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{labels.comprador}(es)</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{labelsInfo.parteBPlural}</span>
                 <span className="text-foreground font-medium">{compradores.map((c) => c.nome || "—").join(", ")}</span>
               </div>
               <div className="flex flex-col gap-1">
