@@ -672,15 +672,21 @@ export default function TiposContratoPage() {
                   placeholder="Ex: Cedente"
                 />
               </div>
-              <div>
-                <Label>Label da Parte B (singular)</Label>
-                <Input
-                  value={labelParteB}
-                  onChange={(e) => setLabelParteB(e.target.value)}
-                  placeholder="Ex: Cessionário"
-                  disabled={partesSimetricas}
-                />
-              </div>
+              {!partesSimetricas ? (
+                <div>
+                  <Label>Label da Parte B (singular)</Label>
+                  <Input
+                    value={labelParteB}
+                    onChange={(e) => setLabelParteB(e.target.value)}
+                    placeholder="Ex: Cessionário"
+                  />
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg px-4 py-3">
+                  <div className="text-xs text-muted-foreground">Parte B</div>
+                  <div className="text-sm font-semibold text-foreground">Igual à Parte A</div>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -695,15 +701,21 @@ export default function TiposContratoPage() {
                   placeholder="Ex: Cedentes"
                 />
               </div>
-              <div>
-                <Label>Plural da Parte B</Label>
-                <Input
-                  value={labelParteBPlural}
-                  onChange={(e) => setLabelParteBPlural(e.target.value)}
-                  placeholder="Ex: Cessionários"
-                  disabled={partesSimetricas}
-                />
-              </div>
+              {!partesSimetricas ? (
+                <div>
+                  <Label>Plural da Parte B</Label>
+                  <Input
+                    value={labelParteBPlural}
+                    onChange={(e) => setLabelParteBPlural(e.target.value)}
+                    placeholder="Ex: Cessionários"
+                  />
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg px-4 py-3">
+                  <div className="text-xs text-muted-foreground">Plural da Parte B</div>
+                  <div className="text-sm font-semibold text-foreground">Igual ao plural da Parte A</div>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-center justify-between gap-3 border border-border rounded-lg px-4 py-3">
