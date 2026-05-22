@@ -17,6 +17,7 @@ interface PessoaFormProps {
   onRemove?: () => void;
   titulo: string;
   index: number;
+  displayNumber?: number;
   isConjuge?: boolean;
   hideEstadoCivil?: boolean;
   emailRequired?: boolean;
@@ -88,7 +89,7 @@ async function viaCepByAddress(uf: string, cidade: string, logradouro: string) {
   return null;
 }
 
-const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil, emailRequired, onExtractFiles }: PessoaFormProps) => {
+const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, isConjuge, hideEstadoCivil, emailRequired, onExtractFiles }: PessoaFormProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [textDialogOpen, setTextDialogOpen] = useState(false);
@@ -319,7 +320,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
         <div className="flex items-center gap-2">
           {isConjuge && <Heart className="w-4 h-4 text-primary" />}
           <h4 className="font-display text-lg font-semibold text-foreground">
-            {titulo} {!isConjuge && index + 1}
+            {titulo} {!isConjuge && (typeof displayNumber === "number" ? displayNumber : index + 1)}
           </h4>
           {isConjuge && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium flex items-center gap-1">

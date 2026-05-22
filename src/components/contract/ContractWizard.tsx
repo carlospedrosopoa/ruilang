@@ -688,6 +688,8 @@ const ContractWizard = () => {
           onChange={setVendedores}
           titulo={labelsInfo.parteA}
           tituloPlural={labelsInfo.parteAPlural}
+          simetricas={labelsInfo.simetricas}
+          numeroBase={1}
         />
       );
     }
@@ -698,6 +700,8 @@ const ContractWizard = () => {
           onChange={setCompradores}
           titulo={labelsInfo.parteB}
           tituloPlural={labelsInfo.parteBPlural}
+          simetricas={labelsInfo.simetricas}
+          numeroBase={2}
         />
       );
     }

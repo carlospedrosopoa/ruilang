@@ -8,13 +8,15 @@ interface StepCompradoresProps {
   onChange: (compradores: Pessoa[]) => void;
   titulo?: string;
   tituloPlural?: string;
+  simetricas?: boolean;
+  numeroBase?: 1 | 2;
   emailRequired?: boolean;
   onExtractFiles?: (files: File[]) => Promise<void> | void;
 }
 
 const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
 
-const StepCompradores = ({ compradores, onChange, titulo = "Comprador", tituloPlural = "Comprador(es)", emailRequired, onExtractFiles }: StepCompradoresProps) => {
+const StepCompradores = ({ compradores, onChange, titulo = "Comprador", tituloPlural = "Comprador(es)", simetricas, numeroBase = 2, emailRequired, onExtractFiles }: StepCompradoresProps) => {
   const add = () => onChange([...compradores, criarPessoaVazia()]);
 
   const update = (index: number, pessoa: Pessoa) => {
@@ -89,6 +91,12 @@ const StepCompradores = ({ compradores, onChange, titulo = "Comprador", tituloPl
         const pessoaPrincipal = comprador.conjugeDeId
           ? compradores.find(p => p.id === comprador.conjugeDeId)
           : undefined;
+        const principalPos = comprador.conjugeDeId ? null : compradores.slice(0, index + 1).filter((p) => !p.conjugeDeId).length - 1;
+        const displayNumber = comprador.conjugeDeId
+          ? undefined
+          : simetricas
+            ? principalPos * 2 + (numeroBase === 1 ? 1 : 2)
+            : (principalPos + 1);
 
         return (
           <PessoaForm
@@ -104,6 +112,7 @@ const StepCompradores = ({ compradores, onChange, titulo = "Comprador", tituloPl
                 : titulo
             }
             index={index}
+            displayNumber={displayNumber}
             isConjuge={!!comprador.conjugeDeId}
             hideEstadoCivil={!!comprador.conjugeDeId}
             emailRequired={emailRequired}

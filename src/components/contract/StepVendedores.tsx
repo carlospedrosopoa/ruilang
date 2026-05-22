@@ -8,13 +8,15 @@ interface StepVendedoresProps {
   onChange: (vendedores: Pessoa[]) => void;
   titulo?: string;
   tituloPlural?: string;
+  simetricas?: boolean;
+  numeroBase?: 1 | 2;
   emailRequired?: boolean;
   onExtractFiles?: (files: File[]) => Promise<void> | void;
 }
 
 const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
 
-const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlural = "Vendedor(es)", emailRequired, onExtractFiles }: StepVendedoresProps) => {
+const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlural = "Vendedor(es)", simetricas, numeroBase = 1, emailRequired, onExtractFiles }: StepVendedoresProps) => {
   const addVendedor = () => onChange([...vendedores, criarPessoaVazia()]);
 
   const updateVendedor = (index: number, pessoa: Pessoa) => {
@@ -96,6 +98,12 @@ const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlura
         const pessoaPrincipal = vendedor.conjugeDeId
           ? vendedores.find(p => p.id === vendedor.conjugeDeId)
           : undefined;
+        const principalPos = vendedor.conjugeDeId ? null : vendedores.slice(0, index + 1).filter((p) => !p.conjugeDeId).length - 1;
+        const displayNumber = vendedor.conjugeDeId
+          ? undefined
+          : simetricas
+            ? principalPos * 2 + (numeroBase === 1 ? 1 : 2)
+            : (principalPos + 1);
 
         return (
           <PessoaForm
@@ -111,6 +119,7 @@ const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlura
                 : titulo
             }
             index={index}
+            displayNumber={displayNumber}
             isConjuge={!!vendedor.conjugeDeId}
             hideEstadoCivil={!!vendedor.conjugeDeId}
             emailRequired={emailRequired}
