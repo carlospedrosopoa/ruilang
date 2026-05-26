@@ -29,7 +29,7 @@ import {
   criarImovelVazio,
   criarImovelPermutaVazio,
   criarPagamentoVazio,
-  criarLocacaoVazio,
+  criarLocacaoVazia,
   Procurador,
   Anuente,
   Testemunha,
