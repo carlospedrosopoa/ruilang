@@ -276,6 +276,15 @@ const ContratosGeradosPage = () => {
       const conjugeComprador =
         Array.isArray((dados as any)?.compradores) && (dados as any).compradores.some((c: any) => Boolean(c?.conjugeDeId));
 
+      const vendedores = Array.isArray((dados as any)?.vendedores) ? (dados as any).vendedores : [];
+      const compradores = Array.isArray((dados as any)?.compradores) ? (dados as any).compradores : [];
+      const testemunhas = Array.isArray((dados as any)?.testemunhas) ? (dados as any).testemunhas : [];
+
+      const vendedorPrincipal = vendedores.find((v: any) => !Boolean(v?.conjugeDeId)) || vendedores[0] || null;
+      const compradorPrincipal = compradores.find((c: any) => !Boolean(c?.conjugeDeId)) || compradores[0] || null;
+      const conjugeDoVendedor = vendedores.find((v: any) => Boolean(v?.conjugeDeId)) || null;
+      const conjugeDoComprador = compradores.find((c: any) => Boolean(c?.conjugeDeId)) || null;
+
       const { data, error } = await supabase.functions.invoke("generate-docx", {
         body: {
           minuta: minutaText,
@@ -283,7 +292,15 @@ const ContratosGeradosPage = () => {
           tipoContratoNome,
           format: "visual_law",
           imobiliariaId: editing.imobiliaria_id,
-          signatures: { conjugeVendedor, conjugeComprador },
+          signatures: {
+            conjugeVendedor,
+            conjugeComprador,
+            vendedor: { nome: vendedorPrincipal?.nome || "", cpf: vendedorPrincipal?.cpf || "" },
+            comprador: { nome: compradorPrincipal?.nome || "", cpf: compradorPrincipal?.cpf || "" },
+            conjugeDoVendedor: conjugeDoVendedor ? { nome: conjugeDoVendedor?.nome || "", cpf: conjugeDoVendedor?.cpf || "" } : undefined,
+            conjugeDoComprador: conjugeDoComprador ? { nome: conjugeDoComprador?.nome || "", cpf: conjugeDoComprador?.cpf || "" } : undefined,
+            testemunhas: testemunhas.map((t: any) => ({ nome: t?.nome || "", cpf: t?.cpf || "" })),
+          },
         },
       });
       if (error) throw error;

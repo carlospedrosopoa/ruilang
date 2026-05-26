@@ -98,6 +98,11 @@ type DocBranding = {
 type SignatureOptions = {
   conjugeVendedor?: boolean;
   conjugeComprador?: boolean;
+  vendedor?: { nome?: string; cpf?: string };
+  comprador?: { nome?: string; cpf?: string };
+  conjugeDoVendedor?: { nome?: string; cpf?: string };
+  conjugeDoComprador?: { nome?: string; cpf?: string };
+  testemunhas?: Array<{ nome?: string; cpf?: string }>;
 };
 
 function isSupportedImageContentType(contentType: string) {
@@ -185,16 +190,18 @@ function makeEmptySignatureCell() {
   });
 }
 
-function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBranding) {
+function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBranding, signatures?: SignatureOptions) {
   const cleaned = stripMarkdown(minuta);
   const lines = cleaned.split("\n");
   const children: any[] = [];
   const headerLabel = getTipoLabel(tipoContrato);
+  const signatureCutIndex = findSignatureCutIndex(lines);
 
   let titleFound = false;
   let i = 0;
 
   while (i < lines.length) {
+    if (signatureCutIndex !== -1 && i >= signatureCutIndex) break;
     const trimmed = lines[i].trim();
 
     if (!trimmed) {
@@ -315,7 +322,10 @@ function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBran
   // ── Bloco de assinaturas ──
   children.push(new Paragraph({ spacing: { before: 720 } }));
 
-  const signatureBlock = (label: string) => [
+  const signatureBlock = (label: string, person?: { nome?: string; cpf?: string }) => {
+    const nome = String(person?.nome || "").trim();
+    const cpf = String(person?.cpf || "").trim();
+    return [
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 600 },
@@ -334,15 +344,37 @@ function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBran
       alignment: AlignmentType.CENTER,
       spacing: { after: 200 },
       children: [
-        new TextRun({ text: "CPF:", size: SMALL_SIZE, font: FONT, color: "666666" }),
+        new TextRun({ text: nome ? `Nome: ${nome}` : "Nome:", size: SMALL_SIZE, font: FONT, color: nome ? "666666" : "BBBBBB" }),
       ],
     }),
-  ];
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [
+        new TextRun({ text: cpf ? `CPF: ${cpf}` : "CPF:", size: SMALL_SIZE, font: FONT, color: cpf ? "666666" : "BBBBBB" }),
+      ],
+    }),
+    ];
+  };
 
-  children.push(...signatureBlock("VENDEDOR(A) / PROMITENTE VENDEDOR(A)"));
-  children.push(...signatureBlock("COMPRADOR(A) / PROMITENTE COMPRADOR(A)"));
-  children.push(...signatureBlock("TESTEMUNHA 1"));
-  children.push(...signatureBlock("TESTEMUNHA 2"));
+  const vendedor = signatures?.vendedor;
+  const comprador = signatures?.comprador;
+  const conjugeDoVendedor = signatures?.conjugeDoVendedor;
+  const conjugeDoComprador = signatures?.conjugeDoComprador;
+  const testemunhas = Array.isArray(signatures?.testemunhas) ? signatures?.testemunhas : [];
+
+  children.push(...signatureBlock("VENDEDOR(A) / PROMITENTE VENDEDOR(A)", vendedor));
+  children.push(...signatureBlock("COMPRADOR(A) / PROMITENTE COMPRADOR(A)", comprador));
+  if (signatures?.conjugeVendedor) {
+    children.push(...signatureBlock("CÔNJUGE/COMP. DO VENDEDOR", conjugeDoVendedor));
+  }
+  if (signatures?.conjugeComprador) {
+    children.push(...signatureBlock("CÔNJUGE/COMP. DO COMPRADOR", conjugeDoComprador));
+  }
+  children.push(...signatureBlock("TESTEMUNHA 1", testemunhas[0]));
+  children.push(...signatureBlock("TESTEMUNHA 2", testemunhas[1]));
+  if (testemunhas.length > 2) children.push(...signatureBlock("TESTEMUNHA 3", testemunhas[2]));
+  if (testemunhas.length > 3) children.push(...signatureBlock("TESTEMUNHA 4", testemunhas[3]));
 
   // ── Local e data ──
   children.push(
@@ -540,6 +572,13 @@ function isSignatureStartKey(key: string) {
     key.startsWith("VENDEDOR") ||
     key.startsWith("COMPRADOR") ||
     key.startsWith("CONJUGE") ||
+    key.startsWith("PROMITENTE") ||
+    key.startsWith("LOCADOR") ||
+    key.startsWith("LOCATARIO") ||
+    key.startsWith("CEDENTE") ||
+    key.startsWith("CESSIONARIO") ||
+    key.startsWith("OUTORGANTE") ||
+    key.startsWith("OUTORGADO") ||
     key.startsWith("TESTEMUNHA") ||
     key.startsWith("IMOBILIARIAINTERMEDIADORA") ||
     key.startsWith("REPRESENTANTE") ||
@@ -548,7 +587,123 @@ function isSignatureStartKey(key: string) {
   );
 }
 
-function makeVisualSignatureCell(title: string) {
+function isSignatureLine(trimmed: string) {
+  if (!trimmed) return true;
+  const key = normalizeHeadingKey(trimmed);
+  if (key === "ASSINATURAS" || key === "TESTEMUNHAS") return true;
+  if (isSignatureStartKey(key)) return true;
+  if (/^\s*E\s*,?\s*POR\s+ESTAREM\b/i.test(trimmed)) return true;
+  if (/^\s*E\s+POR\s+ESTAREM\b/i.test(trimmed)) return true;
+  if (/^\s*LOCAL\s+E\s+DATA\b/i.test(trimmed)) return true;
+  if (/^\s*ASSINAM\b/i.test(trimmed)) return true;
+  if (/_{10,}/.test(trimmed)) return true;
+  if (/\bCPF\s*:/i.test(trimmed)) return true;
+  if (/\bCPF\b/i.test(trimmed) && /\d/.test(trimmed)) return true;
+  if (/\bNOME\s*:/i.test(trimmed)) return true;
+  if (/\bRG\s*:/i.test(trimmed)) return true;
+  if (/^\s*[\p{L} .'-]+\/[A-Z]{2}\s*,?\s*\d{1,2}\s+de\s+[\p{L}çãáéíóúâêôàü]+/iu.test(trimmed)) return true;
+  return false;
+}
+
+function findSignatureCutIndex(lines: string[]) {
+  const maxLookback = 800;
+  const end = lines.length - 1;
+  let looked = 0;
+  for (let i = end; i >= 0 && looked < maxLookback; i--, looked++) {
+    const trimmed = String(lines[i] || "").trim();
+    if (!trimmed) continue;
+    const key = normalizeHeadingKey(trimmed);
+    const isDirectMarker = key === "ASSINATURAS" || key === "TESTEMUNHAS";
+    if (!isDirectMarker && !isSignatureStartKey(key)) continue;
+    const ctxEnd = Math.min(lines.length, i + 50);
+    let hasMarks = isDirectMarker;
+    for (let j = i; j < ctxEnd; j++) {
+      const t = String(lines[j] || "");
+      if (/_{10,}/.test(t)) {
+        hasMarks = true;
+        break;
+      }
+      if (/\bCPF\s*:/i.test(t)) {
+        hasMarks = true;
+        break;
+      }
+      if (/\bASSINATURAS?\b/i.test(t) || /\bTESTEMUNHAS?\b/i.test(t)) {
+        hasMarks = true;
+        break;
+      }
+    }
+    if (!hasMarks) continue;
+
+    let start = i;
+    const maxBacktrack = 260;
+    for (let k = i; k >= 0 && i - k <= maxBacktrack; k--) {
+      const tk = String(lines[k] || "");
+      const tkt = tk.trim();
+      if (!tkt) {
+        start = k;
+        continue;
+      }
+      if (isSignatureLine(tkt)) {
+        start = k;
+        continue;
+      }
+      break;
+    }
+
+    while (start < lines.length && !String(lines[start] || "").trim()) start++;
+    return start;
+  }
+  return -1;
+}
+
+function normalizeCpfValue(input: string) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11) return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  return raw;
+}
+
+function parseWitnessesFromText(signatureText: string) {
+  const txt = String(signatureText || "");
+  const res: Array<{ nome?: string; cpf?: string }> = [];
+  for (let i = 1; i <= 4; i++) {
+    const re = new RegExp(
+      `${i}\\s*[ªaº°\\.]?\\s*TESTEMUNHA[\\s\\S]{0,280}?NOME\\s*:\\s*([^\\n\\r]+?)(?:\\s+CPF\\s*:\\s*([0-9.\\-\\s]+))?(?:\\n|\\r|$)`,
+      "i",
+    );
+    const m = txt.match(re);
+    const nome = String(m?.[1] || "").trim();
+    const cpf = normalizeCpfValue(m?.[2] || "");
+    if (nome || cpf) res[i - 1] = { nome: nome || undefined, cpf: cpf || undefined };
+  }
+  return res;
+}
+
+function hasAnyWitnessValue(list: Array<{ nome?: string; cpf?: string }> | undefined) {
+  return Array.isArray(list) && list.some((w) => Boolean(String(w?.nome || "").trim() || String(w?.cpf || "").trim()));
+}
+
+function mergeWitnessLists(
+  current: Array<{ nome?: string; cpf?: string }> | undefined,
+  fallback: Array<{ nome?: string; cpf?: string }> | undefined,
+) {
+  const cur = Array.isArray(current) ? current : [];
+  const fb = Array.isArray(fallback) ? fallback : [];
+  const out: Array<{ nome?: string; cpf?: string }> = [];
+  for (let i = 0; i < Math.max(cur.length, fb.length, 0); i++) {
+    const c = cur[i] || {};
+    const f = fb[i] || {};
+    const nome = String(c.nome || "").trim() || String(f.nome || "").trim();
+    const cpf = String(c.cpf || "").trim() || String(f.cpf || "").trim();
+    if (nome || cpf) out[i] = { nome: nome || undefined, cpf: cpf || undefined };
+  }
+  return out;
+}
+
+function makeVisualSignatureCell(title: string, person?: { nome?: string; cpf?: string }) {
+  const nome = String(person?.nome || "").trim();
+  const cpf = String(person?.cpf || "").trim();
   return new TableCell({
     verticalAlign: VerticalAlign.CENTER,
     children: [
@@ -565,12 +720,26 @@ function makeVisualSignatureCell(title: string) {
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { after: 0, line: VL_LINE_SPACING },
-        children: [new TextRun({ text: "Nome:", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY_LIGHT })],
+        children: [
+          new TextRun({
+            text: nome ? `Nome: ${nome}` : "Nome:",
+            size: VL_SMALL_SIZE,
+            font: VL_FONT,
+            color: nome ? VL_GRAY : VL_GRAY_LIGHT,
+          }),
+        ],
       }),
       new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { after: 0, line: VL_LINE_SPACING },
-        children: [new TextRun({ text: "CPF:", size: VL_SMALL_SIZE, font: VL_FONT, color: VL_GRAY_LIGHT })],
+        children: [
+          new TextRun({
+            text: cpf ? `CPF: ${cpf}` : "CPF:",
+            size: VL_SMALL_SIZE,
+            font: VL_FONT,
+            color: cpf ? VL_GRAY : VL_GRAY_LIGHT,
+          }),
+        ],
       }),
     ],
   });
@@ -597,6 +766,7 @@ function buildDocxVisualLaw(
   const cleaned = stripMarkdown(minuta);
   const lines = cleaned.split("\n");
   const children: any[] = [];
+  const signatureCutIndex = findSignatureCutIndex(lines);
 
   const hasIntermediacao = (() => {
     for (let idx = 0; idx < Math.min(lines.length, 30); idx++) {
@@ -644,6 +814,7 @@ function buildDocxVisualLaw(
 
   let i = 0;
   while (i < lines.length) {
+    if (signatureCutIndex !== -1 && i >= signatureCutIndex) break;
     const trimmed = lines[i].trim();
 
     if (!trimmed) {
@@ -656,11 +827,6 @@ function buildDocxVisualLaw(
     if (i < 12 && VL_SKIP_TOP_HEADINGS.has(key)) {
       i++;
       continue;
-    }
-
-    const signatureWindowStart = Math.max(12, lines.length - 120);
-    if (i >= signatureWindowStart && isSignatureStartKey(key)) {
-      break;
     }
 
     if (isEmentaHeading(trimmed)) {
@@ -812,9 +978,14 @@ function buildDocxVisualLaw(
   }
 
   children.push(new Paragraph({ spacing: { before: 360 } }));
+  const vendedor = signatures?.vendedor;
+  const comprador = signatures?.comprador;
+  const conjugeDoVendedor = signatures?.conjugeDoVendedor;
+  const conjugeDoComprador = signatures?.conjugeDoComprador;
+  const testemunhas = Array.isArray(signatures?.testemunhas) ? signatures?.testemunhas : [];
   const signatureRows: TableRow[] = [
     new TableRow({
-      children: [makeVisualSignatureCell("VENDEDOR(A)"), makeVisualSignatureCell("COMPRADOR(A)")],
+      children: [makeVisualSignatureCell("VENDEDOR(A)", vendedor), makeVisualSignatureCell("COMPRADOR(A)", comprador)],
     }),
   ];
 
@@ -824,8 +995,8 @@ function buildDocxVisualLaw(
     signatureRows.push(
       new TableRow({
         children: [
-          hasConjugeVendedor ? makeVisualSignatureCell("CÔNJUGE/COMP. DO VENDEDOR") : makeEmptySignatureCell(),
-          hasConjugeComprador ? makeVisualSignatureCell("CÔNJUGE/COMP. DO COMPRADOR") : makeEmptySignatureCell(),
+          hasConjugeVendedor ? makeVisualSignatureCell("CÔNJUGE/COMP. DO VENDEDOR", conjugeDoVendedor) : makeEmptySignatureCell(),
+          hasConjugeComprador ? makeVisualSignatureCell("CÔNJUGE/COMP. DO COMPRADOR", conjugeDoComprador) : makeEmptySignatureCell(),
         ],
       }),
     );
@@ -865,7 +1036,24 @@ function buildDocxVisualLaw(
   children.push(
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [new TableRow({ children: [makeVisualSignatureCell("1ª TESTEMUNHA"), makeVisualSignatureCell("2ª TESTEMUNHA")] })],
+      rows: [
+        new TableRow({
+          children: [
+            makeVisualSignatureCell("1ª TESTEMUNHA", testemunhas[0]),
+            makeVisualSignatureCell("2ª TESTEMUNHA", testemunhas[1]),
+          ],
+        }),
+        ...(testemunhas.length > 2
+          ? [
+              new TableRow({
+                children: [
+                  makeVisualSignatureCell("3ª TESTEMUNHA", testemunhas[2]),
+                  makeVisualSignatureCell("4ª TESTEMUNHA", testemunhas[3]),
+                ],
+              }),
+            ]
+          : []),
+      ],
     })
   );
 
@@ -932,6 +1120,23 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    let effectiveSignatures: SignatureOptions | undefined = signatures;
+    try {
+      const cleaned = stripMarkdown(minuta);
+      const lines = cleaned.split("\n");
+      const cutIndex = findSignatureCutIndex(lines);
+      const fromIndex = cutIndex !== -1 ? cutIndex : Math.max(0, lines.length - 240);
+      const signatureTail = lines.slice(fromIndex).join("\n");
+      const parsedWitnesses = parseWitnessesFromText(signatureTail);
+      if (hasAnyWitnessValue(parsedWitnesses)) {
+        const currentList = Array.isArray(effectiveSignatures?.testemunhas) ? effectiveSignatures?.testemunhas : [];
+        const merged = hasAnyWitnessValue(currentList)
+          ? mergeWitnessLists(currentList, parsedWitnesses)
+          : mergeWitnessLists(undefined, parsedWitnesses);
+        effectiveSignatures = { ...(effectiveSignatures || {}), testemunhas: merged };
+      }
+    } catch {}
+
     let branding: DocBranding | undefined = undefined;
     const tenantId = typeof imobiliariaId === "string" && imobiliariaId.trim() ? imobiliariaId.trim() : null;
     if (tenantId) {
@@ -965,8 +1170,8 @@ Deno.serve(async (req: Request) => {
 
     const doc =
       format === "visual_law"
-        ? buildDocxVisualLaw(minuta, tipoContrato, tipoContratoNome, branding, signatures)
-        : buildDocxAbnt(minuta, tipoContrato, branding);
+        ? buildDocxVisualLaw(minuta, tipoContrato, tipoContratoNome, branding, effectiveSignatures)
+        : buildDocxAbnt(minuta, tipoContrato, branding, effectiveSignatures);
     const buffer = await Packer.toBuffer(doc);
 
     const uint8 = new Uint8Array(buffer);

@@ -133,12 +133,19 @@ function hasMeaningfulDraftData(dados: any) {
       if (hasAnyText(p, ["id"])) return true;
       return false;
     });
+  const hasTestemunha = (list: any[]) =>
+    toList(list).some((t) => {
+      if (!t || typeof t !== "object") return false;
+      if (hasAnyText(t, ["id"])) return true;
+      return false;
+    });
 
   return (
     hasPessoa(dados.vendedores) ||
     hasPessoa(dados.compradores) ||
     hasProcurador(dados.procuradores) ||
     hasAnuente(dados.anuentes) ||
+    hasTestemunha(dados.testemunhas) ||
     hasImovel(dados.imovel) ||
     hasPagamento(dados.pagamento) ||
     hasLocacao(dados.locacao) ||
@@ -346,6 +353,17 @@ const ContractWizard = () => {
           const arr = Array.isArray(list) ? list : typeof list === "object" ? Object.values(list) : [];
           return arr.map(normalizePessoa);
         };
+        const normalizeTestemunha = (t: any): Testemunha => {
+          const base = criarTestemunhaVazia();
+          if (!t || typeof t !== "object") return base;
+          const id = typeof t.id === "string" && t.id.trim() ? t.id : crypto.randomUUID();
+          return { ...base, ...(t as any), id } as Testemunha;
+        };
+        const normalizeTestemunhasList = (list: any): Testemunha[] => {
+          if (!list) return [];
+          const arr = Array.isArray(list) ? list : typeof list === "object" ? Object.values(list) : [];
+          return arr.map(normalizeTestemunha);
+        };
 
         const vend = normalizePessoaList(d.vendedores);
         const comp = normalizePessoaList(d.compradores);
@@ -359,6 +377,7 @@ const ContractWizard = () => {
         if (d.locacao && typeof d.locacao === "object") setLocacao({ ...criarLocacaoVazia(), ...d.locacao } as any);
         if (typeof d.perfilContrato === "string" && d.perfilContrato.trim()) setPerfilContrato(d.perfilContrato as any);
         if (typeof d.peculiaridades === "string") setPeculiaridades(d.peculiaridades);
+        if (d.testemunhas) setTestemunhas(normalizeTestemunhasList(d.testemunhas));
 
         if (typeof data.contract_texto_editado === "string" && data.contract_texto_editado.trim()) {
           setMinutaEditada(data.contract_texto_editado);
@@ -395,6 +414,7 @@ const ContractWizard = () => {
         compradores,
         procuradores,
         anuentes,
+        testemunhas,
         imovel,
         imovelPermuta,
         pagamento,
@@ -415,7 +435,7 @@ const ContractWizard = () => {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     };
-  }, [submissionId, tipo, vendedores, compradores, procuradores, anuentes, imovel, imovelPermuta, pagamento, locacao, perfilContrato, peculiaridades]);
+  }, [submissionId, tipo, vendedores, compradores, procuradores, anuentes, testemunhas, imovel, imovelPermuta, pagamento, locacao, perfilContrato, peculiaridades]);
 
   useEffect(() => {
     const loadPerfis = async () => {
@@ -512,6 +532,7 @@ const ContractWizard = () => {
           compradores,
           procuradores,
           anuentes,
+          testemunhas,
           imovel,
           imovelPermuta,
           pagamento,
@@ -834,6 +855,11 @@ const ContractWizard = () => {
     if (!conteudo) return;
     setIsExportingDocx(true);
     try {
+      const vendedorPrincipal = vendedores.find((v) => !Boolean((v as any)?.conjugeDeId)) || vendedores[0];
+      const compradorPrincipal = compradores.find((c) => !Boolean((c as any)?.conjugeDeId)) || compradores[0];
+      const conjugeVendedorPessoa = vendedores.find((v) => Boolean((v as any)?.conjugeDeId)) || null;
+      const conjugeCompradorPessoa = compradores.find((c) => Boolean((c as any)?.conjugeDeId)) || null;
+
       const { data, error } = await invokeWithRetry<{ docx: string; error?: string }>(
         "generate-docx",
         {
@@ -845,6 +871,11 @@ const ContractWizard = () => {
           signatures: {
             conjugeVendedor: vendedores.some((v) => Boolean((v as any)?.conjugeDeId)),
             conjugeComprador: compradores.some((c) => Boolean((c as any)?.conjugeDeId)),
+            vendedor: { nome: vendedorPrincipal?.nome || "", cpf: vendedorPrincipal?.cpf || "" },
+            comprador: { nome: compradorPrincipal?.nome || "", cpf: compradorPrincipal?.cpf || "" },
+            conjugeDoVendedor: conjugeVendedorPessoa ? { nome: conjugeVendedorPessoa.nome || "", cpf: conjugeVendedorPessoa.cpf || "" } : undefined,
+            conjugeDoComprador: conjugeCompradorPessoa ? { nome: conjugeCompradorPessoa.nome || "", cpf: conjugeCompradorPessoa.cpf || "" } : undefined,
+            testemunhas: testemunhas.map((t) => ({ nome: t.nome || "", cpf: t.cpf || "" })),
           },
         },
         2,
