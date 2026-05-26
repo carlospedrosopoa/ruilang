@@ -14,6 +14,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { useTipoContratoLabels } from "@/hooks/useTipoContratoLabels";
 
 type Imobiliaria = { id: string; nome: string };
 
@@ -29,7 +30,14 @@ type SubmissionRow = {
   contract_texto_updated_at: string | null;
   vendedor_nome: string | null;
   comprador_nome: string | null;
+  dados: any;
 };
+
+function ParteLabel({ tipoContrato, imobiliariaId, parte }: { tipoContrato: string; imobiliariaId: string | null; parte: "a" | "b" }) {
+  const labels = useTipoContratoLabels({ tipoCodigo: tipoContrato, imobiliariaId });
+  const label = parte === "a" ? labels.parteA : labels.parteB;
+  return <span className="text-muted-foreground">{label}:</span>;
+}
 
 const ContratosGeradosPage = () => {
   const navigate = useNavigate();
@@ -95,6 +103,7 @@ const ContratosGeradosPage = () => {
             contract_texto_updated_at: null,
             vendedor_nome: vendedorNome ? String(vendedorNome).trim() : null,
             comprador_nome: compradorNome ? String(compradorNome).trim() : null,
+            dados: d,
             ...r,
           } as SubmissionRow;
         }),
@@ -424,10 +433,10 @@ const ContratosGeradosPage = () => {
                       <TableCell className="text-xs">
                         <div className="space-y-1">
                           <div className="truncate max-w-[220px]">
-                            <span className="text-muted-foreground">1ª parte:</span> {r.vendedor_nome || "-"}
+                            <ParteLabel tipoContrato={r.tipo_contrato} imobiliariaId={r.imobiliaria_id} parte="a" /> {r.vendedor_nome || "-"}
                           </div>
                           <div className="truncate max-w-[220px]">
-                            <span className="text-muted-foreground">2ª parte:</span> {r.comprador_nome || "-"}
+                            <ParteLabel tipoContrato={r.tipo_contrato} imobiliariaId={r.imobiliaria_id} parte="b" /> {r.comprador_nome || "-"}
                           </div>
                         </div>
                       </TableCell>

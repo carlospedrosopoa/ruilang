@@ -2,10 +2,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Building2 } from "lucide-react";
-import { Pagamento, Parcela, DadosBancarios } from "@/types/contract";
-import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
+import { Plus, Trash2, Building2 } from "lucide-react";
+import {
+  Pagamento,
+  Parcela,
+  DadosBancarios,
+  TipoParcela,
+  NaturezaSinal,
+  FrequenciaParcela,
+  ModalidadeFinanciamento,
+  IndiceCorrecao,
+  tipoParcelaLabels,
+  naturezaSinalLabels,
+  frequenciaParcelaLabels,
+  modalidadeFinanciamentoLabels,
+  indiceCorrecaoLabels,
+} from "@/types/contract";
+import { useState } from "react";
 
 interface StepPagamentoProps {
   pagamento: Pagamento;
@@ -16,7 +30,7 @@ interface StepPagamentoProps {
 const StepPagamento = ({ pagamento, onChange, labelParteA = "Vendedor" }: StepPagamentoProps) => {
   const [mostrarBanco, setMostrarBanco] = useState(!!pagamento.dadosBancarios);
 
-  const update = (field: keyof Pagamento, value: string) => {
+  const update = (field: keyof Pagamento, value: any) => {
     onChange({ ...pagamento, [field]: value });
   };
 
@@ -31,16 +45,17 @@ const StepPagamento = ({ pagamento, onChange, labelParteA = "Vendedor" }: StepPa
   const addParcela = () => {
     const novaParcela: Parcela = {
       id: crypto.randomUUID(),
-      descricao: "",
+      tipo: "parcela",
       valor: "",
       quantidade: 1,
-      tipo: "parcela",
+      frequencia: "mensal",
       dataVencimento: "",
+      descricao: "",
     };
     onChange({ ...pagamento, parcelas: [...pagamento.parcelas, novaParcela] });
   };
 
-  const updateParcela = (index: number, field: keyof Parcela, value: string | number) => {
+  const updateParcela = (index: number, field: keyof Parcela, value: any) => {
     const updated = [...pagamento.parcelas];
     updated[index] = { ...updated[index], [field]: value };
     onChange({ ...pagamento, parcelas: updated });
@@ -67,6 +82,20 @@ const StepPagamento = ({ pagamento, onChange, labelParteA = "Vendedor" }: StepPa
     onChange({
       ...pagamento,
       dadosBancarios: { ...pagamento.dadosBancarios!, [field]: value },
+    });
+  };
+
+  const updateCorrecaoMonetaria = (field: keyof Pagamento["correcaoMonetaria"], value: any) => {
+    onChange({
+      ...pagamento,
+      correcaoMonetaria: { ...pagamento.correcaoMonetaria!, [field]: value },
+    });
+  };
+
+  const updateEncargosAtraso = (field: keyof Pagamento["encargosAtraso"], value: string) => {
+    onChange({
+      ...pagamento,
+      encargosAtraso: { ...pagamento.encargosAtraso!, [field]: value },
     });
   };
 
@@ -108,29 +137,33 @@ const StepPagamento = ({ pagamento, onChange, labelParteA = "Vendedor" }: StepPa
           <div className="flex items-center justify-between">
             <h4 className="font-display text-lg font-semibold text-foreground">Parcelas</h4>
             <Button variant="outline" size="sm" onClick={addParcela}>
-              <Plus className="w-4 h-4 mr-1" /> Parcela
+              <Plus className="w-4 h-4 mr-1" /> Adicionar Parcela
             </Button>
           </div>
 
           {pagamento.parcelas.map((parcela, index) => (
-            <div key={parcela.id} className="border border-border rounded-md p-4 space-y-3 bg-background">
+            <div key={parcela.id} className="border border-border rounded-md p-4 space-y-4 bg-background">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-muted-foreground">
-                  {parcela.tipo === "arras" ? "Arras/Sinal" : parcela.tipo === "entrada" ? "Entrada" : `Parcela ${index + 1}`}
+                  {tipoParcelaLabels[parcela.tipo]} {index + 1}
                 </span>
                 <Button variant="ghost" size="icon" onClick={() => removeParcela(index)} className="text-destructive h-8 w-8">
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <Label className="text-xs">Tipo</Label>
-                  <Select value={parcela.tipo} onValueChange={(v) => updateParcela(index, "tipo", v)}>
+                  <Select
+                    value={parcela.tipo}
+                    onValueChange={(v) => updateParcela(index, "tipo", v as TipoParcela)}
+                  >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="arras">Arras/Sinal</SelectItem>
-                      <SelectItem value="entrada">Entrada</SelectItem>
-                      <SelectItem value="parcela">Parcela</SelectItem>
+                      {Object.entries(tipoParcelaLabels).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -143,35 +176,311 @@ const StepPagamento = ({ pagamento, onChange, labelParteA = "Vendedor" }: StepPa
                     inputMode="numeric"
                   />
                 </div>
-                <div>
-                  <Label className="text-xs">Quantidade</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={parcela.quantidade}
-                    onChange={(e) => updateParcela(index, "quantidade", parseInt(e.target.value) || 1)}
-                  />
+                {parcela.tipo === "parcela" && (
+                  <div>
+                    <Label className="text-xs">Quantidade</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={parcela.quantidade}
+                      onChange={(e) => updateParcela(index, "quantidade", parseInt(e.target.value) || 1)}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Campos específicos por tipo */}
+              {parcela.tipo === "sinal" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Natureza do Sinal</Label>
+                    <Select
+                      value={parcela.naturezaSinal || ""}
+                      onValueChange={(v) => updateParcela(index, "naturezaSinal", v as NaturezaSinal)}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(naturezaSinalLabels).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Vencimento</Label>
+                    <Input
+                      type="date"
+                      value={parcela.dataVencimento}
+                      onChange={(e) => updateParcela(index, "dataVencimento", e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs">{parcela.quantidade > 1 ? "Vencimento 1ª parcela" : "Vencimento"}</Label>
-                  <Input
-                    type="date"
-                    value={parcela.dataVencimento}
-                    onChange={(e) => updateParcela(index, "dataVencimento", e.target.value)}
-                  />
-                  {parcela.quantidade > 1 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Demais parcelas nos meses subsequentes
-                    </p>
-                  )}
+              )}
+
+              {parcela.tipo === "parcela" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Frequência</Label>
+                    <Select
+                      value={parcela.frequencia || ""}
+                      onValueChange={(v) => updateParcela(index, "frequencia", v as FrequenciaParcela)}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(frequenciaParcelaLabels).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">
+                      {parcela.quantidade > 1 ? "Vencimento 1ª parcela" : "Vencimento"}
+                    </Label>
+                    <Input
+                      type="date"
+                      value={parcela.dataVencimento}
+                      onChange={(e) => updateParcela(index, "dataVencimento", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Descrição</Label>
+                    <Input
+                      value={parcela.descricao}
+                      onChange={(e) => updateParcela(index, "descricao", e.target.value)}
+                      placeholder="Detalhes"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs">Descrição</Label>
-                  <Input value={parcela.descricao} onChange={(e) => updateParcela(index, "descricao", e.target.value)} placeholder="Detalhes" />
+              )}
+
+              {parcela.tipo === "financiamento" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Banco</Label>
+                    <Input
+                      value={parcela.bancoFinanciamento || ""}
+                      onChange={(e) => updateParcela(index, "bancoFinanciamento", e.target.value)}
+                      placeholder="Ex: Banco do Brasil"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Agência</Label>
+                    <Input
+                      value={parcela.agenciaFinanciamento || ""}
+                      onChange={(e) => updateParcela(index, "agenciaFinanciamento", e.target.value)}
+                      placeholder="Ex: 1234-5"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Modalidade</Label>
+                    <Select
+                      value={parcela.modalidadeFinanciamento || ""}
+                      onValueChange={(v) => updateParcela(index, "modalidadeFinanciamento", v as ModalidadeFinanciamento)}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(modalidadeFinanciamentoLabels).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Valor Aprovado (R$)</Label>
+                    <Input
+                      value={parcela.valorAprovadoFinanciamento || ""}
+                      onChange={(e) => updateParcela(index, "valorAprovadoFinanciamento", formatMoneyInput(e.target.value))}
+                      placeholder="0,00"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Previsão de Liberação</Label>
+                    <Input
+                      type="date"
+                      value={parcela.previsaoLiberacaoFinanciamento || ""}
+                      onChange={(e) => updateParcela(index, "previsaoLiberacaoFinanciamento", e.target.value)}
+                    />
+                  </div>
                 </div>
+              )}
+
+              {parcela.tipo === "fgts" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Valor FGTS (R$)</Label>
+                    <Input
+                      value={parcela.valorFgts || ""}
+                      onChange={(e) => updateParcela(index, "valorFgts", formatMoneyInput(e.target.value))}
+                      placeholder="0,00"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Previsão de Liberação</Label>
+                    <Input
+                      type="date"
+                      value={parcela.previsaoLiberacaoFgts || ""}
+                      onChange={(e) => updateParcela(index, "previsaoLiberacaoFgts", e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {parcela.tipo === "permuta" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Descrição do Bem</Label>
+                    <Input
+                      value={parcela.descricaoBemPermuta || ""}
+                      onChange={(e) => updateParcela(index, "descricaoBemPermuta", e.target.value)}
+                      placeholder="Ex: Veículo Honda Civic 2020"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Valor Avaliado (R$)</Label>
+                    <Input
+                      value={parcela.valorAvaliadoPermuta || ""}
+                      onChange={(e) => updateParcela(index, "valorAvaliadoPermuta", formatMoneyInput(e.target.value))}
+                      placeholder="0,00"
+                      inputMode="numeric"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {parcela.tipo === "consorcio" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Administradora</Label>
+                    <Input
+                      value={parcela.administradoraConsorcio || ""}
+                      onChange={(e) => updateParcela(index, "administradoraConsorcio", e.target.value)}
+                      placeholder="Ex: Consórcio XYZ"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Valor da Carta de Crédito (R$)</Label>
+                    <Input
+                      value={parcela.valorCartaCreditoConsorcio || ""}
+                      onChange={(e) => updateParcela(index, "valorCartaCreditoConsorcio", formatMoneyInput(e.target.value))}
+                      placeholder="0,00"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Previsão de Contemplação</Label>
+                    <Input
+                      type="date"
+                      value={parcela.previsaoContemplacaoConsorcio || ""}
+                      onChange={(e) => updateParcela(index, "previsaoContemplacaoConsorcio", e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {parcela.tipo === "cheque_promissoria" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Número</Label>
+                    <Input
+                      value={parcela.numeroChequePromissoria || ""}
+                      onChange={(e) => updateParcela(index, "numeroChequePromissoria", e.target.value)}
+                      placeholder="Ex: 123456"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Banco</Label>
+                    <Input
+                      value={parcela.bancoChequePromissoria || ""}
+                      onChange={(e) => updateParcela(index, "bancoChequePromissoria", e.target.value)}
+                      placeholder="Ex: Itaú"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Data</Label>
+                    <Input
+                      type="date"
+                      value={parcela.dataChequePromissoria || ""}
+                      onChange={(e) => updateParcela(index, "dataChequePromissoria", e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <Label className="text-xs">Observações</Label>
+                <Input
+                  value={parcela.observacoes || ""}
+                  onChange={(e) => updateParcela(index, "observacoes", e.target.value)}
+                  placeholder="Informações adicionais"
+                />
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Correção Monetária */}
+        <div className="border-t border-border pt-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={pagamento.correcaoMonetaria?.aplicar || false}
+              onCheckedChange={(checked) => updateCorrecaoMonetaria("aplicar", checked)}
+            />
+            <Label className="text-base font-medium">Aplicar correção monetária</Label>
+          </div>
+          {pagamento.correcaoMonetaria?.aplicar && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Índice</Label>
+                <Select
+                  value={pagamento.correcaoMonetaria.indice || ""}
+                  onValueChange={(v) => updateCorrecaoMonetaria("indice", v as IndiceCorrecao)}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(indiceCorrecaoLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Carência (meses)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={pagamento.correcaoMonetaria.carenciaMeses || ""}
+                  onChange={(e) => updateCorrecaoMonetaria("carenciaMeses", parseInt(e.target.value) || 0)}
+                  placeholder="Ex: 6"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Encargos por Atraso */}
+        <div className="border-t border-border pt-4 space-y-4">
+          <h4 className="font-display text-lg font-semibold text-foreground">Encargos por Atraso</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Multa Moratória (%)</Label>
+              <Input
+                value={pagamento.encargosAtraso?.multaMoratoria || pagamento.multaMoratoria}
+                onChange={(e) => updateEncargosAtraso("multaMoratoria", e.target.value)}
+                placeholder="Ex: 10"
+              />
+            </div>
+            <div>
+              <Label>Juros de Mora (% ao mês)</Label>
+              <Input
+                value={pagamento.encargosAtraso?.jurosMora || pagamento.jurosMora}
+                onChange={(e) => updateEncargosAtraso("jurosMora", e.target.value)}
+                placeholder="Ex: 1"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Dados Bancários */}
@@ -224,34 +533,6 @@ const StepPagamento = ({ pagamento, onChange, labelParteA = "Vendedor" }: StepPa
               </div>
             </div>
           )}
-        </div>
-
-        {/* Multas e Correção */}
-        <h4 className="font-display text-lg font-semibold text-foreground pt-2">Multas e Correção</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label>Multa Moratória (%)</Label>
-            <Input value={pagamento.multaMoratoria} onChange={(e) => update("multaMoratoria", e.target.value)} placeholder="Ex: 10" />
-          </div>
-          <div>
-            <Label>Juros de Mora (% ao mês)</Label>
-            <Input value={pagamento.jurosMora} onChange={(e) => update("jurosMora", e.target.value)} placeholder="Ex: 1" />
-          </div>
-          <div>
-            <Label>Índice de Correção</Label>
-            <Select value={pagamento.indiceCorrecao} onValueChange={(v) => update("indiceCorrecao", v)}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="INPC/IBGE">INPC/IBGE</SelectItem>
-                <SelectItem value="IGPM/FGV">IGPM/FGV</SelectItem>
-                <SelectItem value="IPCA/IBGE">IPCA/IBGE</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Multa Contratual (%)</Label>
-            <Input value={pagamento.multaContratual} onChange={(e) => update("multaContratual", e.target.value)} placeholder="Ex: 20" />
-          </div>
         </div>
       </div>
     </div>

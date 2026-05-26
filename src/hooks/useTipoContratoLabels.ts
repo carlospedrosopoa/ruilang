@@ -69,6 +69,70 @@ const BUILTIN: Record<
   },
 };
 
+async function loadTipoContratoLabelsFromDB(tipoCodigo: string, imobiliariaId: string | null) {
+  if (!imobiliariaId) return null;
+  const { data } = await supabase
+    .from("tipos_contrato")
+    .select(
+      "id, codigo, nome, label_vendedor, label_comprador, label_parte_a, label_parte_b, label_parte_a_plural, label_parte_b_plural, partes_simetricas, label_objeto, label_acao",
+    )
+    .eq("imobiliaria_id", imobiliariaId)
+    .eq("codigo", tipoCodigo)
+    .maybeSingle();
+  return data || null;
+}
+
+function buildTipoContratoLabels(tipoCodigo: string, row: any | null, loading: boolean = false): TipoContratoLabels {
+  const built = BUILTIN[tipoCodigo] || {
+    parteA: "Vendedor",
+    parteB: "Comprador",
+    parteAPlural: "Vendedores",
+    parteBPlural: "Compradores",
+    simetricas: false,
+    objeto: "Imóvel",
+    acao: "compra e venda",
+    tipoNome: tiposContrato.find((t) => String(t.id) === tipoCodigo)?.nome || null,
+  };
+
+  const parteA = String(row?.label_parte_a || row?.label_vendedor || built.parteA || "Vendedor").trim() || "Vendedor";
+  const rawParteB = String(row?.label_parte_b || row?.label_comprador || built.parteB || "Comprador").trim() || "Comprador";
+  const simetricas = Boolean(row?.partes_simetricas) || Boolean(built.simetricas);
+  const parteB = simetricas ? parteA : rawParteB;
+
+  const parteAPlural =
+    String(row?.label_parte_a_plural || "").trim() ||
+    String(built.parteAPlural || "").trim() ||
+    pluralizePt(parteA);
+  const rawParteBPlural =
+    String(row?.label_parte_b_plural || "").trim() ||
+    String(built.parteBPlural || "").trim() ||
+    pluralizePt(parteB);
+  const parteBPlural = simetricas ? parteAPlural : rawParteBPlural;
+
+  const objeto = String(row?.label_objeto || built.objeto || "Imóvel").trim() || "Imóvel";
+  const acao = String(row?.label_acao || built.acao || "compra e venda").trim() || "compra e venda";
+  const tipoNome = String(row?.nome || "").trim() || built.tipoNome || null;
+  const tipoContratoId = typeof row?.id === "string" && row.id.trim() ? row.id.trim() : null;
+
+  return {
+    parteA,
+    parteB,
+    parteAPlural,
+    parteBPlural,
+    simetricas,
+    objeto,
+    acao,
+    tipoContratoId,
+    tipoNome,
+    loading,
+  };
+}
+
+export async function loadTipoContratoLabels(tipoCodigo: string, imobiliariaId: string | null): Promise<TipoContratoLabels> {
+  const row = await loadTipoContratoLabelsFromDB(tipoCodigo, imobiliariaId);
+  return buildTipoContratoLabels(tipoCodigo, row, false);
+}
+
 export function useTipoContratoLabels(params: { tipoCodigo: string; imobiliariaId: string | null }) {
   const { tipoCodigo, imobiliariaId } = params;
   const [row, setRow] = useState<any | null>(null);
@@ -83,15 +147,8 @@ export function useTipoContratoLabels(params: { tipoCodigo: string; imobiliariaI
       }
       setLoading(true);
       try {
-        const { data } = await supabase
-          .from("tipos_contrato")
-          .select(
-            "id, codigo, nome, label_vendedor, label_comprador, label_parte_a, label_parte_b, label_parte_a_plural, label_parte_b_plural, partes_simetricas, label_objeto, label_acao",
-          )
-          .eq("imobiliaria_id", imobiliariaId)
-          .eq("codigo", tipoCodigo)
-          .maybeSingle();
-        if (!cancelled) setRow(data || null);
+        const data = await loadTipoContratoLabelsFromDB(tipoCodigo, imobiliariaId);
+        if (!cancelled) setRow(data);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -103,49 +160,7 @@ export function useTipoContratoLabels(params: { tipoCodigo: string; imobiliariaI
   }, [imobiliariaId, tipoCodigo]);
 
   return useMemo<TipoContratoLabels>(() => {
-    const built = BUILTIN[tipoCodigo] || {
-      parteA: "Vendedor",
-      parteB: "Comprador",
-      parteAPlural: "Vendedores",
-      parteBPlural: "Compradores",
-      simetricas: false,
-      objeto: "Imóvel",
-      acao: "compra e venda",
-      tipoNome: tiposContrato.find((t) => String(t.id) === tipoCodigo)?.nome || null,
-    };
-
-    const parteA = String(row?.label_parte_a || row?.label_vendedor || built.parteA || "Vendedor").trim() || "Vendedor";
-    const rawParteB = String(row?.label_parte_b || row?.label_comprador || built.parteB || "Comprador").trim() || "Comprador";
-    const simetricas = Boolean(row?.partes_simetricas) || Boolean(built.simetricas);
-    const parteB = simetricas ? parteA : rawParteB;
-
-    const parteAPlural =
-      String(row?.label_parte_a_plural || "").trim() ||
-      String(built.parteAPlural || "").trim() ||
-      pluralizePt(parteA);
-    const rawParteBPlural =
-      String(row?.label_parte_b_plural || "").trim() ||
-      String(built.parteBPlural || "").trim() ||
-      pluralizePt(parteB);
-    const parteBPlural = simetricas ? parteAPlural : rawParteBPlural;
-
-    const objeto = String(row?.label_objeto || built.objeto || "Imóvel").trim() || "Imóvel";
-    const acao = String(row?.label_acao || built.acao || "compra e venda").trim() || "compra e venda";
-    const tipoNome = String(row?.nome || "").trim() || built.tipoNome || null;
-    const tipoContratoId = typeof row?.id === "string" && row.id.trim() ? row.id.trim() : null;
-
-    return {
-      parteA,
-      parteB,
-      parteAPlural,
-      parteBPlural,
-      simetricas,
-      objeto,
-      acao,
-      tipoContratoId,
-      tipoNome,
-      loading,
-    };
+    return buildTipoContratoLabels(tipoCodigo, row, loading);
   }, [row, tipoCodigo, loading]);
 }
 

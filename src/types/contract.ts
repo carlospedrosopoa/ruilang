@@ -89,6 +89,31 @@ export interface Pessoa {
   telefone?: string;
 }
 
+export type SituacaoTributaria = "quitado" | "parcelado" | "em_debito";
+export type TipoOnus = "hipoteca" | "alienacao_fiduciaria" | "penhora" | "arresto" | "sequestro" | "indisponibilidade" | "outro";
+
+export interface ProprietarioTabular {
+  id: string;
+  nome: string;
+  cpfCnpj: string;
+  percentualPropriedade: string;
+}
+
+export interface OnusReal {
+  id: string;
+  tipo: TipoOnus;
+  tipoOutro?: string;
+  credor: string;
+  valor: string;
+  numeroRegistro: string;
+}
+
+export interface Condominio {
+  nome: string;
+  valorMensal: string;
+  situacao: SituacaoTributaria;
+}
+
 export interface Imovel {
   tipo: string;
   descricao: string;
@@ -106,6 +131,48 @@ export interface Imovel {
   medidasLateralDireita: string;
   caracteristicas: string;
   adCorpus: boolean;
+  
+  // Novos campos
+  inscricaoImobiliariaIptu: string;
+  situacaoTributaria: SituacaoTributaria;
+  valorIptuAnual: string;
+  proprietariosTabulares: ProprietarioTabular[];
+  livreDeOnus: boolean;
+  onusReais: OnusReal[];
+  condominio?: Condominio;
+}
+
+export const situacaoTributariaLabels: Record<SituacaoTributaria, string> = {
+  quitado: "Quitado",
+  parcelado: "Parcelado",
+  em_debito: "Em débito",
+};
+
+export const tipoOnusLabels: Record<TipoOnus, string> = {
+  hipoteca: "Hipoteca",
+  alienacao_fiduciaria: "Alienação Fiduciária",
+  penhora: "Penhora",
+  arresto: "Arresto",
+  sequestro: "Sequestro",
+  indisponibilidade: "Indisponibilidade",
+  outro: "Outro",
+};
+
+export interface Testemunha {
+  id: string;
+  nome: string;
+  cpf: string;
+  rg?: string;
+  profissao?: string;
+  endereco?: string;
+}
+
+export function criarTestemunhaVazia(): Testemunha {
+  return {
+    id: crypto.randomUUID(),
+    nome: "",
+    cpf: "",
+  };
 }
 
 export interface ImovelPermuta {
@@ -120,13 +187,59 @@ export interface ImovelPermuta {
   valorEstimado: string;
 }
 
+export type TipoParcela =
+  | "sinal"
+  | "entrada"
+  | "parcela"
+  | "parcela_final"
+  | "financiamento"
+  | "fgts"
+  | "permuta"
+  | "consorcio"
+  | "cheque_promissoria";
+
+export type NaturezaSinal = "confirmatorias" | "penitenciais";
+export type FrequenciaParcela = "mensal" | "semanal" | "anual";
+export type ModalidadeFinanciamento = "sbpe" | "sfh" | "carteira" | "pro_cotista";
+export type IndiceCorrecao = "igpm" | "ipca" | "incc" | "inpc" | "igp_di" | "tr";
+
 export interface Parcela {
   id: string;
-  descricao: string;
+  tipo: TipoParcela;
   valor: string;
   quantidade: number;
-  tipo: "arras" | "parcela" | "entrada";
+  frequencia?: FrequenciaParcela;
   dataVencimento: string;
+  descricao: string;
+  observacoes?: string;
+  
+  // Sinal
+  naturezaSinal?: NaturezaSinal;
+  
+  // Financiamento
+  bancoFinanciamento?: string;
+  agenciaFinanciamento?: string;
+  modalidadeFinanciamento?: ModalidadeFinanciamento;
+  valorAprovadoFinanciamento?: string;
+  previsaoLiberacaoFinanciamento?: string;
+  
+  // FGTS
+  valorFgts?: string;
+  previsaoLiberacaoFgts?: string;
+  
+  // Permuta
+  descricaoBemPermuta?: string;
+  valorAvaliadoPermuta?: string;
+  
+  // Consórcio
+  administradoraConsorcio?: string;
+  valorCartaCreditoConsorcio?: string;
+  previsaoContemplacaoConsorcio?: string;
+  
+  // Cheque/Promissória
+  numeroChequePromissoria?: string;
+  bancoChequePromissoria?: string;
+  dataChequePromissoria?: string;
 }
 
 export interface DadosBancarios {
@@ -139,6 +252,17 @@ export interface DadosBancarios {
   pix: string;
 }
 
+export interface CorrecaoMonetaria {
+  aplicar: boolean;
+  indice?: IndiceCorrecao;
+  carenciaMeses?: number;
+}
+
+export interface EncargosAtraso {
+  multaMoratoria: string;
+  jurosMora: string;
+}
+
 export interface Pagamento {
   valorTotal: string;
   valorHonorarios?: string;
@@ -148,7 +272,48 @@ export interface Pagamento {
   indiceCorrecao: string;
   multaContratual: string;
   dadosBancarios?: DadosBancarios;
+  correcaoMonetaria?: CorrecaoMonetaria;
+  encargosAtraso?: EncargosAtraso;
 }
+
+export const tipoParcelaLabels: Record<TipoParcela, string> = {
+  sinal: "Sinal (Arras)",
+  entrada: "Entrada",
+  parcela: "Parcela",
+  parcela_final: "Parcela Final / Resíduo",
+  financiamento: "Financiamento Bancário",
+  fgts: "FGTS",
+  permuta: "Permuta",
+  consorcio: "Consórcio",
+  cheque_promissoria: "Cheque / Promissória",
+};
+
+export const naturezaSinalLabels: Record<NaturezaSinal, string> = {
+  confirmatorias: "Confirmatórias",
+  penitenciais: "Penitenciais",
+};
+
+export const frequenciaParcelaLabels: Record<FrequenciaParcela, string> = {
+  mensal: "Mensal",
+  semanal: "Semanal",
+  anual: "Anual",
+};
+
+export const modalidadeFinanciamentoLabels: Record<ModalidadeFinanciamento, string> = {
+  sbpe: "SBPE",
+  sfh: "SFH",
+  carteira: "Carteira",
+  pro_cotista: "Pró-Cotista",
+};
+
+export const indiceCorrecaoLabels: Record<IndiceCorrecao, string> = {
+  igpm: "IGPM",
+  ipca: "IPCA",
+  incc: "INCC",
+  inpc: "INPC",
+  igp_di: "IGP-DI",
+  tr: "TR",
+};
 
 export interface Locacao {
   finalidade: "residencial" | "comercial";
@@ -261,6 +426,12 @@ export function criarImovelVazio(): Imovel {
     medidasLateralDireita: "",
     caracteristicas: "",
     adCorpus: true,
+    inscricaoImobiliariaIptu: "",
+    situacaoTributaria: "quitado",
+    valorIptuAnual: "",
+    proprietariosTabulares: [],
+    livreDeOnus: true,
+    onusReais: [],
   };
 }
 
@@ -283,12 +454,27 @@ export function criarPagamentoVazio(): Pagamento {
     valorTotal: "",
     valorHonorarios: "",
     parcelas: [
-      { id: crypto.randomUUID(), descricao: "Arras confirmatórias no ato da assinatura", valor: "", quantidade: 1, tipo: "arras", dataVencimento: "" },
+      { 
+        id: crypto.randomUUID(), 
+        descricao: "Sinal no ato da assinatura", 
+        valor: "", 
+        quantidade: 1, 
+        tipo: "sinal", 
+        dataVencimento: "",
+        naturezaSinal: "confirmatorias"
+      },
     ],
     multaMoratoria: "10",
     jurosMora: "1",
     indiceCorrecao: "INPC/IBGE",
     multaContratual: "20",
+    correcaoMonetaria: {
+      aplicar: false,
+    },
+    encargosAtraso: {
+      multaMoratoria: "10",
+      jurosMora: "1",
+    },
   };
 }
 
@@ -303,4 +489,112 @@ export function criarLocacaoVazia(): Locacao {
     valorCaucao: "",
     multaRescisao: "",
   };
+}
+
+export type ParteTipo = "vendedor" | "comprador";
+export type TipoProcuracao = "publica" | "particular_com_firma" | "particular_sem_firma";
+export type QualificacaoNoNegocio = 
+  | "conjuge_meeiro" 
+  | "ex_conjuge" 
+  | "herdeiro" 
+  | "condomino" 
+  | "fiador" 
+  | "interveniente_garantidor" 
+  | "outro";
+
+export interface Procurador {
+  id?: string;
+  submissionId: string;
+  parteTipo: ParteTipo;
+  parteIndice: number;
+  
+  nomeCompleto: string;
+  nacionalidade?: string;
+  profissao?: string;
+  estadoCivil?: string;
+  regimeBens?: string;
+  
+  tipoDocumento?: string;
+  numeroDocumento?: string;
+  orgaoExpedidor?: string;
+  cpf?: string;
+  cnpj?: string;
+  
+  filiacaoPai?: string;
+  filiacaoMae?: string;
+  
+  enderecoCompleto?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  email?: string;
+  telefone?: string;
+  
+  tipoProcuracao?: TipoProcuracao;
+  dataProcuracao?: Date;
+  cartorioLivroFolha?: string;
+  poderesOutorgados?: string;
+  anexoProcuracaoUrl?: string;
+  
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface Anuente {
+  id?: string;
+  submissionId: string;
+  
+  nomeCompleto: string;
+  nacionalidade?: string;
+  profissao?: string;
+  estadoCivil?: string;
+  regimeBens?: string;
+  
+  tipoDocumento?: string;
+  numeroDocumento?: string;
+  orgaoExpedidor?: string;
+  cpf?: string;
+  cnpj?: string;
+  
+  filiacaoPai?: string;
+  filiacaoMae?: string;
+  
+  enderecoCompleto?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  email?: string;
+  telefone?: string;
+  
+  qualificacaoNoNegocio: QualificacaoNoNegocio;
+  qualificacaoOutro?: string;
+  motivoAnuencia?: string;
+  assinaContrato: boolean;
+  
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export function criarProcuradorVazio(submissionId: string, parteTipo: ParteTipo, parteIndice: number): Procurador {
+  return {
+    id: crypto.randomUUID(),
+    submissionId,
+    parteTipo,
+    parteIndice,
+    nomeCompleto: "",
+    nacionalidade: "brasileira",
+  } as Procurador;
+}
+
+export function criarAnuenteVazio(submissionId: string): Anuente {
+  return {
+    id: crypto.randomUUID(),
+    submissionId,
+    nomeCompleto: "",
+    nacionalidade: "brasileira",
+    qualificacaoNoNegocio: "outro",
+    assinaContrato: true,
+  } as Anuente;
 }

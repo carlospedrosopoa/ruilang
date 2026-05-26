@@ -1,23 +1,61 @@
 import { Button } from "@/components/ui/button";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Plus } from "lucide-react";
 import PessoaForm from "./PessoaForm";
-import { Pessoa, criarPessoaVazia } from "@/types/contract";
+import ProcuradorForm from "./ProcuradorForm";
+import AnuenteForm from "./AnuenteForm";
+import { Pessoa, criarPessoaVazia, Procurador, Anuente, criarProcuradorVazio, criarAnuenteVazio } from "@/types/contract";
 
 interface StepVendedoresProps {
   vendedores: Pessoa[];
   onChange: (vendedores: Pessoa[]) => void;
+  procuradores: Procurador[];
+  onProcuradoresChange: (procuradores: Procurador[]) => void;
+  anuentes: Anuente[];
+  onAnuentesChange: (anuentes: Anuente[]) => void;
   titulo?: string;
   tituloPlural?: string;
   simetricas?: boolean;
   numeroBase?: 1 | 2;
   emailRequired?: boolean;
   onExtractFiles?: (files: File[]) => Promise<void> | void;
+  errors?: Array<{ field: string; message: string; index?: number }>;
+  submissionId?: string;
 }
 
 const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
 
-const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlural = "Vendedor(es)", simetricas, numeroBase = 1, emailRequired, onExtractFiles }: StepVendedoresProps) => {
+const StepVendedores = ({ vendedores, onChange, procuradores, onProcuradoresChange, anuentes, onAnuentesChange, titulo = "Vendedor", tituloPlural = "Vendedor(es)", simetricas, numeroBase = 1, emailRequired, onExtractFiles, errors, submissionId }: StepVendedoresProps) => {
   const addVendedor = () => onChange([...vendedores, criarPessoaVazia()]);
+  
+  const addProcurador = (parteIndice: number) => {
+    if (!submissionId) return;
+    onProcuradoresChange([...procuradores, criarProcuradorVazio(submissionId, "vendedor", parteIndice)]);
+  };
+  
+  const addAnuente = () => {
+    if (!submissionId) return;
+    onAnuentesChange([...anuentes, criarAnuenteVazio(submissionId)]);
+  };
+  
+  const updateProcurador = (index: number, procurador: Procurador) => {
+    const updated = [...procuradores];
+    updated[index] = procurador;
+    onProcuradoresChange(updated);
+  };
+  
+  const removeProcurador = (index: number) => {
+    onProcuradoresChange(procuradores.filter((_, i) => i !== index));
+  };
+  
+  const updateAnuente = (index: number, anuente: Anuente) => {
+    const updated = [...anuentes];
+    updated[index] = anuente;
+    onAnuentesChange(updated);
+  };
+  
+  const removeAnuente = (index: number) => {
+    onAnuentesChange(anuentes.filter((_, i) => i !== index));
+  };
 
   const updateVendedor = (index: number, pessoa: Pessoa) => {
     const updated = [...vendedores];
@@ -105,28 +143,85 @@ const StepVendedores = ({ vendedores, onChange, titulo = "Vendedor", tituloPlura
             ? principalPos * 2 + (numeroBase === 1 ? 1 : 2)
             : (principalPos + 1);
 
+        const pessoaErrors = errors?.filter(e => e.index === index) || [];
+        const isPrincipal = !vendedor.conjugeDeId;
+        const principalIndex = isPrincipal ? principalPos : -1;
+        
+        const procuradoresDoParte = procuradores.filter(p => p.parteTipo === "vendedor" && p.parteIndice === principalIndex);
+        
         return (
-          <PessoaForm
-            key={vendedor.id}
-            pessoa={vendedor}
-            onChange={(p) => updateVendedor(index, p)}
-            onRemove={canRemove(vendedor) ? () => removeVendedor(index) : undefined}
-            titulo={
-              vendedor.conjugeDeId
-                ? pessoaPrincipal?.estadoCivil === "União Estável"
-                  ? `Companheiro(a) de ${pessoaPrincipal?.nome || titulo}`
-                  : `Cônjuge de ${pessoaPrincipal?.nome || titulo}`
-                : titulo
-            }
-            index={index}
-            displayNumber={displayNumber}
-            isConjuge={!!vendedor.conjugeDeId}
-            hideEstadoCivil={!!vendedor.conjugeDeId}
-            emailRequired={emailRequired}
-            onExtractFiles={onExtractFiles}
-          />
+          <div key={vendedor.id} className="space-y-4">
+            <PessoaForm
+              pessoa={vendedor}
+              onChange={(p) => updateVendedor(index, p)}
+              onRemove={canRemove(vendedor) ? () => removeVendedor(index) : undefined}
+              titulo={
+                vendedor.conjugeDeId
+                  ? pessoaPrincipal?.estadoCivil === "União Estável"
+                    ? `Companheiro(a) de ${pessoaPrincipal?.nome || titulo}`
+                    : `Cônjuge de ${pessoaPrincipal?.nome || titulo}`
+                  : titulo
+              }
+              index={index}
+              displayNumber={displayNumber}
+              isConjuge={!!vendedor.conjugeDeId}
+              hideEstadoCivil={!!vendedor.conjugeDeId}
+              emailRequired={emailRequired}
+              onExtractFiles={onExtractFiles}
+              errors={pessoaErrors}
+            />
+            
+            {isPrincipal && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addProcurador(principalIndex)}
+                  className="text-sm"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Adicionar Procurador deste {titulo}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addAnuente}
+                  className="text-sm"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Adicionar Anuente
+                </Button>
+              </div>
+            )}
+            
+            {procuradoresDoParte.map((procurador, pIndex) => {
+              const globalIndex = procuradores.indexOf(procurador);
+              return (
+                <ProcuradorForm
+                  key={procurador.id}
+                  procurador={procurador}
+                  onChange={(p) => updateProcurador(globalIndex, p)}
+                  onRemove={() => removeProcurador(globalIndex)}
+                  representanteNome={vendedor.nome}
+                  index={globalIndex}
+                  onExtractFiles={onExtractFiles}
+                />
+              );
+            })}
+          </div>
         );
       })}
+
+      {anuentes.map((anuente, index) => (
+        <AnuenteForm
+          key={anuente.id}
+          anuente={anuente}
+          onChange={(a) => updateAnuente(index, a)}
+          onRemove={() => removeAnuente(index)}
+          index={index}
+          onExtractFiles={onExtractFiles}
+        />
+      ))}
 
       <Button variant="outline" onClick={addVendedor} className="w-full border-dashed">
         <UserPlus className="w-4 h-4 mr-2" />
