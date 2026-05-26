@@ -200,6 +200,7 @@ const ContractWizard = () => {
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [testemunhas, setTestemunhas] = useState<Testemunha[]>([]);
   const [versoes, setVersoes] = useState<ContratoVersao[]>([]);
+  const [versoesDisponiveis, setVersoesDisponiveis] = useState(true);
   const [versaoSelecionada, setVersaoSelecionada] = useState<ContratoVersao | null>(null);
   const [loadingVersoes, setLoadingVersoes] = useState(false);
   const didLoadSubmissionRef = useRef(false);
@@ -226,10 +227,10 @@ const ContractWizard = () => {
 
   const currentStepObj = steps[currentStep - 1];
   useEffect(() => {
-    if (currentStepObj?.label === "Gerar" && minuta) {
+    if (versoesDisponiveis && currentStepObj?.label === "Gerar" && minuta) {
       carregarVersoes();
     }
-  }, [currentStepObj?.label, minuta]);
+  }, [currentStepObj?.label, minuta, versoesDisponiveis]);
 
   useEffect(() => {
     const loadTipos = async () => {
@@ -676,6 +677,7 @@ const ContractWizard = () => {
     tipo: TipoVersaoContrato,
     promptRefinamento?: string
   ) => {
+    if (!versoesDisponiveis) return null;
     if (!submissionId) return null;
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -719,6 +721,11 @@ const ContractWizard = () => {
       setVersoes((prev) => [...prev, novaVersao]);
       return novaVersao;
     } catch (err) {
+      const code = (err as any)?.code;
+      if (code === "PGRST205" || (err as any)?.status === 404) {
+        setVersoesDisponiveis(false);
+        return null;
+      }
       console.error("Erro ao salvar versão:", err);
       return null;
     }
@@ -726,6 +733,7 @@ const ContractWizard = () => {
 
   const carregarVersoes = async () => {
     if (!submissionId) return;
+    if (!versoesDisponiveis) return;
     setLoadingVersoes(true);
     try {
       const { data, error } = await supabase
@@ -735,7 +743,15 @@ const ContractWizard = () => {
         .order("versao_numero", { ascending: false })
         .limit(20);
 
-      if (error) throw error;
+      if (error) {
+        const code = (error as any)?.code;
+        if (code === "PGRST205" || (error as any)?.status === 404) {
+          setVersoes([]);
+          setVersoesDisponiveis(false);
+          return;
+        }
+        throw error;
+      }
 
       const versoesCarregadas: ContratoVersao[] = (data || []).map((item: any) => ({
         id: item.id,
@@ -750,6 +766,12 @@ const ContractWizard = () => {
 
       setVersoes(versoesCarregadas);
     } catch (err) {
+      const code = (err as any)?.code;
+      if (code === "PGRST205" || (err as any)?.status === 404) {
+        setVersoes([]);
+        setVersoesDisponiveis(false);
+        return;
+      }
       console.error("Erro ao carregar versões:", err);
     } finally {
       setLoadingVersoes(false);
@@ -1298,7 +1320,15 @@ const ContractWizard = () => {
       {/* Premium Header */}
       <header className="gradient-primary border-b border-primary/20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
-          <button onClick={() => navigate("/painel")} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate("/painel")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") navigate("/painel");
+            }}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+          >
             <img src="/images/logo-pactadoc.png" alt="PactaDoc" className="h-8 w-auto" />
             <div>
               <h1 className="font-display text-lg font-bold text-primary-foreground tracking-tight">PactaDoc</h1>
@@ -1318,7 +1348,7 @@ const ContractWizard = () => {
                 </button>
               ) : null}
             </div>
-          </button>
+          </div>
         </div>
       </header>
 
