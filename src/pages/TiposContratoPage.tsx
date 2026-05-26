@@ -31,6 +31,13 @@ type TipoContratoRow = {
   icone: string;
   label_vendedor: string;
   label_comprador: string;
+  label_parte_a?: string | null;
+  label_parte_b?: string | null;
+  label_parte_a_plural?: string | null;
+  label_parte_b_plural?: string | null;
+  partes_simetricas?: boolean | null;
+  label_objeto?: string | null;
+  label_acao?: string | null;
   modelo_base: string | null;
   ativo: boolean;
   created_at: string;
@@ -58,8 +65,13 @@ export default function TiposContratoPage() {
 
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [labelVendedor, setLabelVendedor] = useState("Vendedor");
-  const [labelComprador, setLabelComprador] = useState("Comprador");
+  const [labelParteA, setLabelParteA] = useState("Vendedor");
+  const [labelParteB, setLabelParteB] = useState("Comprador");
+  const [labelParteAPlural, setLabelParteAPlural] = useState("Vendedores");
+  const [labelParteBPlural, setLabelParteBPlural] = useState("Compradores");
+  const [partesSimetricas, setPartesSimetricas] = useState(false);
+  const [labelObjeto, setLabelObjeto] = useState("Imóvel");
+  const [labelAcao, setLabelAcao] = useState("compra e venda");
   const [ativo, setAtivo] = useState(true);
 
   const [perfis, setPerfis] = useState<PerfilRow[]>([]);
@@ -128,7 +140,7 @@ export default function TiposContratoPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("tipos_contrato")
-      .select("id, imobiliaria_id, codigo, nome, descricao, icone, label_vendedor, label_comprador, modelo_base, ativo, created_at, updated_at")
+      .select("id, imobiliaria_id, codigo, nome, descricao, icone, label_vendedor, label_comprador, label_parte_a, label_parte_b, label_parte_a_plural, label_parte_b_plural, partes_simetricas, label_objeto, label_acao, modelo_base, ativo, created_at, updated_at")
       .eq("imobiliaria_id", activeTenantId)
       .order("created_at", { ascending: true });
     if (error) {
@@ -149,8 +161,13 @@ export default function TiposContratoPage() {
     setEditingCodigo(null);
     setNome("");
     setDescricao("");
-    setLabelVendedor("Vendedor");
-    setLabelComprador("Comprador");
+    setLabelParteA("Vendedor");
+    setLabelParteB("Comprador");
+    setLabelParteAPlural("Vendedores");
+    setLabelParteBPlural("Compradores");
+    setPartesSimetricas(false);
+    setLabelObjeto("Imóvel");
+    setLabelAcao("compra e venda");
     setAtivo(true);
     setPerfis([]);
     setConfiguredPerfis(new Set());
@@ -162,8 +179,15 @@ export default function TiposContratoPage() {
     setEditingCodigo(row.codigo);
     setNome(row.nome || "");
     setDescricao(row.descricao || "");
-    setLabelVendedor(row.label_vendedor || "Vendedor");
-    setLabelComprador(row.label_comprador || "Comprador");
+    const a = String(row.label_parte_a || row.label_vendedor || "Vendedor").trim() || "Vendedor";
+    const b = String(row.label_parte_b || row.label_comprador || "Comprador").trim() || "Comprador";
+    setLabelParteA(a);
+    setLabelParteB(b);
+    setLabelParteAPlural(String(row.label_parte_a_plural || "").trim() || "");
+    setLabelParteBPlural(String(row.label_parte_b_plural || "").trim() || "");
+    setPartesSimetricas(Boolean(row.partes_simetricas));
+    setLabelObjeto(String(row.label_objeto || "").trim() || "Imóvel");
+    setLabelAcao(String(row.label_acao || "").trim() || "compra e venda");
     setAtivo(Boolean(row.ativo));
     loadPerfis(row.id);
     loadConfigured(row.codigo);
@@ -183,11 +207,26 @@ export default function TiposContratoPage() {
 
     setSaving(true);
     try {
+      const sim = Boolean(partesSimetricas);
+      const parteA = labelParteA.trim() || "Vendedor";
+      const parteB = sim ? parteA : (labelParteB.trim() || "Comprador");
+      const parteAPlural = labelParteAPlural.trim() || null;
+      const parteBPlural = sim ? (parteAPlural || null) : (labelParteBPlural.trim() || null);
+      const objeto = labelObjeto.trim() || "Imóvel";
+      const acao = labelAcao.trim() || "compra e venda";
+
       const payload: any = {
         nome: n,
         descricao: descricao.trim() || null,
-        label_vendedor: labelVendedor.trim() || "Vendedor",
-        label_comprador: labelComprador.trim() || "Comprador",
+        label_vendedor: parteA,
+        label_comprador: parteB,
+        label_parte_a: parteA,
+        label_parte_b: parteB,
+        label_parte_a_plural: parteAPlural,
+        label_parte_b_plural: parteBPlural,
+        partes_simetricas: sim,
+        label_objeto: objeto,
+        label_acao: acao,
         ativo,
         updated_at: new Date().toISOString(),
       };
@@ -197,7 +236,7 @@ export default function TiposContratoPage() {
           .from("tipos_contrato")
           .update(payload)
           .eq("id", editingId)
-          .select("id, imobiliaria_id, codigo, nome, descricao, icone, label_vendedor, label_comprador, modelo_base, ativo, created_at, updated_at")
+          .select("id, imobiliaria_id, codigo, nome, descricao, icone, label_vendedor, label_comprador, label_parte_a, label_parte_b, label_parte_a_plural, label_parte_b_plural, partes_simetricas, label_objeto, label_acao, modelo_base, ativo, created_at, updated_at")
           .single();
         if (error) throw error;
         setRows((prev) => prev.map((r) => (r.id === editingId ? (data as any) : r)));
@@ -214,14 +253,21 @@ export default function TiposContratoPage() {
             nome: n,
             descricao: descricao.trim() || null,
             icone: "FileText",
-            label_vendedor: labelVendedor.trim() || "Vendedor",
-            label_comprador: labelComprador.trim() || "Comprador",
+            label_vendedor: parteA,
+            label_comprador: parteB,
+            label_parte_a: parteA,
+            label_parte_b: parteB,
+            label_parte_a_plural: parteAPlural,
+            label_parte_b_plural: parteBPlural,
+            partes_simetricas: sim,
+            label_objeto: objeto,
+            label_acao: acao,
             ativo,
             created_by: userId,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           } as any)
-          .select("id, imobiliaria_id, codigo, nome, descricao, icone, label_vendedor, label_comprador, modelo_base, ativo, created_at, updated_at")
+          .select("id, imobiliaria_id, codigo, nome, descricao, icone, label_vendedor, label_comprador, label_parte_a, label_parte_b, label_parte_a_plural, label_parte_b_plural, partes_simetricas, label_objeto, label_acao, modelo_base, ativo, created_at, updated_at")
           .single();
         if (error) throw error;
         setRows((prev) => [...prev, data as any]);
@@ -615,12 +661,97 @@ export default function TiposContratoPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label>Label do Vendedor</Label>
-                <Input value={labelVendedor} onChange={(e) => setLabelVendedor(e.target.value)} placeholder="Ex: Cedente" />
+                <Label>Label da Parte A (singular)</Label>
+                <Input
+                  value={labelParteA}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setLabelParteA(v);
+                    if (partesSimetricas) setLabelParteB(v);
+                  }}
+                  placeholder="Ex: Cedente"
+                />
+              </div>
+              {!partesSimetricas ? (
+                <div>
+                  <Label>Label da Parte B (singular)</Label>
+                  <Input
+                    value={labelParteB}
+                    onChange={(e) => setLabelParteB(e.target.value)}
+                    placeholder="Ex: Cessionário"
+                  />
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg px-4 py-3">
+                  <div className="text-xs text-muted-foreground">Parte B</div>
+                  <div className="text-sm font-semibold text-foreground">Igual à Parte A</div>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Plural da Parte A</Label>
+                <Input
+                  value={labelParteAPlural}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setLabelParteAPlural(v);
+                    if (partesSimetricas) setLabelParteBPlural(v);
+                  }}
+                  placeholder="Ex: Cedentes"
+                />
+              </div>
+              {!partesSimetricas ? (
+                <div>
+                  <Label>Plural da Parte B</Label>
+                  <Input
+                    value={labelParteBPlural}
+                    onChange={(e) => setLabelParteBPlural(e.target.value)}
+                    placeholder="Ex: Cessionários"
+                  />
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg px-4 py-3">
+                  <div className="text-xs text-muted-foreground">Plural da Parte B</div>
+                  <div className="text-sm font-semibold text-foreground">Igual ao plural da Parte A</div>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between gap-3 border border-border rounded-lg px-4 py-3">
+                <div className="space-y-0.5">
+                  <div className="text-sm font-semibold text-foreground">Partes são simétricas</div>
+                  <div className="text-xs text-muted-foreground">Ex.: permuta — ambos são Permutantes</div>
+                </div>
+                <Switch
+                  checked={partesSimetricas}
+                  onCheckedChange={(v) => {
+                    setPartesSimetricas(v);
+                    if (v) {
+                      setLabelParteB(labelParteA);
+                      setLabelParteBPlural(labelParteAPlural);
+                    }
+                  }}
+                />
+              </div>
+              <div className="border border-border rounded-lg px-4 py-3">
+                <div className="text-xs text-muted-foreground">Prévia</div>
+                <div className="text-sm font-semibold text-foreground">
+                  Etapa 1: {labelParteAPlural?.trim() ? labelParteAPlural.trim() : "Parte A"} → Etapa 2:{" "}
+                  {partesSimetricas
+                    ? (labelParteAPlural?.trim() ? labelParteAPlural.trim() : "Parte A")
+                    : (labelParteBPlural?.trim() ? labelParteBPlural.trim() : "Parte B")}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Label do Objeto</Label>
+                <Input value={labelObjeto} onChange={(e) => setLabelObjeto(e.target.value)} placeholder="Imóvel" />
               </div>
               <div>
-                <Label>Label do Comprador</Label>
-                <Input value={labelComprador} onChange={(e) => setLabelComprador(e.target.value)} placeholder="Ex: Cessionário" />
+                <Label>Termo da Ação</Label>
+                <Input value={labelAcao} onChange={(e) => setLabelAcao(e.target.value)} placeholder="compra e venda" />
               </div>
             </div>
             <div className="flex items-center justify-between gap-3 border border-border rounded-lg px-4 py-3">

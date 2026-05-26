@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,26 +27,14 @@ import {
 } from "@/types/contract";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useTipoContratoLabels } from "@/hooks/useTipoContratoLabels";
 
-const labelByTipo: Record<TipoContrato, { vendedor: string; comprador: string }> = {
-  promessa_compra_venda: { vendedor: "Vendedor", comprador: "Comprador" },
-  promessa_compra_venda_permuta: { vendedor: "Vendedor", comprador: "Comprador" },
-  cessao_direitos: { vendedor: "Cedente", comprador: "Cessionário" },
-  locacao: { vendedor: "Locador", comprador: "Locatário" },
-};
-
-const defaultLabels = { vendedor: "Vendedor", comprador: "Comprador" };
-
-function isBuiltinTipo(value: string): value is TipoContrato {
-  return Object.prototype.hasOwnProperty.call(labelByTipo, value);
-}
-
-function getSteps(tipo: TipoContrato, labels: { vendedor: string; comprador: string }) {
+function getSteps(tipo: TipoContrato, labels: { parteAPlural: string; parteBPlural: string; objeto: string }) {
   const steps = [
     { number: 1, label: "Corretor" },
-    { number: 2, label: `${labels.vendedor}(es)` },
-    { number: 3, label: `${labels.comprador}(es)` },
-    { number: 4, label: "Imóvel" },
+    { number: 2, label: labels.parteAPlural },
+    { number: 3, label: labels.parteBPlural },
+    { number: 4, label: labels.objeto || "Imóvel" },
   ];
 
   let stepNumber = 5;
@@ -63,6 +51,10 @@ function getSteps(tipo: TipoContrato, labels: { vendedor: string; comprador: str
 
   steps.push({ number: stepNumber, label: "Enviar" });
   return steps;
+}
+
+function isBaseTipo(value: string): value is TipoContrato {
+  return value === "promessa_compra_venda" || value === "promessa_compra_venda_permuta" || value === "cessao_direitos" || value === "locacao";
 }
 
 function parseCurrencyBRL(input: string): number | null {
@@ -128,9 +120,11 @@ const ColetaPage = () => {
   // Imobiliaria data
   const [imobiliaria, setImobiliaria] = useState<any>(null);
   const [tipoNome, setTipoNome] = useState<string | null>(null);
-  const [labels, setLabels] = useState<{ vendedor: string; comprador: string }>(labelByTipo.promessa_compra_venda);
-
-  const steps = getSteps(tipoBase, labels);
+  const labelsInfo = useTipoContratoLabels({ tipoCodigo, imobiliariaId: (imobiliaria as any)?.id || null });
+  const steps = useMemo(
+    () => getSteps(tipoBase, { parteAPlural: labelsInfo.parteAPlural, parteBPlural: labelsInfo.parteBPlural, objeto: labelsInfo.objeto }),
+    [tipoBase, labelsInfo.parteAPlural, labelsInfo.parteBPlural, labelsInfo.objeto],
+  );
   const totalSteps = steps.length;
   const tipoInfo = tiposContrato.find((t) => t.id === tipoBase);
   const tipoDisplayName = tipoNome || tipoInfo?.nome || "Contrato";
@@ -153,7 +147,7 @@ const ColetaPage = () => {
       setSubmissionId(submission.id);
       const codigo = String(submission.tipo_contrato || "promessa_compra_venda").trim() || "promessa_compra_venda";
       setTipoCodigo(codigo);
-      setTipoBase(isBuiltinTipo(codigo) ? codigo : "promessa_compra_venda");
+      setTipoBase(isBaseTipo(codigo) ? codigo : "promessa_compra_venda");
       setStatus(submission.status);
       setCorretorNome(submission.corretor_nome || "");
       setCorretorTelefone(submission.corretor_telefone || "");
@@ -177,8 +171,7 @@ const ColetaPage = () => {
         if (typeof dados.perfilContrato === "string" && dados.perfilContrato.trim()) setPerfilContrato(dados.perfilContrato.trim());
       }
 
-      if (isBuiltinTipo(codigo)) {
-        setLabels(labelByTipo[codigo]);
+      if (isBaseTipo(codigo)) {
         setTipoNome(null);
       } else {
         const imobId = (submission.imobiliaria_id || submission.imobiliarias?.id || null) as string | null;
@@ -186,21 +179,16 @@ const ColetaPage = () => {
           try {
             const { data: tipoRow } = await supabase
               .from("tipos_contrato")
-              .select("nome, label_vendedor, label_comprador")
+              .select("nome")
               .eq("imobiliaria_id", imobId)
               .eq("codigo", codigo)
               .maybeSingle();
-            const vend = String((tipoRow as any)?.label_vendedor || "").trim() || defaultLabels.vendedor;
-            const comp = String((tipoRow as any)?.label_comprador || "").trim() || defaultLabels.comprador;
-            setLabels({ vendedor: vend, comprador: comp });
             const nm = String((tipoRow as any)?.nome || "").trim();
             setTipoNome(nm || null);
           } catch {
-            setLabels(defaultLabels);
             setTipoNome(null);
           }
         } else {
-          setLabels(defaultLabels);
           setTipoNome(null);
         }
       }
@@ -559,30 +547,34 @@ const ColetaPage = () => {
       );
     }
 
-    if (currentStepObj.label.includes(labels.vendedor)) {
+    if (currentStep === 2) {
       return (
         <StepVendedores
           vendedores={vendedores}
           onChange={setVendedores}
-          titulo={labels.vendedor}
-          tituloPlural={`${labels.vendedor}(es)`}
+          titulo={labelsInfo.parteA}
+          tituloPlural={labelsInfo.parteAPlural}
+          simetricas={labelsInfo.simetricas}
+          numeroBase={1}
         />
       );
     }
 
-    if (currentStepObj.label.includes(labels.comprador)) {
+    if (currentStep === 3) {
       return (
         <StepCompradores
           compradores={compradores}
           onChange={setCompradores}
-          titulo={labels.comprador}
-          tituloPlural={`${labels.comprador}(es)`}
+          titulo={labelsInfo.parteB}
+          tituloPlural={labelsInfo.parteBPlural}
+          simetricas={labelsInfo.simetricas}
+          numeroBase={2}
         />
       );
     }
 
-    if (currentStepObj.label === "Imóvel") {
-      return <StepObjeto imovel={imovel} onChange={setImovel} />;
+    if (currentStep === 4) {
+      return <StepObjeto imovel={imovel} onChange={setImovel} labelObjeto={labelsInfo.objeto} />;
     }
 
     if (currentStepObj.label === "Permuta") {
@@ -594,7 +586,7 @@ const ColetaPage = () => {
     }
 
     if (currentStepObj.label === "Pagamento") {
-      return <StepPagamento pagamento={pagamento} onChange={setPagamento} />;
+      return <StepPagamento pagamento={pagamento} onChange={setPagamento} labelParteA={labelsInfo.parteA} />;
     }
 
     if (currentStepObj.label === "Enviar") {
@@ -615,15 +607,15 @@ const ColetaPage = () => {
                 <span className="text-muted-foreground">{corretorNome || "—"}</span>
               </div>
               <div>
-                <span className="font-semibold text-foreground">{labels.vendedor}(es):</span>{" "}
+                <span className="font-semibold text-foreground">{labelsInfo.parteAPlural}:</span>{" "}
                 <span className="text-muted-foreground">{vendedores.map((v) => v.nome || "—").join(", ")}</span>
               </div>
               <div>
-                <span className="font-semibold text-foreground">{labels.comprador}(es):</span>{" "}
+                <span className="font-semibold text-foreground">{labelsInfo.parteBPlural}:</span>{" "}
                 <span className="text-muted-foreground">{compradores.map((c) => c.nome || "—").join(", ")}</span>
               </div>
               <div>
-                <span className="font-semibold text-foreground">Imóvel:</span>{" "}
+                <span className="font-semibold text-foreground">{labelsInfo.objeto}:</span>{" "}
                 <span className="text-muted-foreground">{imovel.localizacao || "—"}, {imovel.municipio || "—"}/{imovel.estadoImovel || "—"}</span>
               </div>
               {tipoBase !== "locacao" && (

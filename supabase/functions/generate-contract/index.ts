@@ -1,6 +1,209 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
+interface ClausulaAncorada {
+  id: string;
+  titulo: string;
+  conteudo: string;
+  startIndex: number;
+  endIndex: number;
+  ordinal?: string;
+  numero?: number;
+}
+
+interface ResultadoParseAncoras {
+  clausulas: ClausulaAncorada[];
+  erros: Array<{
+    tipo: "id_duplicado" | "id_inexistente" | "tag_sem_fechamento" | "tag_sem_id";
+    mensagem: string;
+    posicao?: number;
+  }>;
+  textoLimpo: string;
+}
+
+type OpcoesRenderizacao = {
+  estiloNumeracao: "ordinal" | "arabico";
+  prefixoClausula: string;
+};
+
+const DEFAULT_OPCOES_ANCHORS: OpcoesRenderizacao = {
+  estiloNumeracao: "ordinal",
+  prefixoClausula: "CLÁUSULA",
+};
+
+const ORDINAIS = [
+  "PRIMEIRA",
+  "SEGUNDA",
+  "TERCEIRA",
+  "QUARTA",
+  "QUINTA",
+  "SEXTA",
+  "SÉTIMA",
+  "OITAVA",
+  "NONA",
+  "DÉCIMA",
+  "DÉCIMA PRIMEIRA",
+  "DÉCIMA SEGUNDA",
+  "DÉCIMA TERCEIRA",
+  "DÉCIMA QUARTA",
+  "DÉCIMA QUINTA",
+  "DÉCIMA SEXTA",
+  "DÉCIMA SÉTIMA",
+  "DÉCIMA OITAVA",
+  "DÉCIMA NONA",
+  "VIGÉSIMA",
+  "VIGÉSIMA PRIMEIRA",
+  "VIGÉSIMA SEGUNDA",
+  "VIGÉSIMA TERCEIRA",
+  "VIGÉSIMA QUARTA",
+  "VIGÉSIMA QUINTA",
+  "VIGÉSIMA SEXTA",
+  "VIGÉSIMA SÉTIMA",
+  "VIGÉSIMA OITAVA",
+  "VIGÉSIMA NONA",
+  "TRIGÉSIMA",
+];
+
+function getOrdinal(numero: number): string {
+  return ORDINAIS[numero - 1] || `${numero}ª`;
+}
+
+function parseTemplateAncoras(texto: string): ResultadoParseAncoras {
+  const clausulas: ClausulaAncorada[] = [];
+  const erros: ResultadoParseAncoras["erros"] = [];
+  const idsExistentes = new Set<string>();
+
+  const regexAbertura = /<!--\s*CLAUSULA\s+id="([^"]+)"(?:\s+titulo="([^"]*)")?\s*-->/g;
+  const regexFechamento = /<!--\s*\/CLAUSULA\s*-->/g;
+
+  let match: RegExpExecArray | null;
+
+  while ((match = regexAbertura.exec(texto)) !== null) {
+    const id = match[1].trim();
+    const titulo = (match[2] || "").trim();
+    const startIndex = match.index;
+
+    if (!id) {
+      erros.push({
+        tipo: "tag_sem_id",
+        mensagem: "Tag de abertura de cláusula sem atributo id",
+        posicao: startIndex,
+      });
+      continue;
+    }
+
+    if (idsExistentes.has(id)) {
+      erros.push({
+        tipo: "id_duplicado",
+        mensagem: `ID de cláusula duplicado: "${id}"`,
+        posicao: startIndex,
+      });
+      continue;
+    }
+
+    regexFechamento.lastIndex = regexAbertura.lastIndex;
+    const matchFechamento = regexFechamento.exec(texto);
+
+    if (!matchFechamento) {
+      erros.push({
+        tipo: "tag_sem_fechamento",
+        mensagem: `Cláusula "${id}" sem tag de fechamento`,
+        posicao: startIndex,
+      });
+      continue;
+    }
+
+    const endIndex = matchFechamento.index + matchFechamento[0].length;
+    const conteudo = texto.slice(match.index + match[0].length, matchFechamento.index).trim();
+
+    idsExistentes.add(id);
+    clausulas.push({
+      id,
+      titulo: titulo || id.toUpperCase(),
+      conteudo,
+      startIndex,
+      endIndex,
+    });
+  }
+
+  clausulas.sort((a, b) => a.startIndex - b.startIndex);
+  clausulas.forEach((clausula, index) => {
+    clausula.numero = index + 1;
+    clausula.ordinal = getOrdinal(index + 1);
+  });
+
+  const regexRef = /{{(REF|NUM|TITULO):([^}]+)}}/g;
+  while ((match = regexRef.exec(texto)) !== null) {
+    const idRef = match[2].trim();
+    if (!idsExistentes.has(idRef)) {
+      erros.push({
+        tipo: "id_inexistente",
+        mensagem: `Referência a ID inexistente: "${idRef}"`,
+        posicao: match.index,
+      });
+    }
+  }
+
+  let textoLimpo = texto;
+  for (const clausula of clausulas) {
+    const tagAbertura = texto.slice(clausula.startIndex, regexAbertura.lastIndex);
+    const tagFechamento = texto.slice(regexFechamento.lastIndex, clausula.endIndex);
+    textoLimpo = textoLimpo.replace(tagAbertura, "").replace(tagFechamento, "");
+  }
+
+  return { clausulas, erros, textoLimpo };
+}
+
+function renderizarTemplate(
+  texto: string,
+  clausulasOrdenadas: ClausulaAncorada[],
+  opcoes: Partial<OpcoesRenderizacao> = {},
+): string {
+  const opts = { ...DEFAULT_OPCOES_ANCHORS, ...opcoes };
+  const mapaClausulas = new Map(clausulasOrdenadas.map((c) => [c.id, c]));
+
+  let resultado = texto;
+
+  for (const clausula of clausulasOrdenadas) {
+    const regexAbertura = new RegExp(
+      `<!--\\s*CLAUSULA\\s+id="${clausula.id}"(?:\\s+titulo="[^"]*")?\\s*-->`,
+      "g",
+    );
+    const regexFechamento = /<!--\s*\/CLAUSULA\s*-->/g;
+
+    const textoClausula = resultado;
+    const matchAbertura = regexAbertura.exec(textoClausula);
+    if (matchAbertura) {
+      regexFechamento.lastIndex = regexAbertura.lastIndex;
+      const matchFechamento = regexFechamento.exec(textoClausula);
+      if (matchFechamento) {
+        const antes = textoClausula.slice(0, matchAbertura.index);
+        const depois = textoClausula.slice(matchFechamento.index + matchFechamento[0].length);
+
+        const tituloClausula =
+          opts.estiloNumeracao === "ordinal"
+            ? `${opts.prefixoClausula} ${clausula.ordinal} – ${clausula.titulo}`
+            : `${opts.prefixoClausula} ${clausula.numero}ª – ${clausula.titulo}`;
+
+        resultado = `${antes}${tituloClausula}\n\n${clausula.conteudo}${depois}`;
+      }
+    }
+  }
+
+  resultado = resultado.replace(/{{(REF|NUM|TITULO):([^}]+)}}/g, (_, tipo, idRef) => {
+    const clausula = mapaClausulas.get(String(idRef).trim());
+    if (!clausula) return `[REFERÊNCIA QUEBRADA: ${idRef}]`;
+    if (tipo === "REF") {
+      return opts.estiloNumeracao === "ordinal" ? `Cláusula ${clausula.ordinal}` : `Cláusula ${clausula.numero}ª`;
+    }
+    if (tipo === "NUM") return String(clausula.numero);
+    if (tipo === "TITULO") return clausula.titulo;
+    return String(_);
+  });
+
+  return resultado;
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -569,6 +772,129 @@ function buildPaymentSpec(contrato: any) {
   return parts.join("\n");
 }
 
+function buildProcuradorSpec(procurador: any, parteNome: string) {
+  if (!procurador || typeof procurador !== "object") return "";
+  const lines: string[] = [];
+  
+  lines.push(`REPRESENTANTE: ${parteNome}`);
+  
+  const nome = String(procurador.nomeCompleto || procurador.nome || "").trim();
+  if (nome) lines.push(`NOME: ${nome}`);
+  
+  const cpf = String(procurador.cpf || "").trim();
+  if (cpf) lines.push(`CPF: ${cpf}`);
+  
+  const cnpj = String(procurador.cnpj || "").trim();
+  if (cnpj) lines.push(`CNPJ: ${cnpj}`);
+  
+  const docTipo = String(procurador.tipoDocumento || "").toUpperCase();
+  const docNum = String(procurador.numeroDocumento || "").trim();
+  const docOrg = String(procurador.orgaoExpedidor || "").trim();
+  if (docTipo || docNum || docOrg) lines.push(`DOCUMENTO: ${[docTipo, docNum, docOrg].filter(Boolean).join(" ")}`.trim());
+  
+  const prof = String(procurador.profissao || "").trim();
+  if (prof) lines.push(`PROFISSÃO: ${prof}`);
+  
+  const nac = String(procurador.nacionalidade || "").trim();
+  if (nac) lines.push(`NACIONALIDADE: ${nac}`);
+  
+  const ec = String(procurador.estadoCivil || "").trim();
+  const reg = String(procurador.regimeBens || "").trim();
+  if (ec) lines.push(`ESTADO CIVIL: ${ec}${reg ? ` (${reg})` : ""}`);
+  
+  const end = String(procurador.enderecoCompleto || procurador.endereco || "").trim();
+  const bairro = String(procurador.bairro || "").trim();
+  const cidade = String(procurador.cidade || "").trim();
+  const uf = String(procurador.estado || "").trim();
+  const cep = String(procurador.cep || "").trim();
+  if (end || bairro || cidade || uf || cep) {
+    lines.push(`ENDEREÇO: ${[end, bairro, cidade, uf, cep].filter(Boolean).join(" - ")}`.trim());
+  }
+
+  const tipoProc = String(procurador.tipoProcuracao || "").trim();
+  if (tipoProc) {
+    const tipoProcLabel = tipoProc === "publica" ? "Pública" : 
+                          tipoProc === "particular_com_firma" ? "Particular com firma reconhecida" : 
+                          tipoProc === "particular_sem_firma" ? "Particular sem firma" : tipoProc;
+    lines.push(`TIPO DE PROCURAÇÃO: ${tipoProcLabel}`);
+  }
+  
+  const dataProc = procurador.dataProcuracao ? 
+    (typeof procurador.dataProcuracao === "string" ? procurador.dataProcuracao : new Date(procurador.dataProcuracao).toLocaleDateString("pt-BR")) : "";
+  if (dataProc) lines.push(`DATA DA PROCURAÇÃO: ${dataProc}`);
+  
+  const cartorio = String(procurador.cartorioLivroFolha || "").trim();
+  if (cartorio) lines.push(`CARTÓRIO/LIVRO/FOLHA: ${cartorio}`);
+  
+  const poderes = String(procurador.poderesOutorgados || "").trim();
+  if (poderes) lines.push(`PODERES OUTORGADOS: ${poderes}`);
+
+  return lines.join("\n");
+}
+
+function buildAnuenteSpec(anuente: any) {
+  if (!anuente || typeof anuente !== "object") return "";
+  const lines: string[] = [];
+  
+  const nome = String(anuente.nomeCompleto || anuente.nome || "").trim();
+  if (nome) lines.push(`NOME: ${nome}`);
+  
+  const cpf = String(anuente.cpf || "").trim();
+  if (cpf) lines.push(`CPF: ${cpf}`);
+  
+  const cnpj = String(anuente.cnpj || "").trim();
+  if (cnpj) lines.push(`CNPJ: ${cnpj}`);
+  
+  const docTipo = String(anuente.tipoDocumento || "").toUpperCase();
+  const docNum = String(anuente.numeroDocumento || "").trim();
+  const docOrg = String(anuente.orgaoExpedidor || "").trim();
+  if (docTipo || docNum || docOrg) lines.push(`DOCUMENTO: ${[docTipo, docNum, docOrg].filter(Boolean).join(" ")}`.trim());
+  
+  const prof = String(anuente.profissao || "").trim();
+  if (prof) lines.push(`PROFISSÃO: ${prof}`);
+  
+  const nac = String(anuente.nacionalidade || "").trim();
+  if (nac) lines.push(`NACIONALIDADE: ${nac}`);
+  
+  const ec = String(anuente.estadoCivil || "").trim();
+  const reg = String(anuente.regimeBens || "").trim();
+  if (ec) lines.push(`ESTADO CIVIL: ${ec}${reg ? ` (${reg})` : ""}`);
+  
+  const end = String(anuente.enderecoCompleto || anuente.endereco || "").trim();
+  const bairro = String(anuente.bairro || "").trim();
+  const cidade = String(anuente.cidade || "").trim();
+  const uf = String(anuente.estado || "").trim();
+  const cep = String(anuente.cep || "").trim();
+  if (end || bairro || cidade || uf || cep) {
+    lines.push(`ENDEREÇO: ${[end, bairro, cidade, uf, cep].filter(Boolean).join(" - ")}`.trim());
+  }
+
+  const qualif = String(anuente.qualificacaoNoNegocio || "").trim();
+  if (qualif) {
+    const qualifLabel = qualif === "conjuge_meeiro" ? "Cônjuge meeiro" : 
+                        qualif === "ex_conjuge" ? "Ex-cônjuge" : 
+                        qualif === "herdeiro" ? "Herdeiro" : 
+                        qualif === "condomino" ? "Condômino" : 
+                        qualif === "fiador" ? "Fiador" : 
+                        qualif === "interveniente_garantidor" ? "Interveniente garantidor" : 
+                        qualif === "outro" ? "Outro" : qualif;
+    lines.push(`QUALIFICAÇÃO NO NEGÓCIO: ${qualifLabel}`);
+  }
+  
+  if (qualif === "outro") {
+    const qualifOutro = String(anuente.qualificacaoOutro || "").trim();
+    if (qualifOutro) lines.push(`ESPECIFICAR: ${qualifOutro}`);
+  }
+  
+  const motivo = String(anuente.motivoAnuencia || "").trim();
+  if (motivo) lines.push(`MOTIVO DA ANUÊNCIA: ${motivo}`);
+  
+  const assina = typeof anuente.assinaContrato === "boolean" ? anuente.assinaContrato : true;
+  lines.push(`ASSINA O CONTRATO: ${assina ? "SIM" : "NÃO"}`);
+
+  return lines.join("\n");
+}
+
 function buildPartiesSpec(contrato: any) {
   if (!contrato || typeof contrato !== "object") return "";
 
@@ -580,7 +906,7 @@ function buildPartiesSpec(contrato: any) {
         ? { a: "CEDENTE(S)", b: "CESSIONÁRIO(S)" }
         : { a: "VENDEDOR(ES)", b: "COMPRADOR(ES)" };
 
-  const fmtPessoa = (p: any) => {
+  const fmtPessoa = (p: any, isConjuge: boolean = false) => {
     if (!p || typeof p !== "object") return "";
     const lines: string[] = [];
     const nome = String(p.nome || "").trim();
@@ -605,27 +931,9 @@ function buildPartiesSpec(contrato: any) {
     if (docTipo || docNum || docOrg) lines.push(`DOCUMENTO: ${[docTipo, docNum, docOrg].filter(Boolean).join(" ")}`.trim());
     if (nac) lines.push(`NACIONALIDADE: ${nac}`);
     if (prof) lines.push(`PROFISSÃO: ${prof}`);
-    if (ec) lines.push(`ESTADO CIVIL: ${ec}${reg ? ` (${reg})` : ""}`);
+    if (ec && !isConjuge) lines.push(`ESTADO CIVIL: ${ec}${reg ? ` (${reg})` : ""}`);
     if (end || bairro || cidade || uf || cep) {
       lines.push(`ENDEREÇO: ${[end, bairro, cidade, uf, cep].filter(Boolean).join(" - ")}`.trim());
-    }
-
-    const c = p.conjuge;
-    if (c && typeof c === "object") {
-      const cn = String(c.nome || "").trim();
-      const ccpf = String(c.cpf || "").trim();
-      const cdocTipo = String(c.documentoTipo || "").toUpperCase();
-      const cdocNum = String(c.documentoNumero || "").trim();
-      const cdocOrg = String(c.documentoOrgao || "").trim();
-      const cprof = String(c.profissao || "").trim();
-      const cnac = String(c.nacionalidade || "").trim();
-      const cLines: string[] = [];
-      if (cn) cLines.push(`NOME: ${cn}`);
-      if (ccpf) cLines.push(`CPF: ${ccpf}`);
-      if (cdocTipo || cdocNum || cdocOrg) cLines.push(`DOCUMENTO: ${[cdocTipo, cdocNum, cdocOrg].filter(Boolean).join(" ")}`.trim());
-      if (cnac) cLines.push(`NACIONALIDADE: ${cnac}`);
-      if (cprof) cLines.push(`PROFISSÃO: ${cprof}`);
-      if (cLines.length) lines.push(`CÔNJUGE/COMPANHEIRO(A): ${cLines.join(" | ")}`);
     }
 
     return lines.join(" | ");
@@ -633,12 +941,62 @@ function buildPartiesSpec(contrato: any) {
 
   const vendedores = Array.isArray(contrato.vendedores) ? contrato.vendedores : [];
   const compradores = Array.isArray(contrato.compradores) ? contrato.compradores : [];
+  const procuradores = Array.isArray(contrato.procuradores) ? contrato.procuradores : [];
+  const anuentes = Array.isArray(contrato.anuentes) ? contrato.anuentes : [];
   const out: string[] = [];
+  
   out.push(labels.a + ":");
-  out.push(vendedores.length ? vendedores.map((p: any, idx: number) => `${idx + 1}. ${fmtPessoa(p) || "N/A"}`).join("\n") : "1. N/A");
+  let idxA = 1;
+  for (const p of vendedores) {
+    const formatted = fmtPessoa(p, !!p.conjugeDeId);
+    if (formatted) {
+      out.push(`${idxA}. ${formatted}`);
+      idxA++;
+    }
+  }
+  if (idxA === 1) out.push("1. N/A");
+  
   out.push("");
+  
   out.push(labels.b + ":");
-  out.push(compradores.length ? compradores.map((p: any, idx: number) => `${idx + 1}. ${fmtPessoa(p) || "N/A"}`).join("\n") : "1. N/A");
+  let idxB = 1;
+  for (const p of compradores) {
+    const formatted = fmtPessoa(p, !!p.conjugeDeId);
+    if (formatted) {
+      out.push(`${idxB}. ${formatted}`);
+      idxB++;
+    }
+  }
+  if (idxB === 1) out.push("1. N/A");
+  
+  if (procuradores.length > 0) {
+    out.push("");
+    out.push("PROCURADORES:");
+    for (let i = 0; i < procuradores.length; i++) {
+      const proc = procuradores[i];
+      const parteTipo = proc.parteTipo === "vendedor" ? labels.a.replace(/\(ES\)$/, "") : labels.b.replace(/\(ES\)$/, "");
+      const partes = proc.parteTipo === "vendedor" ? vendedores : compradores;
+      const partePrincipal = partes.find((_, idx) => idx === proc.parteIndice);
+      const parteNome = partePrincipal?.nome || `${parteTipo} ${(proc.parteIndice || 0) + 1}`;
+      const spec = buildProcuradorSpec(proc, parteNome);
+      if (spec) {
+        out.push(`${i + 1}. ${spec}`);
+      }
+    }
+  }
+  
+  if (anuentes.length > 0) {
+    out.push("");
+    out.push("ANUENTES:");
+    for (let i = 0; i < anuentes.length; i++) {
+      const anu = anuentes[i];
+      const spec = buildAnuenteSpec(anu);
+      if (spec) {
+        out.push(`${i + 1}. ${spec}`);
+      }
+    }
+  }
+  
   return out.join("\n").trim();
 }
 
@@ -713,10 +1071,17 @@ REGRAS:
 - Considere como verdade absoluta somente os DADOS OFICIAIS fornecidos.
 - NÃO inventar dados.
 - NÃO alterar o restante do contrato (cláusulas que não sejam de partes/imóvel/pagamento).
-- Não usar markdown. Retornar o contrato completo (texto final).`;
+- Não usar markdown. Retornar o contrato completo (texto final).
+
+IMPORTANTE SOBRE PARTES:
+- TODAS as pessoas listadas em "DADOS OFICIAIS DAS PARTES" são PARTES PLENAS do contrato, incluindo cônjuges/companheiros(as).
+- DEVE qualificar TODAS essas partes no preâmbulo do contrato.
+- DEVE incluir espaço para assinatura de TODAS essas partes no final do contrato.
+
+`;
+
 
   const userPrompt = `CONTRATO ATUAL:
-${params.contratoText}
 
 DADOS OFICIAIS DAS PARTES (OBRIGATÓRIO):
 ${partiesSpec}
@@ -748,41 +1113,50 @@ function extractDigits(input: string) {
   return input.replace(/\D+/g, "");
 }
 
-function getFirstPartyNeedles(contrato: any) {
-  const vendedor = Array.isArray(contrato?.vendedores) ? contrato.vendedores[0] : null;
-  const comprador = Array.isArray(contrato?.compradores) ? contrato.compradores[0] : null;
-  const vendedorNome = typeof vendedor?.nome === "string" ? vendedor.nome.trim() : "";
-  const compradorNome = typeof comprador?.nome === "string" ? comprador.nome.trim() : "";
-  const vendedorDoc =
-    typeof vendedor?.cnpj === "string" && vendedor.cnpj.trim()
-      ? extractDigits(vendedor.cnpj)
-      : typeof vendedor?.cpf === "string"
-        ? extractDigits(vendedor.cpf)
-        : "";
-  const compradorDoc =
-    typeof comprador?.cnpj === "string" && comprador.cnpj.trim()
-      ? extractDigits(comprador.cnpj)
-      : typeof comprador?.cpf === "string"
-        ? extractDigits(comprador.cpf)
-        : "";
-  return {
-    vendedorNome,
-    compradorNome,
-    vendedorDoc,
-    compradorDoc,
-  };
+function getPartyNeedles(contrato: any) {
+  const vendedores = Array.isArray(contrato?.vendedores) ? contrato.vendedores : [];
+  const compradores = Array.isArray(contrato?.compradores) ? contrato.compradores : [];
+  
+  const vendedoresNeedles = vendedores.map(p => ({
+    nome: typeof p?.nome === "string" ? p.nome.trim() : "",
+    doc: typeof p?.cnpj === "string" && p.cnpj.trim()
+      ? extractDigits(p.cnpj)
+      : typeof p?.cpf === "string"
+        ? extractDigits(p.cpf)
+        : ""
+  })).filter(x => x.nome || x.doc);
+  
+  const compradoresNeedles = compradores.map(p => ({
+    nome: typeof p?.nome === "string" ? p.nome.trim() : "",
+    doc: typeof p?.cnpj === "string" && p.cnpj.trim()
+      ? extractDigits(p.cnpj)
+      : typeof p?.cpf === "string"
+        ? extractDigits(p.cpf)
+        : ""
+  })).filter(x => x.nome || x.doc);
+  
+  return { vendedoresNeedles, compradoresNeedles };
 }
 
 function hasCriticalDataFromForm(text: string, contrato: any) {
-  const needles = getFirstPartyNeedles(contrato);
+  const needles = getPartyNeedles(contrato);
   const norm = normalizeForLooseMatch(text);
   const digitText = extractDigits(text);
 
   const mustHave: Array<{ ok: boolean; label: string }> = [];
-  if (needles.vendedorNome) mustHave.push({ ok: norm.includes(normalizeForLooseMatch(needles.vendedorNome)), label: "vendedorNome" });
-  if (needles.compradorNome) mustHave.push({ ok: norm.includes(normalizeForLooseMatch(needles.compradorNome)), label: "compradorNome" });
-  if (needles.vendedorDoc) mustHave.push({ ok: digitText.includes(needles.vendedorDoc), label: "vendedorDoc" });
-  if (needles.compradorDoc) mustHave.push({ ok: digitText.includes(needles.compradorDoc), label: "compradorDoc" });
+  
+  for (let i = 0; i < needles.vendedoresNeedles.length; i++) {
+    const v = needles.vendedoresNeedles[i];
+    if (v.nome) mustHave.push({ ok: norm.includes(normalizeForLooseMatch(v.nome)), label: `vendedor${i}Nome` });
+    if (v.doc) mustHave.push({ ok: digitText.includes(v.doc), label: `vendedor${i}Doc` });
+  }
+  
+  for (let i = 0; i < needles.compradoresNeedles.length; i++) {
+    const c = needles.compradoresNeedles[i];
+    if (c.nome) mustHave.push({ ok: norm.includes(normalizeForLooseMatch(c.nome)), label: `comprador${i}Nome` });
+    if (c.doc) mustHave.push({ ok: digitText.includes(c.doc), label: `comprador${i}Doc` });
+  }
+  
   const missing = mustHave.filter((x) => !x.ok).map((x) => x.label);
   return { ok: missing.length === 0, missing, needles };
 }
@@ -1308,15 +1682,43 @@ serve(async (req: Request) => {
     const templateImobiliariaId = submissionImobiliariaId || imobiliariaIdFromBody;
 
     let tipoLabel = tipoLabels[contrato.tipoContrato] || "Contrato Imobiliário";
+    let tipoContratoLabels = contrato.tipoContratoLabels || null;
+    
     if (typeof contrato?.tipoContratoNome === "string" && contrato.tipoContratoNome.trim()) {
       tipoLabel = `Contrato - ${contrato.tipoContratoNome.trim()}`;
     } else if (admin && !tipoLabels[contrato.tipoContrato]) {
       const { data } = await admin
         .from("tipos_contrato")
-        .select("nome")
+        .select("nome, label_parte_a, label_parte_b, label_parte_a_plural, label_parte_b_plural, partes_simetricas, label_objeto, label_acao")
         .eq("id", contrato.tipoContrato)
         .maybeSingle();
       if (data?.nome) tipoLabel = `Contrato - ${String(data.nome).trim()}`;
+      if (data && !tipoContratoLabels) {
+        tipoContratoLabels = {
+          nome: data.nome,
+          label_parte_a: data.label_parte_a || "Vendedor",
+          label_parte_b: data.label_parte_b || "Comprador",
+          label_parte_a_plural: data.label_parte_a_plural || "Vendedores",
+          label_parte_b_plural: data.label_parte_b_plural || "Compradores",
+          partes_simetricas: data.partes_simetricas || false,
+          label_objeto: data.label_objeto || "Imóvel",
+          label_acao: data.label_acao || "compra e venda",
+        };
+      }
+    }
+    
+    if (!tipoContratoLabels) {
+      const builtinTipo = tipoLabels[contrato.tipoContrato] ? contrato.tipoContrato : "promessa_compra_venda";
+      tipoContratoLabels = {
+        nome: tipoLabels[builtinTipo] || "Contrato Imobiliário",
+        label_parte_a: builtinTipo === "locacao" ? "Locador" : builtinTipo === "cessao_direitos" ? "Cedente" : "Vendedor",
+        label_parte_b: builtinTipo === "locacao" ? "Locatário" : builtinTipo === "cessao_direitos" ? "Cessionário" : "Comprador",
+        label_parte_a_plural: builtinTipo === "locacao" ? "Locadores" : builtinTipo === "cessao_direitos" ? "Cedentes" : "Vendedores",
+        label_parte_b_plural: builtinTipo === "locacao" ? "Locatários" : builtinTipo === "cessao_direitos" ? "Cessionários" : "Compradores",
+        partes_simetricas: false,
+        label_objeto: "Imóvel",
+        label_acao: builtinTipo === "locacao" ? "locação" : builtinTipo === "cessao_direitos" ? "cessão de direitos possessórios" : "compra e venda",
+      };
     }
     const clausulasTipo = getClausulasEspecificasTipo(contrato.tipoContrato);
     const perfilSelecionado = contrato.perfilContrato || "equilibrado";
@@ -1364,7 +1766,48 @@ ${instr ? `DIRETRIZES IMPERATIVAS:\n${instr}` : "DIRETRIZES: aplicar o perfil se
       }
     }
 
+    const tipoContratoNomeUpper = (tipoContratoLabels.nome || tipoLabel).toUpperCase();
+    const parteA = tipoContratoLabels.label_parte_a || "Vendedor";
+    const parteB = tipoContratoLabels.label_parte_b || "Comprador";
+    const parteAPlural = tipoContratoLabels.label_parte_a_plural || "Vendedores";
+    const parteBPlural = tipoContratoLabels.label_parte_b_plural || "Compradores";
+    const partesSimetricas = tipoContratoLabels.partes_simetricas || false;
+    const labelObjeto = tipoContratoLabels.label_objeto || "Imóvel";
+    const labelAcao = tipoContratoLabels.label_acao || "compra e venda";
+    const parteAUpper = parteA.toUpperCase();
+    const parteBUpper = parteB.toUpperCase();
+    const parteAPluralUpper = parteAPlural.toUpperCase();
+    const parteBPluralUpper = parteBPlural.toUpperCase();
+
     const systemPrompt = `Você é um advogado sênior especialista em direito imobiliário brasileiro, com mais de 20 anos de experiência na elaboração de minutas contratuais para escritórios de advocacia de alto padrão. Sua tarefa é gerar minutas contratuais COMPLETAS, PROFISSIONAIS e JURIDICAMENTE BLINDADAS.
+
+DADOS DO TIPO DE CONTRATO (USE ESTES LABELS EM TODA A REDAÇÃO):
+- NOME DO TIPO: ${tipoContratoNomeUpper}
+- LABEL PARTE A: ${parteA} (singular) / ${parteAPlural} (plural)
+- LABEL PARTE B: ${parteB} (singular) / ${parteBPlural} (plural)
+- PARTES SIMÉTRICAS: ${partesSimetricas ? "SIM" : "NÃO"}
+- OBJETO: ${labelObjeto}
+- AÇÃO: ${labelAcao}
+
+REGRAS ESPECÍFICAS PARA LABELS DINÂMICOS:
+1. TÍTULO DO INSTRUMENTO: "INSTRUMENTO PARTICULAR DE ${tipoContratoNomeUpper}"
+2. QUALIFICAÇÃO DAS PARTES:
+   - Use "${parteAUpper}" e "${parteBUpper}" em MAIÚSCULAS nos títulos dos blocos
+   - No corpo do texto, use as formas adequadas (singular/plural, maiúsculas/minúsculas)
+   - ${partesSimetricas ? `SE PARTES SIMÉTRICAS: Gere "${parteA} 1" e "${parteA} 2" no preâmbulo e no corpo` : ""}
+3. CLÁUSULAS: Substitua TODAS as referências hardcoded por estas regras:
+   - {{PARTE_A}} → ${parteA}
+   - {{PARTE_B}} → ${parteB}
+   - {{PARTE_A_PLURAL}} → ${parteAPlural}
+   - {{PARTE_B_PLURAL}} → ${parteBPlural}
+   - {{OBJETO}} → ${labelObjeto}
+   - {{ACAO}} → ${labelAcao}
+4. GÊNERO DAS PARTES:
+   - Adaptar o gênero dos labels conforme o sexo das pessoas cadastradas naquele lado
+   - Se todas forem mulheres → feminino (ex: "${parteA.replace(/or$/, 'ora').replace(/dor$/, 'dora')}")
+   - Se todas forem homens → masculino (ex: "${parteA}")
+   - Se misto → masculino plural
+   - Para pessoa jurídica → usar feminino por convenção ("a empresa") ou seguir o gênero do termo
 
 ${perfilTexto}
 
@@ -1372,7 +1815,6 @@ ${clausulasTipo}
 
 REGRAS GERAIS DE REDAÇÃO:
 - Linguagem jurídica formal brasileira, precisa e sem ambiguidades
-- Usar terminologia técnica correta (promitente vendedor/comprador, cedente/cessionário, locador/locatário)
 - Qualificar COMPLETAMENTE todas as partes com TODOS os dados fornecidos (nome, nacionalidade, profissão, estado civil, regime de bens se casado, RG/CNH, CPF ou CNPJ, filiação, endereço completo)
 - Se houver cônjuge, qualificá-lo como interveniente-anuente
 - Numerar as cláusulas: CLÁUSULA PRIMEIRA, CLÁUSULA SEGUNDA, etc.
@@ -1388,17 +1830,32 @@ LEGISLAÇÃO APLICÁVEL (citar quando pertinente):
 - Estatuto da Cidade (Lei 10.257/2001) quando aplicável
 
 ESTRUTURA OBRIGATÓRIA DO DOCUMENTO:
-1. Título e identificação do tipo de contrato
-2. Preâmbulo com qualificação completa de TODAS as partes
+1. Título e identificação do tipo de contrato ("INSTRUMENTO PARTICULAR DE ${tipoContratoNomeUpper}")
+2. Preâmbulo com qualificação completa de TODAS as partes (incluindo cônjuges/companheiros(as) que são partes plenas do contrato) usando os labels dinâmicos
 3. Cláusulas numeradas cobrindo TODOS os temas listados acima
 4. Cláusula LGPD sobre tratamento de dados pessoais
 5. Cláusula de foro de eleição
 6. Disposições finais (comunicações, prazos, integralidade)
 7. Local e data
-8. Espaço para assinaturas das partes (com nome completo e CPF abaixo)
+8. Espaço para assinaturas de TODAS as partes plenas (com nome completo e CPF abaixo, incluindo cônjuges/companheiros(as))
 9. Espaço para 2 testemunhas (com nome, CPF e assinatura)
 10. Aviso: "Este instrumento particular tem força de escritura pública nos termos do art. 462 do Código Civil."
 11. Nota final: "RECOMENDA-SE A REVISÃO DESTE INSTRUMENTO POR ADVOGADO DE CONFIANÇA DAS PARTES."
+
+IMPORTANTE SOBRE PARTES PLENAS:
+- TODAS as pessoas listadas nos arrays "vendedores" e "compradores" (incluindo aquelas com conjugeDeId) são PARTES PLENAS do contrato e DEVEM ser qualificadas como signatárias no preâmbulo e DEVEM ter espaço para assinatura no final.
+- NÃO trate cônjuges como apenas como "intervenientes" ou "anuentes" — eles são partes signatárias completas.
+
+REGRAS DE QUALIFICAÇÃO DE PROCURADORES:
+- Quando um vendedor/comprador possuir procurador, a qualificação da parte no preâmbulo deve seguir o padrão: "[QUALIFICAÇÃO COMPLETA DA PARTE], neste ato representado(a) por seu(sua) bastante procurador(a) [QUALIFICAÇÃO COMPLETA DO PROCURADOR], conforme procuração [pública/particular] lavrada em [DATA] no [CARTÓRIO/LIVRO/FOLHA], cujos poderes outorgados incluem [PODERES RESUMIDOS]."
+- No bloco final de assinaturas, criar linha para o procurador com a descrição: "p.p. [NOME DA PARTE REPRESENTADA] — [NOME DO PROCURADOR]".
+- A parte representada NÃO assina; apenas o procurador.
+
+REGRAS DE QUALIFICAÇÃO DE ANUENTES:
+- Após o bloco de qualificação das partes principais, criar bloco "ANUENTES:" listando cada anuente com qualificação completa e a função no negócio (ex.: "na qualidade de cônjuge meeiro, conforme [...]").
+- Adicionar cláusula específica "DA ANUÊNCIA" antes da cláusula do Foro, explicitando que os anuentes concordam expressamente com os termos do contrato e renunciam a eventuais direitos que poderiam opor.
+- No bloco final de assinaturas, criar linha para cada anuente com label "ANUENTE — [QUALIFICAÇÃO]" se assina_contrato=true.
+
 
 IMPORTANTE: 
 - Gere APENAS o texto do contrato, sem comentários ou explicações extras
@@ -1408,7 +1865,7 @@ IMPORTANTE:
 - NÃO use formatação markdown (asteriscos, hashtags, etc). O texto deve ser PURO, sem nenhum caractere de formatação como *, **, #, ##, ---, etc.
 - Use APENAS texto simples com letras maiúsculas para ênfase quando necessário
 - Títulos de cláusulas em LETRAS MAIÚSCULAS sem qualquer marcação
-- Descreva o imóvel objeto do contrato em um bloco separado identificado por "IMÓVEL:" no início
+- Descreva o ${labelObjeto.toUpperCase()} objeto do contrato em um bloco separado identificado por "${labelObjeto.toUpperCase()}:" no início
 - REGRA OBRIGATÓRIA SOBRE PARCELAS: Todas as parcelas do contrato têm valores FIXOS e NOMINAIS. NÃO inclua cláusula de correção monetária, atualização ou reajuste das parcelas por qualquer índice (INPC, IGPM, IPCA ou outro). As multas moratórias e compensatórias devem ser mantidas normalmente.
 
 REGRAS DE QUALIDADE E SEGURANÇA:
@@ -1937,6 +2394,33 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     minutaFinal = stripUnusedConjugeSignatures(minutaFinal, { vendedor: !hasVendedorConjuge, comprador: !hasCompradorConjuge });
 
     minutaFinal = fixLocalEDataInContractText(minutaFinal, contratoSemPeculiaridades);
+
+    // Processamento de âncoras simbólicas
+    try {
+      const parseResult = parseTemplateAncoras(minutaFinal);
+      if (parseResult.clausulas.length > 0) {
+        minutaFinal = renderizarTemplate(minutaFinal, parseResult.clausulas, {
+          estiloNumeracao: 'ordinal'
+        });
+      }
+    } catch (err) {
+      console.warn("Erro ao processar âncoras simbólicas:", err);
+    }
+
+    // Pós-processamento para cláusula da anuência
+    const anuentes = Array.isArray(contrato.anuentes) ? contrato.anuentes : [];
+    if (anuentes.length > 0) {
+      const anuentesQueAssinam = anuentes.filter(a => 
+        typeof a.assinaContrato === "boolean" ? a.assinaContrato : true
+      );
+      
+      if (anuentesQueAssinam.length > 0) {
+        const clausulaAnuencia = `DA ANUÊNCIA
+
+Os anuentes abaixo identificados concordam expressamente com todos os termos e condições do presente instrumento, renunciando a qualquer direito que poderiam opor ao negócio, inclusive direitos de preferência, evicção, usucapião, retenção ou qualquer outro direito que pudessem ter sobre o imóvel objeto deste contrato.`;
+        minutaFinal = insertBeforeLocalEData(minutaFinal, clausulaAnuencia);
+      }
+    }
 
     if (admin && submissionId) {
       let userId: string | null = null;

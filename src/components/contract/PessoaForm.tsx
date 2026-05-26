@@ -1,15 +1,18 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Trash2, Upload, FileImage, Loader2, Sparkles, X, Camera, Heart, Link, FileText } from "lucide-react";
+import { Trash2, Upload, FileImage, Loader2, Sparkles, X, Camera, Heart, Link, FileText, UserCheck } from "lucide-react";
 import { Pessoa, estadosCivis, estadosBR } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { fileToVisionBase64Images } from "@/lib/imageUtils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { getRegimesByEstadoCivil } from "@/lib/regimeBens";
+import { validarCPF, validarCNPJ, digitsOnly } from "@/lib/validation";
+import { useAuth } from "@/auth/AuthProvider";
 
 interface PessoaFormProps {
   pessoa: Pessoa;
@@ -17,10 +20,12 @@ interface PessoaFormProps {
   onRemove?: () => void;
   titulo: string;
   index: number;
+  displayNumber?: number;
   isConjuge?: boolean;
   hideEstadoCivil?: boolean;
   emailRequired?: boolean;
   onExtractFiles?: (files: File[]) => Promise<void> | void;
+  errors?: Array<{ field: string; message: string }>;
 }
 
 const UF_REGEX = /\b(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i;
@@ -88,13 +93,17 @@ async function viaCepByAddress(uf: string, cidade: string, logradouro: string) {
   return null;
 }
 
-const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hideEstadoCivil, emailRequired, onExtractFiles }: PessoaFormProps) => {
+const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, isConjuge, hideEstadoCivil, emailRequired, onExtractFiles, errors }: PessoaFormProps) => {
+  const { activeTenantId } = useAuth();
+  const getError = (field: string) => errors?.find(e => e.field === field);
   const [files, setFiles] = useState<File[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [textDialogOpen, setTextDialogOpen] = useState(false);
   const [textToExtract, setTextToExtract] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [clienteEncontrado, setClienteEncontrado] = useState<any>(null);
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
 
   const update = (field: keyof Pessoa, value: string) => {
     onChange({ ...pessoa, [field]: value });
@@ -163,6 +172,72 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
       if (!enriched.cep.trim() && data.cep) enriched.cep = String(data.cep).trim();
       onChange(enriched);
     } catch {}
+  };
+
+  useEffect(() => {
+    const buscarCliente = async () => {
+      if (!activeTenantId) return;
+
+      let docToSearch = null;
+      if (pessoa.cpf && validarCPF(pessoa.cpf)) {
+        docToSearch = { cpf: digitsOnly(pessoa.cpf) };
+      } else if (pessoa.cnpj && validarCNPJ(pessoa.cnpj)) {
+        docToSearch = { cnpj: digitsOnly(pessoa.cnpj) };
+      }
+
+      if (!docToSearch) {
+        setClienteEncontrado(null);
+        return;
+      }
+
+      setBuscandoCliente(true);
+      try {
+        const query = supabase.from("clientes").select("*").eq("imobiliaria_id", activeTenantId);
+        if (docToSearch.cpf) {
+          query.ilike("cpf", `%${docToSearch.cpf}%`);
+        } else if (docToSearch.cnpj) {
+          query.ilike("cnpj", `%${docToSearch.cnpj}%`);
+        }
+        const { data, error } = await query.limit(1).single();
+        if (error) {
+          if (error.code === "PGRST116") {
+            setClienteEncontrado(null);
+          } else {
+            throw error;
+          }
+        } else {
+          setClienteEncontrado(data);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar cliente:", err);
+        setClienteEncontrado(null);
+      } finally {
+        setBuscandoCliente(false);
+      }
+    };
+
+    buscarCliente();
+  }, [pessoa.cpf, pessoa.cnpj, activeTenantId]);
+
+  const carregarDadosCliente = () => {
+    if (!clienteEncontrado) return;
+    const dados: Partial<Pessoa> = {
+      nome: clienteEncontrado.nome_completo?.toUpperCase() || "",
+      cpf: clienteEncontrado.cpf || "",
+      cnpj: clienteEncontrado.cnpj || "",
+      documentoNumero: clienteEncontrado.documento_numero || "",
+      documentoTipo: clienteEncontrado.documento_tipo === "rg" ? "rg" : "cnh",
+      endereco: clienteEncontrado.endereco || "",
+      bairro: clienteEncontrado.bairro || "",
+      cidade: clienteEncontrado.cidade || "",
+      estado: clienteEncontrado.estado || "",
+      cep: clienteEncontrado.cep || "",
+      email: clienteEncontrado.email || "",
+      telefone: clienteEncontrado.telefone || "",
+    };
+    onChange({ ...pessoa, ...dados });
+    setClienteEncontrado(null);
+    toast.success("Dados do cliente carregados com sucesso!");
   };
 
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -319,7 +394,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
         <div className="flex items-center gap-2">
           {isConjuge && <Heart className="w-4 h-4 text-primary" />}
           <h4 className="font-display text-lg font-semibold text-foreground">
-            {titulo} {!isConjuge && index + 1}
+            {titulo} {!isConjuge && (typeof displayNumber === "number" ? displayNumber : index + 1)}
           </h4>
           {isConjuge && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium flex items-center gap-1">
@@ -414,25 +489,52 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="md:col-span-2">
-          <Label>Nome Completo *</Label>
-          <Input value={pessoa.nome} onChange={(e) => update("nome", e.target.value)} placeholder="Nome completo" />
+          <div className="flex items-center justify-between">
+            <Label>Nome Completo *</Label>
+            {getError("nome") && <span className="text-xs text-destructive">{getError("nome")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.nome} 
+            onChange={(e) => update("nome", e.target.value)} 
+            placeholder="Nome completo"
+            className={getError("nome") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
 
         <div>
-          <Label>Nacionalidade</Label>
-          <Input value={pessoa.nacionalidade} onChange={(e) => update("nacionalidade", e.target.value)} placeholder="brasileira" />
+          <div className="flex items-center justify-between">
+            <Label>Nacionalidade</Label>
+            {getError("nacionalidade") && <span className="text-xs text-destructive">{getError("nacionalidade")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.nacionalidade} 
+            onChange={(e) => update("nacionalidade", e.target.value)} 
+            placeholder="brasileira"
+            className={getError("nacionalidade") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
 
         <div>
-          <Label>Profissão *</Label>
-          <Input value={pessoa.profissao} onChange={(e) => update("profissao", e.target.value)} placeholder="Ex: empresário" />
+          <div className="flex items-center justify-between">
+            <Label>Profissão *</Label>
+            {getError("profissao") && <span className="text-xs text-destructive">{getError("profissao")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.profissao} 
+            onChange={(e) => update("profissao", e.target.value)} 
+            placeholder="Ex: empresário"
+            className={getError("profissao") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
 
         {!hideEstadoCivil && (
           <div>
-            <Label>Estado Civil *</Label>
+            <div className="flex items-center justify-between">
+              <Label>Estado Civil *</Label>
+              {getError("estadoCivil") && <span className="text-xs text-destructive">{getError("estadoCivil")?.message}</span>}
+            </div>
             <Select value={pessoa.estadoCivil} onValueChange={(v) => update("estadoCivil", v)}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectTrigger className={getError("estadoCivil") ? "border-destructive focus-visible:ring-destructive" : ""}><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
                 {estadosCivis.map((ec) => (
                   <SelectItem key={ec} value={ec}>{ec}</SelectItem>
@@ -449,16 +551,37 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
           </div>
         )}
 
-        {pessoa.estadoCivil === "Casado(a)" && (
+        {(pessoa.estadoCivil === "Casado(a)" || pessoa.estadoCivil === "União Estável") && (
           <div>
-            <Label>Regime de Bens</Label>
-            <Input
-              value={pessoa.regimeBens || ""}
-              onChange={(e) => update("regimeBens", e.target.value)}
-              placeholder="Ex: comunhão universal"
-              readOnly={!!isConjuge}
-              className={isConjuge ? "bg-muted" : ""}
-            />
+            <div className="flex items-center justify-between">
+              <Label>
+                {pessoa.estadoCivil === "União Estável" ? "Regime do pacto (se houver)" : "Regime de Bens"} *
+              </Label>
+              {getError("regimeBens") && <span className="text-xs text-destructive">{getError("regimeBens")?.message}</span>}
+            </div>
+            {isConjuge ? (
+              <Input
+                value={pessoa.regimeBens ? getRegimesByEstadoCivil(pessoa.estadoCivil).find(r => r.id === pessoa.regimeBens)?.label : ""}
+                readOnly
+                className="bg-muted"
+              />
+            ) : (
+              <Select
+                value={pessoa.regimeBens || ""}
+                onValueChange={(v) => update("regimeBens", v)}
+              >
+                <SelectTrigger className={getError("regimeBens") ? "border-destructive focus-visible:ring-destructive" : ""}>
+                  <SelectValue placeholder="Selecione o regime" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getRegimesByEstadoCivil(pessoa.estadoCivil).map((regime) => (
+                    <SelectItem key={regime.id} value={regime.id}>
+                      {regime.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         )}
 
@@ -474,24 +597,91 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
         </div>
 
         <div>
-          <Label>Nº do Documento *</Label>
-          <Input value={pessoa.documentoNumero} onChange={(e) => update("documentoNumero", e.target.value)} placeholder="Número" />
+          <div className="flex items-center justify-between">
+            <Label>Nº do Documento *</Label>
+            {getError("documentoNumero") && <span className="text-xs text-destructive">{getError("documentoNumero")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.documentoNumero} 
+            onChange={(e) => update("documentoNumero", e.target.value)} 
+            placeholder="Número"
+            className={getError("documentoNumero") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
 
         <div>
-          <Label>Órgão Expedidor *</Label>
-          <Input value={pessoa.documentoOrgao} onChange={(e) => update("documentoOrgao", e.target.value)} placeholder="Ex: SSP/RS" />
+          <div className="flex items-center justify-between">
+            <Label>Órgão Expedidor *</Label>
+            {getError("documentoOrgao") && <span className="text-xs text-destructive">{getError("documentoOrgao")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.documentoOrgao} 
+            onChange={(e) => update("documentoOrgao", e.target.value)} 
+            placeholder="Ex: SSP/RS"
+            className={getError("documentoOrgao") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
 
         <div>
-          <Label>CPF</Label>
-          <Input value={pessoa.cpf} onChange={(e) => update("cpf", e.target.value)} placeholder="000.000.000-00" />
+          <div className="flex items-center justify-between">
+            <Label>CPF</Label>
+            {getError("cpf") && <span className="text-xs text-destructive">{getError("cpf")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.cpf} 
+            onChange={(e) => update("cpf", e.target.value)} 
+            placeholder="000.000.000-00"
+            className={getError("cpf") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
+
+        {clienteEncontrado && (
+          <div className="md:col-span-2 p-4 rounded-lg border-2 border-primary/40 bg-primary/5 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                <UserCheck className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Cliente já cadastrado: <span className="font-bold">{clienteEncontrado.nome_completo}</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {clienteEncontrado.cpf || clienteEncontrado.cnpj || ""}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setClienteEncontrado(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Ignorar
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={carregarDadosCliente}
+                className="bg-primary"
+              >
+                Carregar dados
+              </Button>
+            </div>
+          </div>
+        )}
 
         {!isConjuge && (
           <div>
-            <Label>CNPJ</Label>
-            <Input value={pessoa.cnpj} onChange={(e) => update("cnpj", e.target.value)} placeholder="00.000.000/0000-00" />
+            <div className="flex items-center justify-between">
+              <Label>CNPJ</Label>
+              {getError("cnpj") && <span className="text-xs text-destructive">{getError("cnpj")?.message}</span>}
+            </div>
+            <Input 
+              value={pessoa.cnpj} 
+              onChange={(e) => update("cnpj", e.target.value)} 
+              placeholder="00.000.000/0000-00"
+              className={getError("cnpj") ? "border-destructive focus-visible:ring-destructive" : ""}
+            />
           </div>
         )}
 
@@ -506,29 +696,52 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
         </div>
 
         <div className="md:col-span-2">
-          <Label>Endereço Completo *</Label>
+          <div className="flex items-center justify-between">
+            <Label>Endereço Completo *</Label>
+            {getError("endereco") && <span className="text-xs text-destructive">{getError("endereco")?.message}</span>}
+          </div>
           <Input
             value={pessoa.endereco}
             onChange={(e) => update("endereco", e.target.value)}
             onBlur={handleEnderecoBlur}
             placeholder="Rua, número, complemento"
+            className={getError("endereco") ? "border-destructive focus-visible:ring-destructive" : ""}
           />
         </div>
 
         <div>
-          <Label>Bairro *</Label>
-          <Input value={pessoa.bairro} onChange={(e) => update("bairro", e.target.value)} placeholder="Bairro" />
+          <div className="flex items-center justify-between">
+            <Label>Bairro *</Label>
+            {getError("bairro") && <span className="text-xs text-destructive">{getError("bairro")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.bairro} 
+            onChange={(e) => update("bairro", e.target.value)} 
+            placeholder="Bairro"
+            className={getError("bairro") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
 
         <div>
-          <Label>Cidade *</Label>
-          <Input value={pessoa.cidade} onChange={(e) => update("cidade", e.target.value)} placeholder="Cidade" />
+          <div className="flex items-center justify-between">
+            <Label>Cidade *</Label>
+            {getError("cidade") && <span className="text-xs text-destructive">{getError("cidade")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.cidade} 
+            onChange={(e) => update("cidade", e.target.value)} 
+            placeholder="Cidade"
+            className={getError("cidade") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
 
         <div>
-          <Label>Estado *</Label>
+          <div className="flex items-center justify-between">
+            <Label>Estado *</Label>
+            {getError("estado") && <span className="text-xs text-destructive">{getError("estado")?.message}</span>}
+          </div>
           <Select value={pessoa.estado} onValueChange={(v) => update("estado", v)}>
-            <SelectTrigger><SelectValue placeholder="UF" /></SelectTrigger>
+            <SelectTrigger className={getError("estado") ? "border-destructive focus-visible:ring-destructive" : ""}><SelectValue placeholder="UF" /></SelectTrigger>
             <SelectContent>
               {estadosBR.map((uf) => (
                 <SelectItem key={uf} value={uf}>{uf}</SelectItem>
@@ -538,24 +751,45 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, isConjuge, hide
         </div>
 
         <div>
-          <Label>CEP</Label>
-          <Input value={pessoa.cep} onChange={(e) => update("cep", e.target.value)} onBlur={handleCepBlur} placeholder="00000-000" />
+          <div className="flex items-center justify-between">
+            <Label>CEP</Label>
+            {getError("cep") && <span className="text-xs text-destructive">{getError("cep")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.cep} 
+            onChange={(e) => update("cep", e.target.value)} 
+            onBlur={handleCepBlur} 
+            placeholder="00000-000"
+            className={getError("cep") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
 
         <div>
-          <Label>E-mail{emailRequired ? " *" : ""}</Label>
+          <div className="flex items-center justify-between">
+            <Label>E-mail{emailRequired ? " *" : ""}</Label>
+            {getError("email") && <span className="text-xs text-destructive">{getError("email")?.message}</span>}
+          </div>
           <Input
             type="email"
             required={!!emailRequired}
             value={pessoa.email || ""}
             onChange={(e) => update("email", e.target.value)}
             placeholder="email@exemplo.com"
+            className={getError("email") ? "border-destructive focus-visible:ring-destructive" : ""}
           />
         </div>
 
         <div>
-          <Label>Telefone</Label>
-          <Input value={pessoa.telefone || ""} onChange={(e) => update("telefone", e.target.value)} placeholder="(00) 00000-0000" />
+          <div className="flex items-center justify-between">
+            <Label>Telefone</Label>
+            {getError("telefone") && <span className="text-xs text-destructive">{getError("telefone")?.message}</span>}
+          </div>
+          <Input 
+            value={pessoa.telefone || ""} 
+            onChange={(e) => update("telefone", e.target.value)} 
+            placeholder="(00) 00000-0000"
+            className={getError("telefone") ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { ShieldCheck, ShieldAlert, Scale, MessageSquarePlus, Plus, Check, Settings } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Scale, MessageSquarePlus, Plus, Check, Settings, Sparkles, AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { PerfilContrato, TipoContrato, perfisContrato } from "@/types/contract";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,6 +10,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
+import { validarEstruturaTemplate } from "@/lib/templateAnchors";
+import TemplateEditor from "./TemplateEditor";
 
 interface StepPerfilProps {
   tipoContrato: TipoContrato;
@@ -74,10 +77,45 @@ const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, pe
   const [customPerfis, setCustomPerfis] = useState<PerfilItem[]>([]);
   const [perfilDialogOpen, setPerfilDialogOpen] = useState(false);
   const [savingPerfil, setSavingPerfil] = useState(false);
+  const [suggestingName, setSuggestingName] = useState(false);
   const [perfilNome, setPerfilNome] = useState("");
   const [perfilDescricao, setPerfilDescricao] = useState("");
   const [perfilIcone, setPerfilIcone] = useState("Scale");
   const [perfilInstructions, setPerfilInstructions] = useState("");
+  const [validacaoEstrutura, setValidacaoEstrutura] = useState<{ valido: boolean; erros: string[]; avisos: string[] } | null>(null);
+  const [verificandoEstrutura, setVerificandoEstrutura] = useState(false);
+  
+  const normalizeForComparison = (text: string): string => {
+    return text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  const getNomeError = (nome: string): string | null => {
+    if (!nome.trim()) return "Nome é obrigatório";
+    if (nome.trim().length < 3) return "Nome deve ter pelo menos 3 caracteres";
+    if (nome.trim().length > 60) return "Nome deve ter no máximo 60 caracteres";
+    const normalized = normalizeForComparison(nome);
+    const exists = customPerfis.some(p => normalizeForComparison(p.nome) === normalized);
+    if (exists) return "Este nome já está em uso";
+    return null;
+  };
+
+  const getDescricaoError = (descricao: string): string | null => {
+    if (!descricao.trim()) return "Descrição é obrigatória";
+    if (descricao.trim().length < 10) return "Descrição deve ter pelo menos 10 caracteres";
+    return null;
+  };
+
+  const getInstructionsError = (instructions: string): string | null => {
+    if (!instructions.trim()) return "Texto do modelo base é obrigatório";
+    if (instructions.trim().length < 500) return "Texto do modelo base deve ter pelo menos 500 caracteres";
+    return null;
+  };
 
   const selectedPerfilLabel = useMemo(() => {
     const builtin = perfisContrato.find((p) => p.id === perfilContrato);
@@ -180,13 +218,34 @@ const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, pe
     loadTemplate();
   }, [templateOpen, tipoContrato, templatePerfil]);
 
+  const getTemplateTextError = (text: string): string | null => {
+    if (!text.trim()) return "Texto do modelo base é obrigatório";
+    if (text.trim().length < 500) return "Texto do modelo base deve ter pelo menos 500 caracteres";
+    return null;
+  };
+  
+  const verificarEstrutura = () => {
+    setVerificandoEstrutura(true);
+    setTimeout(() => {
+      const resultado = validarEstruturaTemplate(templateText);
+      setValidacaoEstrutura(resultado);
+      setVerificandoEstrutura(false);
+      if (resultado.valido) {
+        toast.success("Estrutura válida!");
+      } else {
+        toast.error(`Estrutura com ${resultado.erros.length} erro(s)`);
+      }
+    }, 100);
+  };
+
   const save = async () => {
     if (!imobiliariaId) {
       toast.error("Selecione uma imobiliária para salvar o modelo base.");
       return;
     }
-    if (!templateText.trim()) {
-      toast.error("Informe o texto do modelo base.");
+    const templateError = getTemplateTextError(templateText);
+    if (templateError) {
+      toast.error(templateError);
       return;
     }
 
@@ -252,15 +311,48 @@ const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, pe
     setPerfilDialogOpen(true);
   };
 
+  const suggestName = async () => {
+    if (!perfilDescricao.trim() && !perfilInstructions.trim()) {
+      toast.error("Informe a descrição ou as instruções para sugerir um nome.");
+      return;
+    }
+    setSuggestingName(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("suggest-profile-name", {
+        body: {
+          descricao: perfilDescricao,
+          instructions: perfilInstructions
+        }
+      });
+      if (error) throw error;
+      if (data?.nome) {
+        setPerfilNome(data.nome);
+        toast.success("Nome sugerido!");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao sugerir nome.");
+    } finally {
+      setSuggestingName(false);
+    }
+  };
+
   const savePerfil = async () => {
     if (!imobiliariaId || !tipoContratoId) {
       toast.error("Selecione uma imobiliária.");
       return;
     }
-    if (!perfilNome.trim()) {
-      toast.error("Informe o nome do perfil.");
+    
+    const nomeError = getNomeError(perfilNome);
+    const descricaoError = getDescricaoError(perfilDescricao);
+    const instructionsError = getInstructionsError(perfilInstructions);
+    
+    if (nomeError || descricaoError || instructionsError) {
+      if (nomeError) toast.error(nomeError);
+      else if (descricaoError) toast.error(descricaoError);
+      else if (instructionsError) toast.error(instructionsError);
       return;
     }
+    
     setSavingPerfil(true);
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -271,9 +363,9 @@ const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, pe
           imobiliaria_id: imobiliariaId,
           tipo_contrato_id: tipoContratoId,
           nome: perfilNome.trim(),
-          descricao: perfilDescricao.trim() || null,
+          descricao: perfilDescricao.trim(),
           icone: perfilIcone,
-          instructions_ia: perfilInstructions.trim() || null,
+          instructions_ia: perfilInstructions.trim(),
           created_by: userId,
         } as any)
         .select("codigo, nome, descricao, icone, instructions_ia")
@@ -415,17 +507,77 @@ const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, pe
             ) : (
               <div className="space-y-4">
                 <div className="grid gap-4">
-                  <div>
-                    <Label>Texto do Modelo Base</Label>
-                    <Textarea
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label>Texto do Modelo Base *</Label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{templateText.length}/...</span>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={verificarEstrutura} 
+                          disabled={verificandoEstrutura}
+                        >
+                          {verificandoEstrutura ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          )}
+                          <span className="ml-1">Verificar Estrutura</span>
+                        </Button>
+                      </div>
+                    </div>
+                    <TemplateEditor
                       value={templateText}
-                      onChange={(e) => setTemplateText(e.target.value)}
-                      className="min-h-[260px]"
+                      onChange={(v) => {
+                        setTemplateText(v);
+                        setValidacaoEstrutura(null);
+                      }}
+                      className={cn(getTemplateTextError(templateText) ? "border-destructive focus-visible:ring-destructive" : "")}
                       placeholder="Cole aqui o texto do contrato base (sem peculiaridades)."
                     />
-                  </div>
-                  <div>
-                    <Label>Instruções adicionais para IA (opcional)</Label>
+                    {getTemplateTextError(templateText) && (
+                      <span className="text-xs text-destructive">{getTemplateTextError(templateText)}</span>
+                    )}
+                    
+                    {validacaoEstrutura && (
+                      <div className="mt-3 space-y-2">
+                        {validacaoEstrutura.avisos.length > 0 && (
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800">
+                          <AlertTriangle className="w-4 h-4 mt-0.5" />
+                          <div className="text-xs space-y-1">
+                            {validacaoEstrutura.avisos.map((aviso, i) => (
+                              <div key={i}>{aviso}</div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {validacaoEstrutura.erros.length > 0 && (
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800">
+                          <AlertCircle className="w-4 h-4 mt-0.5" />
+                          <div className="text-xs space-y-1">
+                            {validacaoEstrutura.erros.map((erro, i) => (
+                              <div key={i}>{erro}</div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {validacaoEstrutura.valido && validacaoEstrutura.erros.length === 0 && (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <div className="text-xs">Estrutura válida!</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label>Instruções adicionais para IA (opcional)</Label>
+                      <span className="text-xs text-muted-foreground">{instructionsIa.length}/...</span>
+                    </div>
                     <Textarea
                       value={instructionsIa}
                       onChange={(e) => setInstructionsIa(e.target.value)}
@@ -440,7 +592,7 @@ const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, pe
           </div>
           <div className="pt-4 flex justify-end gap-2 border-t border-border">
             <Button variant="outline" onClick={() => setTemplateOpen(false)}>Cancelar</Button>
-            <Button onClick={save} disabled={savingTemplate || loadingTemplate}>
+            <Button onClick={save} disabled={savingTemplate || loadingTemplate || !!getTemplateTextError(templateText)}>
               {savingTemplate ? "Salvando..." : "Salvar"}
             </Button>
           </div>
@@ -455,9 +607,31 @@ const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, pe
           <div className="flex-1 overflow-y-auto pr-1">
             <div className="space-y-4 pt-2">
               <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <Label>Nome</Label>
-                  <Input value={perfilNome} onChange={(e) => setPerfilNome(e.target.value)} placeholder="Ex: Blindagem Máxima" />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label>Nome *</Label>
+                    <span className="text-xs text-muted-foreground">{perfilNome.length}/60</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={perfilNome}
+                      onChange={(e) => setPerfilNome(e.target.value)}
+                      placeholder="Ex: Blindagem Máxima"
+                      className={getNomeError(perfilNome) ? "border-destructive focus-visible:ring-destructive" : ""}
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={suggestName}
+                      disabled={suggestingName}
+                      title="Sugerir nome"
+                    >
+                      {suggestingName ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  {getNomeError(perfilNome) && (
+                    <span className="text-xs text-destructive">{getNomeError(perfilNome)}</span>
+                  )}
                 </div>
                 <div>
                   <Label>Ícone</Label>
@@ -471,24 +645,44 @@ const StepPerfil = ({ tipoContrato, tipoContratoId, perfilContrato, onChange, pe
                   </Select>
                 </div>
               </div>
-              <div>
-                <Label>Descrição</Label>
-                <Input value={perfilDescricao} onChange={(e) => setPerfilDescricao(e.target.value)} placeholder="Breve descrição do perfil" />
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label>Descrição *</Label>
+                  <span className="text-xs text-muted-foreground">{perfilDescricao.length}/...</span>
+                </div>
+                <Input
+                  value={perfilDescricao}
+                  onChange={(e) => setPerfilDescricao(e.target.value)}
+                  placeholder="Breve descrição do perfil"
+                  className={getDescricaoError(perfilDescricao) ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {getDescricaoError(perfilDescricao) && (
+                  <span className="text-xs text-destructive">{getDescricaoError(perfilDescricao)}</span>
+                )}
               </div>
-              <div>
-                <Label>Instruções para IA (opcional)</Label>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label>Texto do Modelo Base *</Label>
+                  <span className="text-xs text-muted-foreground">{perfilInstructions.length}/...</span>
+                </div>
                 <Textarea
                   value={perfilInstructions}
                   onChange={(e) => setPerfilInstructions(e.target.value)}
-                  className="min-h-[160px]"
-                  placeholder="Ex.: Priorizar cláusulas favoráveis ao vendedor; impor condições mais rígidas em caso de inadimplemento..."
+                  className={cn("min-h-[160px]", getInstructionsError(perfilInstructions) ? "border-destructive focus-visible:ring-destructive" : "")}
+                  placeholder="Cole aqui o texto completo do contrato base (mínimo 500 caracteres)..."
                 />
+                {getInstructionsError(perfilInstructions) && (
+                  <span className="text-xs text-destructive">{getInstructionsError(perfilInstructions)}</span>
+                )}
               </div>
             </div>
           </div>
           <div className="pt-4 flex justify-end gap-2 border-t border-border">
             <Button variant="outline" onClick={() => setPerfilDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={savePerfil} disabled={savingPerfil || !perfilNome.trim()}>
+            <Button
+              onClick={savePerfil}
+              disabled={savingPerfil || !!getNomeError(perfilNome) || !!getDescricaoError(perfilDescricao) || !!getInstructionsError(perfilInstructions)}
+            >
               {savingPerfil ? "Salvando..." : "Criar Perfil"}
             </Button>
           </div>
