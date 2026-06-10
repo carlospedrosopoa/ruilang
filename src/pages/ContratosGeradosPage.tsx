@@ -279,6 +279,8 @@ const ContratosGeradosPage = () => {
       const vendedores = Array.isArray((dados as any)?.vendedores) ? (dados as any).vendedores : [];
       const compradores = Array.isArray((dados as any)?.compradores) ? (dados as any).compradores : [];
       const testemunhas = Array.isArray((dados as any)?.testemunhas) ? (dados as any).testemunhas : [];
+      const includeImobiliaria =
+        typeof (dados as any)?.constarImobiliaria === "boolean" ? Boolean((dados as any).constarImobiliaria) : true;
 
       const vendedorPrincipal = vendedores.find((v: any) => !Boolean(v?.conjugeDeId)) || vendedores[0] || null;
       const compradorPrincipal = compradores.find((c: any) => !Boolean(c?.conjugeDeId)) || compradores[0] || null;
@@ -295,6 +297,7 @@ const ContratosGeradosPage = () => {
           signatures: {
             conjugeVendedor,
             conjugeComprador,
+            includeImobiliaria,
             vendedor: { nome: vendedorPrincipal?.nome || "", cpf: vendedorPrincipal?.cpf || "" },
             comprador: { nome: compradorPrincipal?.nome || "", cpf: compradorPrincipal?.cpf || "" },
             conjugeDoVendedor: conjugeDoVendedor ? { nome: conjugeDoVendedor?.nome || "", cpf: conjugeDoVendedor?.cpf || "" } : undefined,

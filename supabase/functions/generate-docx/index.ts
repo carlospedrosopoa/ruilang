@@ -93,11 +93,15 @@ type DocBranding = {
   logoBytes?: Uint8Array;
   logoContentType?: string;
   footerAddress?: string;
+  imobiliariaNome?: string;
+  imobiliariaCnpj?: string;
+  imobiliariaCreci?: string;
 };
 
 type SignatureOptions = {
   conjugeVendedor?: boolean;
   conjugeComprador?: boolean;
+  includeImobiliaria?: boolean;
   vendedor?: { nome?: string; cpf?: string };
   comprador?: { nome?: string; cpf?: string };
   conjugeDoVendedor?: { nome?: string; cpf?: string };
@@ -322,9 +326,10 @@ function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBran
   // ── Bloco de assinaturas ──
   children.push(new Paragraph({ spacing: { before: 720 } }));
 
-  const signatureBlock = (label: string, person?: { nome?: string; cpf?: string }) => {
+  const signatureBlock = (label: string, person?: { nome?: string; cpf?: string; docLabel?: string }) => {
     const nome = String(person?.nome || "").trim();
     const cpf = String(person?.cpf || "").trim();
+    const docLabel = String(person?.docLabel || "CPF").trim() || "CPF";
     return [
     new Paragraph({
       alignment: AlignmentType.CENTER,
@@ -351,7 +356,7 @@ function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBran
       alignment: AlignmentType.CENTER,
       spacing: { after: 200 },
       children: [
-        new TextRun({ text: cpf ? `CPF: ${cpf}` : "CPF:", size: SMALL_SIZE, font: FONT, color: cpf ? "666666" : "BBBBBB" }),
+        new TextRun({ text: cpf ? `${docLabel}: ${cpf}` : `${docLabel}:`, size: SMALL_SIZE, font: FONT, color: cpf ? "666666" : "BBBBBB" }),
       ],
     }),
     ];
@@ -362,6 +367,9 @@ function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBran
   const conjugeDoVendedor = signatures?.conjugeDoVendedor;
   const conjugeDoComprador = signatures?.conjugeDoComprador;
   const testemunhas = Array.isArray(signatures?.testemunhas) ? signatures?.testemunhas : [];
+  const incluirImobiliaria = signatures?.includeImobiliaria !== false;
+  const imobNome = String(branding?.imobiliariaNome || "").trim();
+  const imobCnpj = String(branding?.imobiliariaCnpj || "").trim();
 
   children.push(...signatureBlock("VENDEDOR(A) / PROMITENTE VENDEDOR(A)", vendedor));
   children.push(...signatureBlock("COMPRADOR(A) / PROMITENTE COMPRADOR(A)", comprador));
@@ -370,6 +378,9 @@ function buildDocxAbnt(minuta: string, tipoContrato?: string, branding?: DocBran
   }
   if (signatures?.conjugeComprador) {
     children.push(...signatureBlock("CÔNJUGE/COMP. DO COMPRADOR", conjugeDoComprador));
+  }
+  if (incluirImobiliaria && (imobNome || imobCnpj)) {
+    children.push(...signatureBlock("IMOBILIÁRIA INTERMEDIADORA", { nome: imobNome, cpf: imobCnpj, docLabel: "CNPJ" }));
   }
   children.push(...signatureBlock("TESTEMUNHA 1", testemunhas[0]));
   children.push(...signatureBlock("TESTEMUNHA 2", testemunhas[1]));
@@ -701,9 +712,10 @@ function mergeWitnessLists(
   return out;
 }
 
-function makeVisualSignatureCell(title: string, person?: { nome?: string; cpf?: string }) {
+function makeVisualSignatureCell(title: string, person?: { nome?: string; cpf?: string; docLabel?: string }) {
   const nome = String(person?.nome || "").trim();
   const cpf = String(person?.cpf || "").trim();
+  const docLabel = String(person?.docLabel || "CPF").trim() || "CPF";
   return new TableCell({
     verticalAlign: VerticalAlign.CENTER,
     children: [
@@ -734,7 +746,7 @@ function makeVisualSignatureCell(title: string, person?: { nome?: string; cpf?: 
         spacing: { after: 0, line: VL_LINE_SPACING },
         children: [
           new TextRun({
-            text: cpf ? `CPF: ${cpf}` : "CPF:",
+            text: cpf ? `${docLabel}: ${cpf}` : `${docLabel}:`,
             size: VL_SMALL_SIZE,
             font: VL_FONT,
             color: cpf ? VL_GRAY : VL_GRAY_LIGHT,
@@ -1009,21 +1021,24 @@ function buildDocxVisualLaw(
     })
   );
 
-  children.push(new Paragraph({ spacing: { before: 260 } }));
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 200, after: 70, line: VL_LINE_SPACING },
-      children: [new TextRun({ text: "__________________________________", size: VL_BODY_SIZE, font: VL_FONT, color: VL_BLUE })],
-    })
-  );
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 40, line: VL_LINE_SPACING },
-      children: [new TextRun({ text: "IMOBILIÁRIA INTERMEDIADORA", bold: true, size: VL_SMALL_SIZE, font: VL_FONT, color: VL_BLUE })],
-    })
-  );
+  const incluirImobiliaria = signatures?.includeImobiliaria !== false;
+  const imobNome = String(branding?.imobiliariaNome || "").trim();
+  const imobCnpj = String(branding?.imobiliariaCnpj || "").trim();
+  const imobHasAny = Boolean(imobNome || imobCnpj);
+
+  if (incluirImobiliaria && imobHasAny) {
+    children.push(new Paragraph({ spacing: { before: 260 } }));
+    children.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            children: [makeVisualSignatureCell("IMOBILIÁRIA INTERMEDIADORA", { nome: imobNome, cpf: imobCnpj, docLabel: "CNPJ" })],
+          }),
+        ],
+      })
+    );
+  }
 
   children.push(new Paragraph({ spacing: { before: 220, after: 80 } }));
   children.push(
@@ -1147,10 +1162,13 @@ Deno.serve(async (req: Request) => {
           const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
           const { data } = await admin
             .from("imobiliarias")
-            .select("logo_url, endereco, numero, bairro, cidade, estado")
+            .select("nome, creci, cnpj, logo_url, endereco, numero, bairro, cidade, estado, cep")
             .eq("id", tenantId)
             .maybeSingle();
           const footerAddress = buildFooterAddress(data);
+          const imobiliariaNome = String((data as any)?.nome || "").trim() || undefined;
+          const imobiliariaCnpj = String((data as any)?.cnpj || "").trim() || undefined;
+          const imobiliariaCreci = String((data as any)?.creci || "").trim() || undefined;
           let logoBytes: Uint8Array | undefined = undefined;
           let logoContentType: string | undefined = undefined;
           const logoUrl = String((data as any)?.logo_url || "").trim();
@@ -1161,8 +1179,15 @@ Deno.serve(async (req: Request) => {
               logoContentType = fetched.contentType;
             }
           }
-          if (footerAddress || logoBytes) {
-            branding = { footerAddress: footerAddress || undefined, logoBytes, logoContentType };
+          if (footerAddress || logoBytes || imobiliariaNome || imobiliariaCnpj || imobiliariaCreci) {
+            branding = {
+              footerAddress: footerAddress || undefined,
+              logoBytes,
+              logoContentType,
+              imobiliariaNome,
+              imobiliariaCnpj,
+              imobiliariaCreci,
+            };
           }
         } catch {}
       }

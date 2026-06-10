@@ -8,10 +8,10 @@ import { Pessoa, criarPessoaVazia, Procurador, Anuente, criarProcuradorVazio, cr
 interface StepVendedoresProps {
   vendedores: Pessoa[];
   onChange: (vendedores: Pessoa[]) => void;
-  procuradores: Procurador[];
-  onProcuradoresChange: (procuradores: Procurador[]) => void;
-  anuentes: Anuente[];
-  onAnuentesChange: (anuentes: Anuente[]) => void;
+  procuradores?: Procurador[];
+  onProcuradoresChange?: (procuradores: Procurador[]) => void;
+  anuentes?: Anuente[];
+  onAnuentesChange?: (anuentes: Anuente[]) => void;
   titulo?: string;
   tituloPlural?: string;
   simetricas?: boolean;
@@ -24,36 +24,57 @@ interface StepVendedoresProps {
 
 const needsConjuge = (ec: string) => ec === "Casado(a)" || ec === "União Estável";
 
-const StepVendedores = ({ vendedores, onChange, procuradores, onProcuradoresChange, anuentes, onAnuentesChange, titulo = "Vendedor", tituloPlural = "Vendedor(es)", simetricas, numeroBase = 1, emailRequired, onExtractFiles, errors, submissionId }: StepVendedoresProps) => {
+const StepVendedores = ({
+  vendedores,
+  onChange,
+  procuradores = [],
+  onProcuradoresChange,
+  anuentes = [],
+  onAnuentesChange,
+  titulo = "Vendedor",
+  tituloPlural = "Vendedor(es)",
+  simetricas,
+  numeroBase = 1,
+  emailRequired,
+  onExtractFiles,
+  errors,
+  submissionId,
+}: StepVendedoresProps) => {
   const addVendedor = () => onChange([...vendedores, criarPessoaVazia()]);
   
   const addProcurador = (parteIndice: number) => {
     if (!submissionId) return;
+    if (!onProcuradoresChange) return;
     onProcuradoresChange([...procuradores, criarProcuradorVazio(submissionId, "vendedor", parteIndice)]);
   };
   
   const addAnuente = () => {
     if (!submissionId) return;
+    if (!onAnuentesChange) return;
     onAnuentesChange([...anuentes, criarAnuenteVazio(submissionId)]);
   };
   
   const updateProcurador = (index: number, procurador: Procurador) => {
+    if (!onProcuradoresChange) return;
     const updated = [...procuradores];
     updated[index] = procurador;
     onProcuradoresChange(updated);
   };
   
   const removeProcurador = (index: number) => {
+    if (!onProcuradoresChange) return;
     onProcuradoresChange(procuradores.filter((_, i) => i !== index));
   };
   
   const updateAnuente = (index: number, anuente: Anuente) => {
+    if (!onAnuentesChange) return;
     const updated = [...anuentes];
     updated[index] = anuente;
     onAnuentesChange(updated);
   };
   
   const removeAnuente = (index: number) => {
+    if (!onAnuentesChange) return;
     onAnuentesChange(anuentes.filter((_, i) => i !== index));
   };
 
