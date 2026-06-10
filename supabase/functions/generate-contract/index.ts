@@ -366,6 +366,121 @@ function applyImobiliariaIntermediadora(text: string, row: any, include: boolean
   return out.trim();
 }
 
+function normalizeDuplicateContractTitle(text: string) {
+  const lines = String(text || "").split(/\r?\n/);
+  const nonEmpty = lines
+    .map((line, index) => ({ line: String(line || "").trim(), index }))
+    .filter((x) => x.line)
+    .slice(0, 8);
+
+  const contractIdx = nonEmpty.find((x) => /^CONTRATO\s+PARTICULAR\s+DE\b/i.test(x.line))?.index ?? -1;
+  const instrumentIdx = nonEmpty.find((x) => /^INSTRUMENTO\s+PARTICULAR\s+DE\b/i.test(x.line))?.index ?? -1;
+
+  if (contractIdx === -1 || instrumentIdx === -1 || contractIdx >= instrumentIdx) return String(text || "").trim();
+
+  lines.splice(contractIdx, 1);
+  while (contractIdx < lines.length && !String(lines[contractIdx] || "").trim() && !String(lines[Math.max(0, contractIdx - 1)] || "").trim()) {
+    lines.splice(contractIdx, 1);
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function normalizeLooseName(input: string) {
+  return String(input || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function normalizeProcuradorSignatureBlocks(text: string, contrato: any) {
+  const procuradores = Array.isArray(contrato?.procuradores) ? contrato.procuradores : [];
+  if (!procuradores.length) return text;
+
+  const lines = String(text || "").split(/\r?\n/);
+  const signatureStart = Math.max(0, lines.length - 180);
+  const isUnderline = (s: string) => /^\s*_{5,}\s*$/.test(String(s || ""));
+  const isCpfLine = (s: string) => /^\s*(CPF|CNPJ)\s*:/i.test(String(s || "").trim());
+  const isRoleLine = (s: string) =>
+    /VENDEDOR|COMPRADOR|PROMITENTE|LOCADOR|LOCAT[ÁA]RIO|CEDENTE|CESSION[ÁA]RIO|C[ÔO]NJUGE|COMPANHEIR/i.test(String(s || "").trim());
+
+  const removeBlockAt = (nameIndex: number) => {
+    let start = nameIndex;
+    if (start > signatureStart && isUnderline(lines[start - 1])) start -= 1;
+    if (start > signatureStart && isRoleLine(lines[start - 1])) start -= 1;
+    if (start > signatureStart && isUnderline(lines[start - 1])) start -= 1;
+
+    let end = nameIndex;
+    while (end + 1 < lines.length && isCpfLine(lines[end + 1])) end += 1;
+    while (end + 1 < lines.length && !String(lines[end + 1] || "").trim()) end += 1;
+
+    lines.splice(start, end - start + 1);
+  };
+
+  const findNameIndex = (name: string, cpf?: string, avoid = new Set<number>()) => {
+    const normalizedName = normalizeLooseName(name);
+    const digits = String(cpf || "").replace(/\D/g, "");
+    for (let i = signatureStart; i < lines.length; i++) {
+      if (avoid.has(i)) continue;
+      const line = String(lines[i] || "").trim();
+      if (!line) continue;
+      const normLine = normalizeLooseName(line);
+      const lineDigits = line.replace(/\D/g, "");
+      if (normalizedName && normLine.includes(normalizedName)) return i;
+      if (digits && lineDigits.includes(digits)) return i;
+    }
+    return -1;
+  };
+
+  for (const proc of procuradores) {
+    const parteTipo = proc?.parteTipo === "comprador" ? "compradores" : "vendedores";
+    const partes = Array.isArray((contrato as any)?.[parteTipo]) ? (contrato as any)[parteTipo] : [];
+    const parteRepresentada = partes.find((_: any, idx: number) => idx === proc?.parteIndice) || null;
+    if (!parteRepresentada) continue;
+
+    const procuradorNome = String(proc?.nomeCompleto || proc?.nome || "").trim();
+    if (!procuradorNome) continue;
+    const procuradorCpf = String(proc?.cpf || "").trim();
+
+    const conjugeParte = partes.find((p: any) => p && p.conjugeDeId === parteRepresentada.id) || null;
+    const mesmoNome = conjugeParte && normalizeLooseName(conjugeParte.nome || "") === normalizeLooseName(procuradorNome);
+    const mesmoCpf =
+      conjugeParte &&
+      String(conjugeParte.cpf || "").replace(/\D/g, "") &&
+      String(conjugeParte.cpf || "").replace(/\D/g, "") === String(procuradorCpf || "").replace(/\D/g, "");
+    const procuradorEhConjuge = Boolean(conjugeParte && (mesmoNome || mesmoCpf));
+
+    const representedName = String(parteRepresentada.nome || "").trim();
+    const replacement = procuradorEhConjuge
+      ? `p.p. ${representedName} e por si própria - ${procuradorNome}`
+      : `p.p. ${representedName} - ${procuradorNome}`;
+
+    const representedIdx = findNameIndex(representedName, parteRepresentada.cpf);
+    const spouseIdx = procuradorEhConjuge ? findNameIndex(String(conjugeParte?.nome || ""), conjugeParte?.cpf) : -1;
+    const procuradorIdx = findNameIndex(procuradorNome, procuradorCpf, new Set([representedIdx, spouseIdx]));
+
+    if (procuradorEhConjuge && spouseIdx !== -1) {
+      lines[spouseIdx] = replacement;
+      if (representedIdx !== -1 && representedIdx !== spouseIdx) removeBlockAt(representedIdx);
+      continue;
+    }
+
+    if (representedIdx !== -1) {
+      lines[representedIdx] = replacement;
+      if (representedIdx + 1 < lines.length && isCpfLine(lines[representedIdx + 1])) {
+        lines[representedIdx + 1] = procuradorCpf ? `CPF: ${procuradorCpf}` : "";
+      }
+    }
+
+    if (procuradorIdx !== -1 && procuradorIdx !== representedIdx) {
+      removeBlockAt(procuradorIdx);
+    }
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function buildLiteralPeculiaridadesClause(peculiaridades: string) {
   const raw = String(peculiaridades || "").trim();
   if (!raw) return "";
@@ -722,9 +837,23 @@ REGRAS:
 - NÃO use markdown.
 - NÃO invente dados.
 - NÃO altere nomes/CPFs/endereço das partes, descrição do imóvel, valores ou forma de pagamento já definidos no contrato (apenas adicione regras/obrigações relacionadas às peculiaridades).
-- Para cada peculiaridade, escolha a seção/cláusula adequada (ex.: objeto/obrigações/vistoria/posse/encargos/benfeitorias/condomínio/limpeza/devolução etc.).
-- Priorize inserir como subcláusula/item dentro de uma cláusula existente (ex.: itens 1.1, 1.2; ou parágrafos), mantendo a numeração consistente, para evitar renumerar todo o contrato.
+- Você recebe um MODELO BASE já convertido em contrato e uma lista de PECULIARIDADES. Para CADA peculiaridade, você DEVE decidir o MODO de inserção:
+  1. INTEGRAÇÃO_EM_CLAUSULA_EXISTENTE: quando a peculiaridade modifica, complementa ou substitui parte de uma cláusula já existente; aplique a alteração diretamente nessa cláusula.
+  2. CLAUSULA_NOVA: quando a peculiaridade trata de assunto não coberto pelo contrato; crie nova cláusula com título descritivo e juridicamente coerente, posicionada no ponto semanticamente adequado.
+- Para cada peculiaridade, escolha a seção/cláusula adequada (ex.: objeto/obrigações/vistoria/posse/encargos/benfeitorias/condomínio/limpeza/devolução/representação/pagamento).
+- Priorize INTEGRAÇÃO_EM_CLAUSULA_EXISTENTE como primeira opção. Só use CLAUSULA_NOVA quando o tema realmente não estiver coberto.
+- Ao criar CLAUSULA_NOVA, é PROIBIDO usar títulos genéricos como "PECULIARIDADES", "PECULIARIDADES E CONDIÇÕES ESPECIAIS" ou equivalentes. Use sempre título descritivo específico, por exemplo: "DA REPRESENTAÇÃO POR PROCURAÇÃO", "DA FORMA DE PAGAMENTO ESPECIAL", "DA POSSE ANTECIPADA", "DA ENTREGA DE DOCUMENTOS".
+- Normalize o texto de cada peculiaridade: corrija ortografia, pontuação e concordância e reescreva tudo em linguagem jurídica formal, SEM alterar o significado material do que o usuário informou.
+- NUNCA copie literalmente o texto do usuário para dentro do contrato. SEMPRE produza uma versão processada, técnica e juridicamente formal.
+- É PROIBIDO criar uma cláusula avulsa/final de "PECULIARIDADES" ao final do contrato.
+- Se uma peculiaridade envolver representação por procuração, o bloco final de assinaturas deve refletir isso: a parte representada não assina separadamente; deve constar apenas "p.p. [NOME DA PARTE REPRESENTADA] - [NOME DO PROCURADOR]". Se o procurador for o próprio cônjuge/companheiro(a) que já assina como parte plena, usar uma única linha: "p.p. [NOME DA PARTE REPRESENTADA] e por si própria - [NOME DO CÔNJUGE PROCURADOR]".
+- Priorize inserir como subcláusula/item dentro de cláusula existente (ex.: itens 1.1, 1.2, parágrafos ou alíneas), mantendo a numeração consistente e evitando renumeração desnecessária.
 - Se for inevitável criar uma nova cláusula, insira no ponto correto e ajuste a numeração subsequente de forma consistente com o estilo do documento.
+- COERÊNCIA INTERNA OBRIGATÓRIA: sempre que uma peculiaridade alterar uma cláusula, revise as demais cláusulas relacionadas e ajuste referências, premissas, consequências e condições para eliminar contradições.
+- Exemplos de coerência interna:
+  1. Se a forma de pagamento mudar de parcelado para parcela única na escritura, revise também cláusulas de inadimplemento de parcelas, juros de mora por parcela e vencimento antecipado.
+  2. Se uma parte atuar por procuração, revise cláusulas boilerplate sobre procuração ou assinatura pessoal que se tornem incompatíveis.
+- Faça internamente um rastreio dos ajustes em cadeia necessários antes de responder, mas RETORNE APENAS o contrato final, sem comentários, sem explicações e sem log aparente ao usuário.
 - As inserções devem ter redação jurídica e se harmonizar com o texto existente.${extraInstructions}`;
 
   const userPrompt = `CONTRATO (${params.tipoLabel}):
@@ -765,6 +894,8 @@ REGRAS OBRIGATÓRIAS:
 - Não invente dados. Se um dado não foi fornecido, omita ou ajuste a redação de forma segura, sem placeholders.
 - Mantenha a redação e a estrutura do modelo base o máximo possível, alterando apenas o necessário para refletir os dados corretos.
 - Garanta coerência total entre todas as cláusulas (valores, prazos, identificação das partes e do imóvel).
+- Se o modelo base trouxer dois títulos consecutivos no topo, mantenha APENAS "INSTRUMENTO PARTICULAR DE ..." e descarte o título genérico duplicado.
+- Se houver representação por procurador, o bloco final de assinaturas deve trazer apenas "p.p. [PARTE REPRESENTADA] - [PROCURADOR]"; a parte representada não assina separadamente. Se o procurador for o cônjuge/companheiro(a) que também é parte plena, use uma única linha: "p.p. [PARTE REPRESENTADA] e por si própria - [PROCURADOR]".
 - NÃO use markdown. Gere apenas texto simples pronto para assinatura.`;
 
   const extraInstructions = typeof params.instructionsIa === "string" && params.instructionsIa.trim()
@@ -1917,7 +2048,9 @@ IMPORTANTE SOBRE PARTES PLENAS:
 
 REGRAS DE QUALIFICAÇÃO DE PROCURADORES:
 - Quando um vendedor/comprador possuir procurador, a qualificação da parte no preâmbulo deve seguir o padrão: "[QUALIFICAÇÃO COMPLETA DA PARTE], neste ato representado(a) por seu(sua) bastante procurador(a) [QUALIFICAÇÃO COMPLETA DO PROCURADOR], conforme procuração [pública/particular] lavrada em [DATA] no [CARTÓRIO/LIVRO/FOLHA], cujos poderes outorgados incluem [PODERES RESUMIDOS]."
-- No bloco final de assinaturas, criar linha para o procurador com a descrição: "p.p. [NOME DA PARTE REPRESENTADA] — [NOME DO PROCURADOR]".
+- No bloco final de assinaturas, quando a parte for representada por procurador, a parte representada NÃO assina separadamente.
+- Nesses casos, a linha de assinatura deve conter APENAS o procurador com a descrição: "p.p. [NOME DA PARTE REPRESENTADA] - [NOME DO PROCURADOR]".
+- Se o procurador também for cônjuge/companheiro(a) da parte representada e também constar como parte plena no contrato, ele/ela assina UMA ÚNICA VEZ acumulando os dois papéis, no formato: "p.p. [NOME DA PARTE REPRESENTADA] e por si própria - [NOME DO CÔNJUGE PROCURADOR]".
 - A parte representada NÃO assina; apenas o procurador.
 
 REGRAS DE QUALIFICAÇÃO DE ANUENTES:
@@ -1936,6 +2069,7 @@ IMPORTANTE:
 - Títulos de cláusulas em LETRAS MAIÚSCULAS sem qualquer marcação
 - Descreva o ${labelObjeto.toUpperCase()} objeto do contrato em um bloco separado identificado por "${labelObjeto.toUpperCase()}:" no início
 - REGRA OBRIGATÓRIA SOBRE PARCELAS: Todas as parcelas do contrato têm valores FIXOS e NOMINAIS. NÃO inclua cláusula de correção monetária, atualização ou reajuste das parcelas por qualquer índice (INPC, IGPM, IPCA ou outro). As multas moratórias e compensatórias devem ser mantidas normalmente.
+- Se o modelo base ou rascunho apresentar dois títulos consecutivos no topo (por exemplo "CONTRATO PARTICULAR DE ..." e logo abaixo "INSTRUMENTO PARTICULAR DE ..."), mantenha APENAS um título. Prefira "INSTRUMENTO PARTICULAR DE ${tipoContratoNomeUpper}".
 
 REGRAS DE QUALIDADE E SEGURANÇA:
 - NUNCA inventar dados que não foram fornecidos. Se uma informação não foi fornecida, NÃO preencha com dados fictícios.
@@ -2434,9 +2568,10 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     const hasVendedorConjuge = hasConjugeForRole((contrato as any)?.vendedores);
     const hasCompradorConjuge = hasConjugeForRole((contrato as any)?.compradores);
     minutaFinal = stripUnusedConjugeSignatures(minutaFinal, { vendedor: !hasVendedorConjuge, comprador: !hasCompradorConjuge });
+    minutaFinal = normalizeProcuradorSignatureBlocks(minutaFinal, contratoSemPeculiaridades);
+    minutaFinal = normalizeDuplicateContractTitle(minutaFinal);
 
     minutaFinal = fixLocalEDataInContractText(minutaFinal, contratoSemPeculiaridades);
-    minutaFinal = applyImobiliariaIntermediadora(minutaFinal, imobiliariaRow, Boolean(templateImobiliariaId && constarImobiliaria));
 
     // Processamento de âncoras simbólicas
     try {
