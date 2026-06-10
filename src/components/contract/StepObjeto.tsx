@@ -398,7 +398,7 @@ const StepObjeto = ({ imovel, onChange, onExtractFiles, labelObjeto = "Imóvel",
             </div>
           </div>
           
-          {imovel.proprietariosTabulares.map((proprietario, index) => (
+          {(imovel.proprietariosTabulares || []).map((proprietario, index) => (
             <div key={proprietario.id} className="border border-border rounded-md p-4 space-y-3 bg-background">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-muted-foreground">Proprietário {index + 1}</span>
@@ -457,7 +457,7 @@ const StepObjeto = ({ imovel, onChange, onExtractFiles, labelObjeto = "Imóvel",
                 </Button>
               </div>
               
-              {imovel.onusReais.map((onus, index) => (
+              {(imovel.onusReais || []).map((onus, index) => (
                 <div key={onus.id} className="border border-border rounded-md p-4 space-y-3 bg-background">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-muted-foreground">Ônus {index + 1}</span>

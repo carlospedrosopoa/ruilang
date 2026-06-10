@@ -12,6 +12,7 @@ type ImobiliariaRow = {
   id: string;
   nome: string;
   creci: string;
+  cnpj?: string | null;
   email: string | null;
   telefone: string | null;
   endereco: string | null;
@@ -57,6 +58,7 @@ export default function ImobiliariaSettingsPage() {
   const [form, setForm] = useState({
     nome: "",
     creci: "",
+    cnpj: "",
     email: "",
     telefone: "",
     whatsapp_atendimento: "",
@@ -84,7 +86,7 @@ export default function ImobiliariaSettingsPage() {
     const { data, error } = await supabase
       .from("imobiliarias")
       .select(
-        "id, nome, creci, email, telefone, endereco, numero, bairro, cidade, estado, cep, logo_url, logo_storage_path, rede_social_url, whatsapp_atendimento, site_url",
+        "id, nome, creci, cnpj, email, telefone, endereco, numero, bairro, cidade, estado, cep, logo_url, logo_storage_path, rede_social_url, whatsapp_atendimento, site_url",
       )
       .eq("id", activeTenantId)
       .single();
@@ -99,6 +101,7 @@ export default function ImobiliariaSettingsPage() {
     setForm({
       nome: r.nome || "",
       creci: r.creci || "",
+      cnpj: (r as any).cnpj || "",
       email: r.email || "",
       telefone: r.telefone || "",
       whatsapp_atendimento: r.whatsapp_atendimento || "",
@@ -153,6 +156,7 @@ export default function ImobiliariaSettingsPage() {
       const payload: any = {
         nome: form.nome.trim(),
         creci: form.creci.trim(),
+        cnpj: form.cnpj.trim() || null,
         email: form.email.trim() || null,
         telefone: form.telefone.trim() || null,
         whatsapp_atendimento: form.whatsapp_atendimento.trim() || null,
@@ -274,6 +278,10 @@ export default function ImobiliariaSettingsPage() {
               <div>
                 <Label>CRECI *</Label>
                 <Input value={form.creci} onChange={(ev) => update("creci", ev.target.value)} placeholder="CRECI" />
+              </div>
+              <div>
+                <Label>CNPJ</Label>
+                <Input value={form.cnpj} onChange={(ev) => update("cnpj", ev.target.value)} placeholder="00.000.000/0000-00" inputMode="numeric" />
               </div>
               <div>
                 <Label>Logomarca</Label>

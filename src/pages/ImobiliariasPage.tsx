@@ -24,6 +24,7 @@ interface Imobiliaria {
   id: string;
   nome: string;
   creci: string;
+  cnpj?: string | null;
   responsavel: string | null;
   telefone: string | null;
   endereco: string | null;
@@ -38,6 +39,7 @@ interface Imobiliaria {
 const emptyForm = {
   nome: "",
   creci: "",
+  cnpj: "",
   responsavel: "",
   telefone: "",
   endereco: "",
@@ -104,6 +106,7 @@ const ImobiliariasPage = () => {
       const payload = {
         nome: form.nome.trim(),
         creci: form.creci.trim(),
+        cnpj: form.cnpj.trim() || null,
         responsavel: form.responsavel.trim() || null,
         telefone: form.telefone.trim() || null,
         endereco: form.endereco.trim() || null,
@@ -155,6 +158,7 @@ const ImobiliariasPage = () => {
     setForm({
       nome: imob.nome,
       creci: imob.creci,
+      cnpj: (imob as any).cnpj || "",
       responsavel: imob.responsavel || "",
       telefone: imob.telefone || "",
       endereco: imob.endereco || "",
@@ -464,6 +468,10 @@ const ImobiliariasPage = () => {
                 <div>
                   <Label>CRECI *</Label>
                   <Input value={form.creci} onChange={(e) => updateField("creci", e.target.value)} placeholder="Ex: J-24.683" />
+                </div>
+                <div>
+                  <Label>CNPJ</Label>
+                  <Input value={form.cnpj} onChange={(e) => updateField("cnpj", e.target.value)} placeholder="00.000.000/0000-00" inputMode="numeric" />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

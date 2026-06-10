@@ -198,16 +198,9 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, 
         } else if (docToSearch.cnpj) {
           query.ilike("cnpj", `%${docToSearch.cnpj}%`);
         }
-        const { data, error } = await query.limit(1).single();
-        if (error) {
-          if (error.code === "PGRST116") {
-            setClienteEncontrado(null);
-          } else {
-            throw error;
-          }
-        } else {
-          setClienteEncontrado(data);
-        }
+        const { data, error } = await query.limit(1).maybeSingle();
+        if (error) throw error;
+        setClienteEncontrado(data || null);
       } catch (err) {
         console.error("Erro ao buscar cliente:", err);
         setClienteEncontrado(null);

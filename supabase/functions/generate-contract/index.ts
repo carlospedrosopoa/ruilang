@@ -310,6 +310,62 @@ function stripUnusedConjugeSignatures(text: string, opts: { vendedor: boolean; c
   return out.join("\n");
 }
 
+function formatDocDigits(input: string) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 14) return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  return raw;
+}
+
+function buildImobiliariaEndereco(row: any) {
+  const endereco = String(row?.endereco || "").trim();
+  const numero = String(row?.numero || "").trim();
+  const bairro = String(row?.bairro || "").trim();
+  const cidade = String(row?.cidade || "").trim();
+  const estado = String(row?.estado || "").trim();
+  const cep = String(row?.cep || "").trim();
+
+  const left = [endereco, numero].filter(Boolean).join(", ");
+  const mid = bairro ? ` - ${bairro}` : "";
+  const right = [cidade, estado].filter(Boolean).join("/");
+  const tail = right ? ` - ${right}` : "";
+  const cepPart = cep ? ` - CEP ${cep}` : "";
+  const full = `${left}${mid}${tail}${cepPart}`.trim();
+  return full;
+}
+
+function applyImobiliariaIntermediadora(text: string, row: any, include: boolean) {
+  let out = String(text || "");
+
+  const blockRe = /(^|\n)\s*IMOBILI[ÁA]RIA\s+INTERMEDIADORA\s*:[\s\S]*?(?=\n\s*\n|$)/i;
+  const hasBlock = blockRe.test(out);
+
+  if (!include) {
+    if (hasBlock) out = out.replace(blockRe, "\n");
+    out = out.replace(/^\s*IMOBILI[ÁA]RIA\s+INTERMEDIADORA\b.*$/gim, "");
+    out = out.replace(/\s*Em\s+conjunto\s+com\s+a\s+IMOBILI[ÁA]RIA[\s\S]{0,200}?\.\s*/i, "\n");
+    out = out.replace(/\n{3,}/g, "\n\n");
+    return out.trim();
+  }
+
+  if (!row || !hasBlock) return out;
+
+  const nome = String(row?.nome || "").trim();
+  const cnpj = formatDocDigits(row?.cnpj || "");
+  const creci = String(row?.creci || "").trim();
+  const endereco = buildImobiliariaEndereco(row);
+
+  const line =
+    `IMOBILIÁRIA INTERMEDIADORA: ${nome || "______________________________"}, pessoa jurídica de direito privado, ` +
+    `CNPJ n.º ${cnpj || "________________"}, com sede na ${endereco || "______________________________"}, ` +
+    `CRECI n.º ${creci || "________________"}, doravante denominada "IMOBILIÁRIA".`;
+
+  out = out.replace(blockRe, `\n${line}\n`);
+  out = out.replace(/\n{3,}/g, "\n\n");
+  return out.trim();
+}
+
 function buildLiteralPeculiaridadesClause(peculiaridades: string) {
   const raw = String(peculiaridades || "").trim();
   if (!raw) return "";
@@ -1680,6 +1736,19 @@ serve(async (req: Request) => {
       submissionImobiliariaId = (data as any)?.imobiliaria_id || null;
     }
     const templateImobiliariaId = submissionImobiliariaId || imobiliariaIdFromBody;
+    const constarImobiliariaRaw = (contrato as any)?.constarImobiliaria;
+    const constarImobiliaria =
+      typeof constarImobiliariaRaw === "boolean" ? constarImobiliariaRaw : true;
+
+    let imobiliariaRow: any = null;
+    if (admin && templateImobiliariaId && constarImobiliaria) {
+      const { data } = await admin
+        .from("imobiliarias")
+        .select("id, nome, creci, cnpj, endereco, numero, bairro, cidade, estado, cep")
+        .eq("id", templateImobiliariaId)
+        .maybeSingle();
+      imobiliariaRow = data || null;
+    }
 
     let tipoLabel = tipoLabels[contrato.tipoContrato] || "Contrato Imobiliário";
     let tipoContratoLabels = contrato.tipoContratoLabels || null;
@@ -2177,10 +2246,8 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       const providerForPec = usedModel ? usedProvider : provider;
       const failover = isFailoverEnabled();
       const tryOrder: AiProvider[] = providerForPec === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
-
-      const preview = buildContratoPreviewForPec(baseContrato);
-      let clauseBody: string | null = null;
-      let lastClauseError: unknown = null;
+      let integratedContract: string | null = null;
+      let lastIntegrationError: unknown = null;
 
       for (const p of tryOrder) {
         try {
@@ -2193,19 +2260,19 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
             ];
             for (const model of models) {
               try {
-                clauseBody = await generatePeculiaridadesText({
+                integratedContract = await integratePeculiaridadesInContract({
                   provider: "openai",
                   apiKey: key,
                   model,
                   tipoLabel,
-                  contratoTextPreview: preview,
+                  contratoText: baseContrato,
                   contrato: contratoSemPeculiaridades,
                   peculiaridades,
                   instructionsIa: templateInstructionsIa,
                 });
                 break;
               } catch (e) {
-                lastClauseError = e;
+                lastIntegrationError = e;
                 const status = (e as any)?.status;
                 if (status === 429) continue;
                 throw e;
@@ -2220,19 +2287,19 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
             ];
             for (const model of models) {
               try {
-                clauseBody = await generatePeculiaridadesText({
+                integratedContract = await integratePeculiaridadesInContract({
                   provider: "gemini",
                   apiKey: key,
                   model,
                   tipoLabel,
-                  contratoTextPreview: preview,
+                  contratoText: baseContrato,
                   contrato: contratoSemPeculiaridades,
                   peculiaridades,
                   instructionsIa: templateInstructionsIa,
                 });
                 break;
               } catch (e) {
-                lastClauseError = e;
+                lastIntegrationError = e;
                 const status = (e as any)?.status;
                 if (status === 429 || status === 404) continue;
                 throw e;
@@ -2241,50 +2308,25 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
           }
           break;
         } catch (e) {
-          lastClauseError = e;
+          lastIntegrationError = e;
           const status = (e as any)?.status;
           const shouldForceFallback = status === 404;
           if (!failover && !shouldForceFallback) break;
         }
       }
 
-      const cleanedBody = (clauseBody || "")
+      const cleanedIntegrated = (integratedContract || "")
         .replace(/\*\*/g, "")
         .replace(/^#{1,6}\s*/gm, "")
         .replace(/^-{3,}$/gm, "")
         .replace(/`/g, "")
-        .replace(/^\s*CL[ÁA]USULA[^\n]*\n?/gim, "")
         .trim();
 
-      const finalBody = (() => {
-        if (cleanedBody) return cleanedBody;
-        const raw = String(peculiaridades || "").trim();
-        if (!raw) return "";
-        const parts = raw
-          .split(/\r?\n+/g)
-          .map((x) => x.trim())
-          .filter(Boolean);
-        const body = parts.length ? parts.map((t, i) => `${i + 1}. ${t}`).join("\n") : raw;
-        return `As partes ajustam que:\n${body}`.trim();
-      })();
-
-      if (!finalBody) {
-        throw lastClauseError instanceof Error ? lastClauseError : new Error("Não foi possível inserir a cláusula das peculiaridades.");
+      if (!cleanedIntegrated) {
+        throw lastIntegrationError instanceof Error ? lastIntegrationError : new Error("Não foi possível integrar as peculiaridades no corpo do contrato.");
       }
 
-      const target = findInsertBeforeClauseIndex(baseContrato);
-      const insertionNumber = target?.number || null;
-      const clauseTitle = buildPeculiaridadesClauseTitle(baseContrato, insertionNumber);
-      const block = `${clauseTitle}\n\n${finalBody}`.trim();
-
-      if (target && insertionNumber) {
-        const renumbered = renumberClauses(baseContrato, insertionNumber, 1);
-        const refreshedTarget = findInsertBeforeClauseIndex(renumbered);
-        const insertAt = refreshedTarget?.index ?? target.index;
-        minutaFinal = `${renumbered.slice(0, insertAt).trimEnd()}\n\n${block}\n\n${renumbered.slice(insertAt).trimStart()}`;
-      } else {
-        minutaFinal = insertBeforeSignatureBlock(baseContrato, block);
-      }
+      minutaFinal = cleanedIntegrated;
     }
 
     if (baseSource !== "ai") {
@@ -2394,6 +2436,7 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
     minutaFinal = stripUnusedConjugeSignatures(minutaFinal, { vendedor: !hasVendedorConjuge, comprador: !hasCompradorConjuge });
 
     minutaFinal = fixLocalEDataInContractText(minutaFinal, contratoSemPeculiaridades);
+    minutaFinal = applyImobiliariaIntermediadora(minutaFinal, imobiliariaRow, Boolean(templateImobiliariaId && constarImobiliaria));
 
     // Processamento de âncoras simbólicas
     try {

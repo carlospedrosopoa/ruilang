@@ -159,7 +159,16 @@ const ColetaPage = () => {
       if (dados) {
         if (dados.vendedores?.length) setVendedores(dados.vendedores);
         if (dados.compradores?.length) setCompradores(dados.compradores);
-        if (dados.imovel) setImovel(dados.imovel);
+        if (dados.imovel) {
+          const base = criarImovelVazio();
+          const incoming = dados.imovel as any;
+          setImovel({
+            ...base,
+            ...incoming,
+            proprietariosTabulares: Array.isArray(incoming?.proprietariosTabulares) ? incoming.proprietariosTabulares : base.proprietariosTabulares,
+            onusReais: Array.isArray(incoming?.onusReais) ? incoming.onusReais : base.onusReais,
+          } as any);
+        }
         if (dados.imovelPermuta) setImovelPermuta(dados.imovelPermuta);
         if (dados.pagamento) {
           const base = criarPagamentoVazio();

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeft, ArrowRight, FileText, Sparkles, Copy, Download, FileDown, Loader2, Check, History, Plus, Trash2 } from "lucide-react";
@@ -207,6 +208,7 @@ const ContractWizard = () => {
   const [minutaEditada, setMinutaEditada] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [testemunhas, setTestemunhas] = useState<Testemunha[]>([]);
+  const [constarImobiliaria, setConstarImobiliaria] = useState(true);
   const [versoes, setVersoes] = useState<ContratoVersao[]>([]);
   const [versoesDisponiveis, setVersoesDisponiveis] = useState(true);
   const [versaoSelecionada, setVersaoSelecionada] = useState<ContratoVersao | null>(null);
@@ -378,6 +380,7 @@ const ContractWizard = () => {
         if (typeof d.perfilContrato === "string" && d.perfilContrato.trim()) setPerfilContrato(d.perfilContrato as any);
         if (typeof d.peculiaridades === "string") setPeculiaridades(d.peculiaridades);
         if (d.testemunhas) setTestemunhas(normalizeTestemunhasList(d.testemunhas));
+        if (typeof d.constarImobiliaria === "boolean") setConstarImobiliaria(d.constarImobiliaria);
 
         if (typeof data.contract_texto_editado === "string" && data.contract_texto_editado.trim()) {
           setMinutaEditada(data.contract_texto_editado);
@@ -404,6 +407,10 @@ const ContractWizard = () => {
   }, [submissionId, steps, forceStartAtFirst]);
 
   useEffect(() => {
+    if (!imobiliariaId) setConstarImobiliaria(false);
+  }, [imobiliariaId]);
+
+  useEffect(() => {
     if (!submissionId) return;
     if (!didLoadSubmissionRef.current) return;
 
@@ -415,6 +422,7 @@ const ContractWizard = () => {
         procuradores,
         anuentes,
         testemunhas,
+        constarImobiliaria,
         imovel,
         imovelPermuta,
         pagamento,
@@ -435,7 +443,7 @@ const ContractWizard = () => {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     };
-  }, [submissionId, tipo, vendedores, compradores, procuradores, anuentes, testemunhas, imovel, imovelPermuta, pagamento, locacao, perfilContrato, peculiaridades]);
+  }, [submissionId, tipo, vendedores, compradores, procuradores, anuentes, testemunhas, constarImobiliaria, imovel, imovelPermuta, pagamento, locacao, perfilContrato, peculiaridades]);
 
   useEffect(() => {
     const loadPerfis = async () => {
@@ -533,6 +541,7 @@ const ContractWizard = () => {
           procuradores,
           anuentes,
           testemunhas,
+          constarImobiliaria,
           imovel,
           imovelPermuta,
           pagamento,
@@ -616,6 +625,7 @@ const ContractWizard = () => {
           label_acao: labelsInfo.acao,
         },
         perfilContrato,
+        constarImobiliaria,
         peculiaridades: peculiaridades.trim() || undefined,
         vendedores,
         compradores,
@@ -871,6 +881,7 @@ const ContractWizard = () => {
           signatures: {
             conjugeVendedor: vendedores.some((v) => Boolean((v as any)?.conjugeDeId)),
             conjugeComprador: compradores.some((c) => Boolean((c as any)?.conjugeDeId)),
+            includeImobiliaria: constarImobiliaria,
             vendedor: { nome: vendedorPrincipal?.nome || "", cpf: vendedorPrincipal?.cpf || "" },
             comprador: { nome: compradorPrincipal?.nome || "", cpf: compradorPrincipal?.cpf || "" },
             conjugeDoVendedor: conjugeVendedorPessoa ? { nome: conjugeVendedorPessoa.nome || "", cpf: conjugeVendedorPessoa.cpf || "" } : undefined,
@@ -1135,6 +1146,19 @@ const ContractWizard = () => {
 
             {!ehVersaoAntiga && (
               <div className="border border-border rounded-lg p-4 bg-background space-y-4">
+                <div className="flex items-center justify-between gap-4 flex-wrap border-b border-border pb-4">
+                  <div className="min-w-0">
+                    <h4 className="font-display text-lg font-semibold text-foreground">Imobiliária</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Marque para constar a imobiliária intermediadora (com dados) no texto do contrato.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Label className="text-xs">Constar imobiliária</Label>
+                    <Switch checked={constarImobiliaria} onCheckedChange={setConstarImobiliaria} disabled={!imobiliariaId} />
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <h4 className="font-display text-lg font-semibold text-foreground">Testemunhas</h4>
                   {testemunhas.length < 4 && (
