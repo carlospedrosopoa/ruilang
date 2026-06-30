@@ -2467,14 +2467,27 @@ Gere a minuta completa com TODAS as cláusulas obrigatórias listadas nas instru
       const check = hasCriticalDataFromForm(minutaFinal, contratoSemPeculiaridades);
       if (!check.ok) {
         const tryOrderFix: AiProvider[] = provider === "openai" ? ["openai", "gemini"] : ["gemini", "openai"];
+        const vendedorNomes = check.needles.vendedoresNeedles
+          .map((item: { nome?: string }) => item?.nome || "")
+          .filter(Boolean);
+        const compradorNomes = check.needles.compradoresNeedles
+          .map((item: { nome?: string }) => item?.nome || "")
+          .filter(Boolean);
+        const vendedorDocs = check.needles.vendedoresNeedles
+          .map((item: { doc?: string }) => item?.doc || "")
+          .filter(Boolean);
+        const compradorDocs = check.needles.compradoresNeedles
+          .map((item: { doc?: string }) => item?.doc || "")
+          .filter(Boolean);
+
         const strictInstructions = [
           "REPARO CRÍTICO (OBRIGATÓRIO): o contrato ainda contém dados do MODELO BASE. Corrija agora.",
           "Você DEVE substituir integralmente quaisquer nomes/CPF/endereço/valores/datas do modelo pelos dados oficiais.",
           "O texto final DEVE conter (em qualquer lugar):",
-          check.needles.vendedorNome ? `- VENDEDOR: ${check.needles.vendedorNome}` : null,
-          check.needles.compradorNome ? `- COMPRADOR: ${check.needles.compradorNome}` : null,
-          check.needles.vendedorDoc ? `- DOCUMENTO VENDEDOR (CPF/CNPJ): ${check.needles.vendedorDoc}` : null,
-          check.needles.compradorDoc ? `- DOCUMENTO COMPRADOR (CPF/CNPJ): ${check.needles.compradorDoc}` : null,
+          vendedorNomes.length ? `- VENDEDORES: ${vendedorNomes.join("; ")}` : null,
+          compradorNomes.length ? `- COMPRADORES: ${compradorNomes.join("; ")}` : null,
+          vendedorDocs.length ? `- DOCUMENTOS DOS VENDEDORES (CPF/CNPJ): ${vendedorDocs.join("; ")}` : null,
+          compradorDocs.length ? `- DOCUMENTOS DOS COMPRADORES (CPF/CNPJ): ${compradorDocs.join("; ")}` : null,
           "Não altere cláusulas que não sejam de partes, imóvel e pagamento/locação.",
         ]
           .filter(Boolean)

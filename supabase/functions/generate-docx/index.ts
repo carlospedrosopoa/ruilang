@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +8,7 @@ const corsHeaders = {
 };
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+// @ts-ignore remote module is resolved by the Supabase Edge runtime
 import {
   Document,
   Packer,
@@ -520,7 +522,6 @@ const VL_MARGIN_BOTTOM = 1440;
 const VL_MARGIN_LEFT = 1440;
 const VL_MARGIN_RIGHT = 1440;
 const VL_BLUE = "1F4E79";
-const VL_LIGHT_GRAY = "F2F2F2";
 const VL_LIGHT_BLUE = "DDEBF7";
 const VL_GRAY = "666666";
 const VL_GRAY_LIGHT = "999999";
@@ -995,7 +996,7 @@ function buildDocxVisualLaw(
   const conjugeDoVendedor = signatures?.conjugeDoVendedor;
   const conjugeDoComprador = signatures?.conjugeDoComprador;
   const testemunhas = Array.isArray(signatures?.testemunhas) ? signatures?.testemunhas : [];
-  const signatureRows: TableRow[] = [
+  const signatureRows = [
     new TableRow({
       children: [makeVisualSignatureCell("VENDEDOR(A)", vendedor), makeVisualSignatureCell("COMPRADOR(A)", comprador)],
     }),
@@ -1120,7 +1121,7 @@ function buildDocxVisualLaw(
   return doc;
 }
 
-Deno.serve(async (req: Request) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

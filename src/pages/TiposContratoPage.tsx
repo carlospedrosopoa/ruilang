@@ -147,7 +147,7 @@ export default function TiposContratoPage() {
       setRows([]);
       toast.error(error.message || "Erro ao carregar tipos de contrato.");
     } else {
-      setRows((data as TipoContratoRow[]) || []);
+      setRows(((data as unknown) as TipoContratoRow[]) || []);
     }
     setLoading(false);
   };

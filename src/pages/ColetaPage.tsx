@@ -639,7 +639,7 @@ const ColetaPage = () => {
                   </div>
                   {(() => {
                     const arras = (Array.isArray(pagamento.parcelas) ? pagamento.parcelas : []).filter(
-                      (p) => p?.tipo === "arras" && String(p?.valor || "").trim(),
+                      (p) => p?.tipo === "sinal" && String(p?.valor || "").trim(),
                     );
                     if (!arras.length) return null;
                     return (
