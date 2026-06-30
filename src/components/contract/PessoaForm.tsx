@@ -8,10 +8,10 @@ import { Pessoa, estadosCivis, estadosBR } from "@/types/contract";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { fileToVisionBase64Images } from "@/lib/imageUtils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { getRegimesByEstadoCivil } from "@/lib/regimeBens";
-import { validarCPF, validarCNPJ, digitsOnly } from "@/lib/validation";
+import { validarCPF, validarCNPJ } from "@/lib/validation";
 import { useAuth } from "@/auth/AuthProvider";
 
 interface PessoaFormProps {
@@ -71,11 +71,16 @@ function parseAddressParts(fullAddress: string) {
 async function viaCepByCep(cep: string) {
   const c = digitsOnly(cep);
   if (c.length !== 8) return null;
-  const res = await fetch(`https://viacep.com.br/ws/${c}/json/`);
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (!data || data.erro) return null;
-  return data as { logradouro?: string; bairro?: string; localidade?: string; uf?: string; cep?: string };
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${c}/json/`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || data.erro) return null;
+    return data as { logradouro?: string; bairro?: string; localidade?: string; uf?: string; cep?: string };
+  } catch (err) {
+    console.warn("CEP lookup failed:", err);
+    return null;
+  }
 }
 
 async function viaCepByAddress(uf: string, cidade: string, logradouro: string) {
@@ -84,13 +89,18 @@ async function viaCepByAddress(uf: string, cidade: string, logradouro: string) {
   const l = String(logradouro || "").trim();
   if (!u || !c || !l) return null;
   const url = `https://viacep.com.br/ws/${encodeURIComponent(u)}/${encodeURIComponent(c)}/${encodeURIComponent(l)}/json/`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (!Array.isArray(data)) return null;
-  const list = data.filter((x) => x && !x.erro);
-  if (list.length === 1) return list[0] as any;
-  return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data)) return null;
+    const list = data.filter((x) => x && !x.erro);
+    if (list.length === 1) return list[0] as any;
+    return null;
+  } catch (err) {
+    console.warn("Address CEP lookup failed:", err);
+    return null;
+  }
 }
 
 const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, isConjuge, hideEstadoCivil, emailRequired, onExtractFiles, errors }: PessoaFormProps) => {
@@ -103,7 +113,6 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [clienteEncontrado, setClienteEncontrado] = useState<any>(null);
-  const [buscandoCliente, setBuscandoCliente] = useState(false);
 
   const update = (field: keyof Pessoa, value: string) => {
     onChange({ ...pessoa, [field]: value });
@@ -190,7 +199,6 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, 
         return;
       }
 
-      setBuscandoCliente(true);
       try {
         const query = supabase.from("clientes").select("*").eq("imobiliaria_id", activeTenantId);
         if (docToSearch.cpf) {
@@ -204,8 +212,6 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, 
       } catch (err) {
         console.error("Erro ao buscar cliente:", err);
         setClienteEncontrado(null);
-      } finally {
-        setBuscandoCliente(false);
       }
     };
 
@@ -302,7 +308,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, 
       if (parsed.estado && !explicitEstado) merged.estado = parsed.estado;
       if (parsed.cep && !explicitCep) merged.cep = parsed.cep;
 
-      const enriched = await tryEnrichAddress(merged);
+      const enriched = await tryEnrichAddress(merged).catch(() => merged);
       onChange(enriched);
       toast.success("Dados extraídos com sucesso! Verifique e complete os campos.");
     } catch (err: any) {
@@ -361,7 +367,7 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, 
       if (parsed.estado && !explicitEstado) merged.estado = parsed.estado;
       if (parsed.cep && !explicitCep) merged.cep = parsed.cep;
 
-      const enriched = await tryEnrichAddress(merged);
+      const enriched = await tryEnrichAddress(merged).catch(() => merged);
       onChange(enriched);
       toast.success("Dados extraídos com sucesso! Verifique e complete os campos.");
       setTextDialogOpen(false);
@@ -457,6 +463,9 @@ const PessoaForm = ({ pessoa, onChange, onRemove, titulo, index, displayNumber, 
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Colar Texto para Extração</DialogTitle>
+            <DialogDescription>
+              Cole um texto com dados da parte para extrair e preencher automaticamente nome, documento e endereco.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto pr-1">
             <div className="space-y-4 pt-2">
